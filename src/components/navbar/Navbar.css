@@ -1,16 +1,79 @@
+/* Navbar.css */
+
 .navbar{
   width:100%;
-  padding:20px 80px;
-  background:#1565c0;
+  height:90px;
+
   display:flex;
   justify-content:space-between;
   align-items:center;
+
+  padding:0 70px;
+
+  background:linear-gradient(
+    135deg,
+    #0f172a,
+    #1e3a8a,
+    #2563eb
+  );
+
+  box-shadow:0 4px 20px rgba(0,0,0,0.2);
+
+  position:sticky;
+  top:0;
+  z-index:1000;
 }
 
+/* LOGO */
+
 .logo{
+  font-size:34px;
+  font-weight:800;
   color:white;
-  font-size:32px;
+  letter-spacing:1px;
 }
+
+.logo span{
+  color:#facc15;
+}
+
+/* NAV LINKS */
+
+.nav-links{
+  display:flex;
+  align-items:center;
+  gap:28px;
+
+  list-style:none;
+}
+
+.nav-links li{
+  display:flex;
+  align-items:center;
+  gap:8px;
+
+  color:white;
+
+  font-size:17px;
+  font-weight:500;
+
+  cursor:pointer;
+
+  padding:10px 16px;
+  border-radius:12px;
+
+  transition:0.3s;
+}
+
+.nav-links li:hover{
+  background:rgba(255,255,255,0.12);
+
+  transform:translateY(-3px);
+
+  color:#facc15;
+}
+
+/* BUTTONS */
 
 .nav-buttons{
   display:flex;
@@ -19,19 +82,103 @@
 
 .login-btn,
 .register-btn{
-  padding:10px 20px;
+  padding:12px 24px;
+
   border:none;
-  border-radius:8px;
-  cursor:pointer;
+  border-radius:12px;
+
   font-size:16px;
-  font-weight:bold;
+  font-weight:700;
+
+  cursor:pointer;
+
+  transition:0.3s;
 }
+
+/* LOGIN */
 
 .login-btn{
   background:white;
-  color:#1565c0;
+  color:#1e3a8a;
 }
 
+.login-btn:hover{
+  transform:translateY(-3px);
+
+  box-shadow:0 6px 15px rgba(255,255,255,0.3);
+}
+
+/* REGISTER */
+
 .register-btn{
-  background:#ffca28;
+  background:#facc15;
+  color:black;
+}
+
+.register-btn:hover{
+  background:#fde047;
+
+  transform:translateY(-3px);
+
+  box-shadow:0 6px 15px rgba(250,204,21,0.4);
+}
+
+/* RESPONSIVE */
+
+@media(max-width:1100px){
+
+  .navbar{
+    padding:0 30px;
+  }
+
+  .nav-links{
+    gap:15px;
+  }
+
+  .nav-links li{
+    font-size:15px;
+    padding:8px 10px;
+  }
+}
+
+@media(max-width:900px){
+
+  .navbar{
+    flex-direction:column;
+    height:auto;
+
+    padding:20px;
+    gap:20px;
+  }
+
+  .nav-links{
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+
+  .nav-buttons{
+    width:100%;
+    justify-content:center;
+  }
+}
+
+@media(max-width:600px){
+
+  .logo{
+    font-size:28px;
+  }
+
+  .nav-links{
+    gap:10px;
+  }
+
+  .nav-links li{
+    font-size:14px;
+  }
+
+  .login-btn,
+  .register-btn{
+    padding:10px 18px;
+    font-size:14px;
+  }
 }
