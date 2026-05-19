@@ -1,0 +1,17 @@
+.category-card{
+  background:white;
+  padding:40px 20px;
+  border-radius:20px;
+  text-align:center;
+  box-shadow:0 4px 10px rgba(0,0,0,0.1);
+  transition:0.3s;
+}
+
+.category-card:hover{
+  transform:translateY(-8px);
+}
+
+.category-icon{
+  color:#1565c0;
+  margin-bottom:20px;
+}

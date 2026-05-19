@@ -1,0 +1,49 @@
+.hero{
+  width:100%;
+  padding:100px 20px;
+  background:#1565c0;
+  text-align:center;
+  color:white;
+}
+
+.hero h1{
+  font-size:55px;
+  margin-bottom:20px;
+}
+
+.hero p{
+  font-size:20px;
+  margin-bottom:40px;
+}
+
+.search-box{
+  width:70%;
+  margin:auto;
+  background:white;
+  padding:10px;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+}
+
+.search-box input{
+  flex:1;
+  padding:15px;
+  border:none;
+  outline:none;
+  font-size:18px;
+}
+
+.search-box button{
+  padding:15px 30px;
+  background:#1565c0;
+  color:white;
+  border:none;
+  border-radius:10px;
+  cursor:pointer;
+}
+
+.search-icon{
+  color:gray;
+  margin-left:10px;
+}
