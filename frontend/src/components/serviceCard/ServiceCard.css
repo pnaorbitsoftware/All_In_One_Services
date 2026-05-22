@@ -1,0 +1,95 @@
+.service-card{
+  background:white;
+  padding:clamp(20px, 4vw, 25px);
+  border-radius:16px;
+  box-shadow:0 4px 10px rgba(0,0,0,0.1);
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+
+.service-top{
+  display:flex;
+  align-items:flex-start;
+  gap:16px;
+  margin-bottom:20px;
+}
+
+.service-icon{
+  background:#e3f2fd;
+  padding:15px;
+  border-radius:50%;
+  color:#1565c0;
+  flex:0 0 auto;
+}
+
+.service-top h2{
+  font-size:clamp(20px, 4vw, 24px);
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+
+.service-top p{
+  color:#555;
+  margin-top:4px;
+}
+
+.service-details{
+  display:flex;
+  flex-direction:column;
+  gap:15px;
+  color:#555;
+  flex:1;
+}
+
+.service-details div{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+.service-details span{
+  overflow-wrap:anywhere;
+}
+
+.service-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:25px;
+}
+
+.service-actions button{
+  width:100%;
+  padding:14px;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+}
+
+.details-btn{
+  background:white;
+  color:#1565c0;
+  border:1px solid #1565c0;
+}
+
+.book-btn{
+  background:#1565c0;
+  color:white;
+  border:1px solid #1565c0;
+}
+
+@media (max-width: 420px){
+  .service-top{
+    flex-direction:column;
+  }
+
+  .service-actions{
+    grid-template-columns:1fr;
+  }
+}
