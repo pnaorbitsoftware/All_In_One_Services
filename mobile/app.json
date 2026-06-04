@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "ServiceHub",
+    "slug": "servicehub-mobile",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "scheme": "servicehub",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.servicehub.mobile",
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": []
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      "./plugins/withCleartextTraffic",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "apiUrl": "http://10.187.33.79:5000/api",
+      "eas": {
+        "projectId": "82b8d643-cb7a-4bfe-8f04-94f52c70ece0"
+      }
+    }
+  }
+}
