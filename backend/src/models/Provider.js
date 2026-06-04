@@ -68,9 +68,22 @@ const providerSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    image: {
+      type: String,
+      default: "",
+    },
     isActive: {
       type: Boolean,
       default: true,
+    },
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "approved",
+    },
+    approvedAt: {
+      type: Date,
+      default: null,
     },
   },
   { collection: "providers", timestamps: true }

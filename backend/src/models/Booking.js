@@ -45,7 +45,7 @@ const bookingSchema = new mongoose.Schema(
     serviceDuration: {
       type: String,
       required: true,
-      enum: ["30 minutes", "1 hour", "2 hours", "3 hours", "Half day", "Full day"],
+      enum: ["30 minutes", "1 hour", "2 hours", "3 hours", "Half day", "Full day", "Based on Work Time"],
       default: "1 hour",
     },
     costEstimate: {
@@ -59,10 +59,57 @@ const bookingSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    problemDescription: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     status: {
       type: String,
-      enum: ["pending", "confirmed", "completed", "cancelled"],
+      enum: ["pending", "accepted", "assigned", "confirmed", "completed", "cancelled"],
       default: "pending",
+    },
+    assignedProvider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Provider",
+      default: null,
+    },
+    requestedProvider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Provider",
+      default: null,
+    },
+    requestedProviderName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    assignedProviderName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    acceptedAt: {
+      type: Date,
+      default: null,
+    },
+    assignedAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledBy: {
+      type: String,
+      enum: ["", "client", "provider", "admin"],
+      default: "",
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    cancellationReason: {
+      type: String,
+      default: "",
+      trim: true,
     },
     workImage: {
       type: String,
@@ -71,6 +118,45 @@ const bookingSchema = new mongoose.Schema(
     completedAt: {
       type: Date,
       default: null,
+    },
+    clientPaymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "refunded"],
+      default: "pending",
+    },
+    clientPaidAt: {
+      type: Date,
+      default: null,
+    },
+    adminPayoutStatus: {
+      type: String,
+      enum: ["not_ready", "pending", "released"],
+      default: "not_ready",
+    },
+    providerSharePercent: {
+      type: Number,
+      default: 80,
+      min: 0,
+      max: 100,
+    },
+    providerPayoutAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    providerWithdrawnAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    adminPayoutReleasedAt: {
+      type: Date,
+      default: null,
+    },
+    adminPayoutNote: {
+      type: String,
+      default: "",
+      trim: true,
     },
   },
   { collection: "bookings", timestamps: true }

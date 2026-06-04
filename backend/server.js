@@ -1,4 +1,5 @@
 import cors from "cors";
+import dns from "node:dns";
 import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
@@ -16,23 +17,160 @@ dotenv.config();
 const app = express();
 
 const port = process.env.PORT || 5000;
+const host = process.env.HOST || "0.0.0.0";
+const isProduction =
+  process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
 
-const mongoUri =
+const configuredMongoUri =
   process.env.MONGO_URI || "mongodb://localhost:27017/";
 
 const mongoDbName =
   process.env.MONGO_DB_NAME || "all_in_one_services";
 
+const mongoDirectHosts = (process.env.MONGO_DIRECT_HOSTS || "")
+  .split(",")
+  .map((hostName) => hostName.trim())
+  .filter(Boolean);
+const mongoReplicaSet = process.env.MONGO_REPLICA_SET || "";
+const isConfiguredAtlasSrvUri = configuredMongoUri.startsWith("mongodb+srv://");
+const mongoDnsServers = (process.env.MONGO_DNS_SERVERS || "")
+  .split(",")
+  .map((server) => server.trim())
+  .filter(Boolean);
+
+function buildMongoUri(uri) {
+  if (!uri.startsWith("mongodb+srv://") || !mongoDirectHosts.length) {
+    return uri;
+  }
+
+  const authMatch = uri.match(/^mongodb\+srv:\/\/([^@]+)@/i);
+  if (!authMatch) return uri;
+
+  const options = new URLSearchParams({
+    ssl: "true",
+    authSource: "admin",
+    retryWrites: "true",
+    w: "majority",
+  });
+
+  if (mongoReplicaSet) {
+    options.set("replicaSet", mongoReplicaSet);
+  }
+
+  return `mongodb://${authMatch[1]}@${mongoDirectHosts.join(",")}/${mongoDbName}?${options.toString()}`;
+}
+
+const mongoUri = buildMongoUri(configuredMongoUri);
+const isAtlasSrvUri = isConfiguredAtlasSrvUri && !mongoDirectHosts.length;
+const isAtlasConnection = isConfiguredAtlasSrvUri || mongoUri.includes("mongodb.net");
+
 const mongoOptions = {
   dbName: mongoDbName,
-  serverSelectionTimeoutMS: 5000,
+  family: 4,
+  serverSelectionTimeoutMS: 15000,
 };
+
+function validateEnvironment() {
+  const warnings = [];
+
+  if (isProduction && configuredMongoUri.includes("localhost")) {
+    throw new Error(
+      "MONGO_URI is required for production/Render. Add your MongoDB Atlas connection string in Render Environment."
+    );
+  }
+
+  if (
+    isProduction &&
+    (!process.env.JWT_SECRET ||
+      process.env.JWT_SECRET === "change_this_secret_before_production" ||
+      process.env.JWT_SECRET === "dev_servicehub_secret_change_me")
+  ) {
+    warnings.push(
+      "JWT_SECRET is missing or weak. Set a long random JWT_SECRET in Render Environment."
+    );
+  }
+
+  if (
+    process.env.AUTH_REQUIRE_EMAIL_OTP !== "false" &&
+    (!process.env.BREVO_SMTP_USER ||
+      !process.env.BREVO_SMTP_KEY ||
+      !process.env.MAIL_FROM_EMAIL)
+  ) {
+    warnings.push(
+      "Email OTP is enabled, but Brevo SMTP values are incomplete. Registration OTP emails may fail."
+    );
+  }
+
+  return warnings;
+}
+
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
+
+if (isAtlasSrvUri && mongoDnsServers.length) {
+  dns.setServers(mongoDnsServers);
+}
+
+function maskMongoUri(uri) {
+  return uri.replace(
+    /(mongodb(?:\+srv)?:\/\/)([^:/@]+)(?::([^@]*))?@/i,
+    (_match, scheme, username) => `${scheme}${username}:***@`
+  );
+}
+
+function getMongoConnectionHelp(error) {
+  if (error.message.includes("querySrv")) {
+    return [
+      "Atlas SRV DNS lookup failed in Node.js.",
+      `Node DNS servers: ${dns.getServers().join(", ") || "none"}`,
+      "Fix: keep MongoDB Atlas Network Access active. If your local Wi-Fi DNS blocks SRV lookup, set MONGO_DNS_SERVERS in backend\\.env to a working DNS server.",
+      "Then restart backend with npm start.",
+    ];
+  }
+
+  if (error.message.includes("bad auth") || error.message.includes("Authentication failed")) {
+    return [
+      "Atlas authentication failed.",
+      "Fix: check Database Access username/password, and URL-encode special characters in the password.",
+    ];
+  }
+
+  if (error.message.includes("Invalid scheme")) {
+    return [
+      "MongoDB URI format is invalid.",
+      "Fix: MONGO_URI must start with mongodb:// or mongodb+srv://.",
+    ];
+  }
+
+  if (error.message.includes("ENOTFOUND") || error.message.includes("ETIMEOUT")) {
+    return [
+      "Atlas host could not be reached from this network.",
+      "Fix: check internet, VPN/proxy, firewall, and Atlas Network Access 0.0.0.0/0.",
+    ];
+  }
+
+  return [
+    isAtlasConnection
+      ? "Atlas connection failed. Check Network Access, Database Access user, password, and internet/firewall."
+      : "Local MongoDB connection failed. Start local MongoDB or switch MONGO_URI to Atlas.",
+  ];
+}
+
+const configuredCorsOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CORS_ORIGINS,
+]
+  .filter(Boolean)
+  .flatMap((value) => value.split(","))
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const allowedOrigins = new Set([
   "http://127.0.0.1:5173",
   "http://localhost:5173",
-  process.env.CLIENT_URL,
-].filter(Boolean));
+  ...configuredCorsOrigins,
+]);
 
 const isAllowedDevOrigin = (origin) => {
   try {
@@ -58,14 +196,24 @@ app.use(
 
 app.use(express.json({ limit: "10mb" }));
 
+app.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    name: "ServiceHub API",
+    health: "/api/health",
+  });
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
+    environment: isProduction ? "production" : "development",
     databaseName: mongoDbName,
     database:
       mongoose.connection.readyState === 1
         ? "connected"
         : "disconnected",
+    uptimeSeconds: Math.round(process.uptime()),
   });
 });
 
@@ -73,7 +221,9 @@ const requireDatabase = (_req, res, next) => {
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
       message:
-        "Database is not connected. Start MongoDB on mongodb://localhost:27017/.",
+        isAtlasConnection
+          ? "Database is not connected. Check Atlas Network Access, Database Access, and backend DNS settings."
+          : "Database is not connected. Start MongoDB on mongodb://localhost:27017/.",
     });
   }
 
@@ -92,32 +242,44 @@ app.use("/api/catalog", requireDatabase, catalogRoutes);
 
 app.use("/api/providers", requireDatabase, providerRoutes);
 
+app.use("/api", (_req, res) => {
+  res.status(404).json({ message: "API route not found." });
+});
+
+app.use((error, _req, res, _next) => {
+  console.error(error.message);
+  res.status(500).json({
+    message: "Server error.",
+  });
+});
+
 const startServer = async () => {
   try {
+    validateEnvironment().forEach((warning) => console.warn(`WARN ${warning}`));
+
     await mongoose.connect(mongoUri, mongoOptions);
 
     await setupDatabase();
 
     console.log(
-      `Connected to MongoDB: ${mongoUri}${mongoDbName}`
+      `Connected to MongoDB: ${maskMongoUri(mongoUri)} database=${mongoDbName}`
     );
 
     console.log(
       "Collections ready: users, bookings, contactmsgs, categories, providers, services, sessions, sitecontents"
     );
 
-    app.listen(port, () => {
+    app.listen(port, host, () => {
       console.log(
-        `Auth API running on http://localhost:${port}`
+        `Auth API running on http://localhost:${port} and http://<your-computer-ip>:${port}`
       );
     });
   } catch (error) {
     console.error(
       `MongoDB connection failed: ${error.message}`
     );
-    console.error(
-      "Start MongoDB locally, then restart the backend."
-    );
+    getMongoConnectionHelp(error).forEach((line) => console.error(line));
+    process.exitCode = 1;
   }
 };
 

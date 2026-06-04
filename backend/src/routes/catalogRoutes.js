@@ -12,7 +12,7 @@ router.get("/", async (_req, res) => {
     const [categories, services, providers, siteContents] = await Promise.all([
       Category.find({ isActive: true }).sort({ displayOrder: 1, title: 1 }),
       Service.find({ isActive: true }).sort({ title: 1 }),
-      Provider.find({ isActive: true }).sort({ rating: -1, reviews: -1 }),
+      Provider.find({ isActive: true, approvalStatus: "approved" }).sort({ rating: -1, reviews: -1 }),
       SiteContent.find({ isActive: true }).sort({ sectionKey: 1 }),
     ]);
 

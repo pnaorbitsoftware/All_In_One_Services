@@ -31,6 +31,21 @@ export default async function setupDatabase() {
     { costEstimate: { $exists: false } },
     { $set: { costEstimate: 299, workImage: "", completedAt: null } }
   );
+  await Booking.updateMany(
+    { clientPaymentStatus: { $exists: false } },
+    {
+      $set: {
+        clientPaymentStatus: "pending",
+        clientPaidAt: null,
+        adminPayoutStatus: "not_ready",
+        providerSharePercent: 80,
+        providerPayoutAmount: 0,
+        providerWithdrawnAmount: 0,
+        adminPayoutReleasedAt: null,
+        adminPayoutNote: "",
+      },
+    }
+  );
 
   const adminEmail = process.env.ADMIN_EMAIL || "admin@servicehub.com";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin123";

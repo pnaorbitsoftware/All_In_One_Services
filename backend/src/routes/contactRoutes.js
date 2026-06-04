@@ -3,27 +3,9 @@ import ContactMessage from "../models/ContactMessage.js";
 
 const router = express.Router();
 
-
-
-
-
-/* =====================================
-   CREATE CONTACT MESSAGE
-===================================== */
-
 router.post("/", async (req, res) => {
-  console.log("CONTACT API HIT");
-
   try {
-    console.log("Request Body:", req.body);
-
     const { name, email, message } = req.body;
-
-
-
-
-
-    /* VALIDATION */
 
     if (!name || !email || !message) {
       return res.status(400).json({
@@ -32,12 +14,6 @@ router.post("/", async (req, res) => {
           "Name, email, and message are required.",
       });
     }
-
-
-
-
-
-    /* EMAIL VALIDATION */
 
     const emailRegex =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,12 +25,6 @@ router.post("/", async (req, res) => {
       });
     }
 
-
-
-
-
-    /* SAVE TO DATABASE */
-
     const contactMessage =
       await ContactMessage.create({
         name,
@@ -62,25 +32,12 @@ router.post("/", async (req, res) => {
         message,
       });
 
-    console.log(
-      "Saved Successfully:",
-      contactMessage
-    );
-
-
-
-
-
-    /* SUCCESS RESPONSE */
-
     return res.status(201).json({
       success: true,
       message: "Message saved successfully.",
       data: contactMessage,
     });
-
   } catch (error) {
-
     console.error(
       "Contact Route Error:",
       error
@@ -92,7 +49,6 @@ router.post("/", async (req, res) => {
         "Message could not be saved. Please try again later.",
       error: error.message,
     });
-
   }
 });
 
