@@ -71,6 +71,10 @@ const ensureOtpEmailSent = (mailResult) => {
     throw new Error("Email is not configured. Add valid Brevo SMTP details in backend .env.");
   }
 
+  if (mailResult?.failed && mailResult?.message) {
+    throw new Error(mailResult.message);
+  }
+
   throw new Error("Email could not be sent. Check your Brevo SMTP username, key, and verified sender email.");
 };
 
@@ -220,7 +224,7 @@ router.post("/register", async (req, res) => {
 
     res.status(201).json({ token, user: sanitizeUser(user) });
   } catch (error) {
-    if (error.message.startsWith("Email ")) {
+    if (error.message.startsWith("Email ") || error.message.startsWith("Brevo ")) {
       return res.status(500).json({ message: error.message });
     }
 

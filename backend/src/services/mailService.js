@@ -11,6 +11,8 @@ const fromEmail = process.env.MAIL_FROM_EMAIL || smtpUser || "";
 const fromName = process.env.MAIL_FROM_NAME || "ServiceHub";
 
 const isMailEnabled = Boolean(smtpUser && smtpKey && fromEmail);
+const hasCommonBrevoKeyPrefix =
+  !smtpKey || /^(xkeysib-|xsmtp|x-smtp|smtp)/i.test(smtpKey);
 
 const transporter = isMailEnabled
   ? nodemailer.createTransport({
@@ -42,6 +44,45 @@ const buildHtml = (title, lines) => `
   </div>
 `;
 
+const getMailFailureMessage = (error) => {
+  const response = String(error?.response || "");
+  const message = String(error?.message || "");
+  const joined = `${response} ${message}`.toLowerCase();
+
+  if (["EAUTH", "EENVELOPE"].includes(error?.code) || error?.responseCode === 535) {
+    return "Brevo SMTP authentication failed. Re-copy BREVO_SMTP_USER and the full BREVO_SMTP_KEY from Brevo SMTP settings.";
+  }
+
+  if (
+    error?.responseCode === 550 ||
+    joined.includes("sender") ||
+    joined.includes("not verified") ||
+    joined.includes("not allowed")
+  ) {
+    return "Brevo rejected the sender email. Verify MAIL_FROM_EMAIL in Brevo senders, then restart Render.";
+  }
+
+  if (
+    ["ETIMEDOUT", "ESOCKET", "ECONNECTION"].includes(error?.code) ||
+    joined.includes("timeout") ||
+    joined.includes("timed out")
+  ) {
+    return "Brevo SMTP timed out from Render. Check Brevo SMTP settings and try again after restarting the backend.";
+  }
+
+  return "Email could not be sent. Check your Brevo SMTP username, key, and verified sender email.";
+};
+
+export const getMailStatus = () => ({
+  configured: isMailEnabled,
+  host: smtpHost,
+  port: smtpPort,
+  userConfigured: Boolean(smtpUser),
+  keyConfigured: Boolean(smtpKey),
+  senderConfigured: Boolean(fromEmail),
+  keyHasCommonBrevoPrefix: hasCommonBrevoKeyPrefix,
+});
+
 export const sendMail = async ({ to, subject, html, text }) => {
   if (!to || !isMailEnabled) {
     if (!isMailEnabled) {
@@ -62,7 +103,13 @@ export const sendMail = async ({ to, subject, html, text }) => {
     return { sent: true };
   } catch (error) {
     console.error(`Email failed for ${to}: ${error.message}`);
-    return { failed: true, error };
+    console.error("Brevo SMTP failure details:", {
+      code: error.code,
+      responseCode: error.responseCode,
+      command: error.command,
+      response: error.response,
+    });
+    return { failed: true, error, message: getMailFailureMessage(error) };
   }
 };
 

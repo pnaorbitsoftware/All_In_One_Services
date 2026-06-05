@@ -11,6 +11,7 @@ import catalogRoutes from "./src/routes/catalogRoutes.js";
 import contactRoutes from "./src/routes/contactRoutes.js";
 import providerRoutes from "./src/routes/providerRoutes.js";
 import setupDatabase from "./src/database/setupDatabase.js";
+import { getMailStatus } from "./src/services/mailService.js";
 
 dotenv.config();
 
@@ -98,6 +99,16 @@ function validateEnvironment() {
   ) {
     warnings.push(
       "Email OTP is enabled, but Brevo SMTP values are incomplete. Registration OTP emails may fail."
+    );
+  }
+
+  if (
+    process.env.AUTH_REQUIRE_EMAIL_OTP !== "false" &&
+    process.env.BREVO_SMTP_KEY &&
+    !/^(xkeysib-|xsmtp|x-smtp|smtp)/i.test(process.env.BREVO_SMTP_KEY)
+  ) {
+    warnings.push(
+      "BREVO_SMTP_KEY does not look like a full Brevo SMTP key. Re-copy the complete key from Brevo SMTP settings."
     );
   }
 
@@ -213,6 +224,7 @@ app.get("/api/health", (_req, res) => {
       mongoose.connection.readyState === 1
         ? "connected"
         : "disconnected",
+    mail: getMailStatus(),
     uptimeSeconds: Math.round(process.uptime()),
   });
 });
