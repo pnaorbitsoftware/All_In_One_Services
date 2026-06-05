@@ -269,6 +269,7 @@ export default function AuthSheet({
             title={actionTitle}
             icon={isPasswordReset ? "lock-reset" : isRegister ? "account-plus-outline" : "login"}
             disabled={submitting}
+            loading={submitting}
             onPress={submit}
           />
         </View>

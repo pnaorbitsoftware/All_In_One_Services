@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radius, useThemeColors } from "../theme";
 
@@ -10,6 +10,7 @@ function ActionButton({
   onPress,
   variant = "primary",
   disabled = false,
+  loading = false,
   style,
   textStyle,
 }) {
@@ -18,10 +19,13 @@ function ActionButton({
   const isDanger = variant === "danger";
   const isDangerSoft = variant === "dangerSoft";
 
+  const isDisabled = disabled || loading;
+  const contentColor = isPrimary || isDanger ? "#ffffff" : isDangerSoft ? theme.rose : theme.text;
+
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
@@ -29,17 +33,19 @@ function ActionButton({
         variant === "secondary" && { backgroundColor: theme.surfaceMuted },
         isDanger && { backgroundColor: theme.rose },
         isDangerSoft && { backgroundColor: theme.roseSoft },
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        isDisabled && styles.disabled,
+        pressed && !isDisabled && styles.pressed,
         style,
       ]}
     >
-      {icon ? (
+      {loading ? (
+        <ActivityIndicator color={contentColor} size="small" />
+      ) : icon ? (
         <View style={styles.iconWrap}>
           <MaterialCommunityIcons
             name={icon}
             size={18}
-            color={isPrimary || isDanger ? "#ffffff" : isDangerSoft ? theme.rose : theme.text}
+            color={contentColor}
           />
         </View>
       ) : null}

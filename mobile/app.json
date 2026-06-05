@@ -3,16 +3,26 @@
     "name": "ServiceHub",
     "slug": "servicehub-mobile",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "scheme": "servicehub",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "android": {
       "package": "com.servicehub.mobile",
       "softwareKeyboardLayoutMode": "resize",
-      "permissions": []
+      "permissions": [],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F766E"
+      }
     },
     "plugins": [
       "expo-secure-store",
@@ -21,10 +31,11 @@
       "@react-native-community/datetimepicker"
     ],
     "extra": {
-      "apiUrl": "http://10.187.33.79:5000/api",
+      "apiUrl": "https://servicehub-mobile-app.onrender.com/api",
       "eas": {
-        "projectId": "82b8d643-cb7a-4bfe-8f04-94f52c70ece0"
+        "projectId": "13cf87d6-8411-4240-8d39-9152efdf9fc0"
       }
-    }
+    },
+    "owner": "kirantalekar99"
   }
 }

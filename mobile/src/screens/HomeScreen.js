@@ -25,7 +25,7 @@ import {
 } from "../data/homeServicesData";
 import { buildMarketplace, iconForCategory, imageForService } from "../data/catalog";
 import { prefetchServiceImages } from "../lib/images";
-import { shadow } from "../theme";
+import { shadow, useThemeColors } from "../theme";
 
 const PAGE_GAP = 18;
 const CARD_BG = "#f6f6f6";
@@ -92,6 +92,7 @@ export default function HomeScreen({
   t = defaultT,
 }) {
   const { width } = useWindowDimensions();
+  const theme = useThemeColors();
   const pagePadding = Math.round(Math.min(Math.max(width * 0.045, 16), 24));
   const bannerWidth = Math.max(width - pagePadding * 2, 280);
   const [topActiveBanner, setTopActiveBanner] = useState(0);
@@ -211,10 +212,10 @@ export default function HomeScreen({
     <>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[GREEN]} tintColor={GREEN} />}
-        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.teal]} tintColor={theme.teal} />}
+        contentContainerStyle={[styles.scrollContent, { backgroundColor: theme.background }]}
       >
-        <View style={[styles.content, { paddingHorizontal: pagePadding }]}>
+        <View style={[styles.content, { backgroundColor: theme.background, paddingHorizontal: pagePadding }]}>
           <Header />
 
           <SearchBar
@@ -246,13 +247,17 @@ export default function HomeScreen({
             scrollRef={bottomBannerRef}
           />
 
-          {catalogError && marketplaceServices.length ? <Text style={styles.softError}>{catalogError}</Text> : null}
-          {catalogLoading && !marketplaceServices.length ? <Text style={styles.loadingText}>Loading live providers...</Text> : null}
+          {catalogError && marketplaceServices.length ? (
+            <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>{catalogError}</Text>
+          ) : null}
+          {catalogLoading && !marketplaceServices.length ? (
+            <Text style={[styles.loadingText, { color: theme.textMuted }]}>Loading live providers...</Text>
+          ) : null}
         </View>
 
-        <View style={styles.separator} />
+        <View style={[styles.separator, { backgroundColor: theme.surfaceMuted }]} />
 
-        <View style={[styles.content, { paddingHorizontal: pagePadding }]}>
+        <View style={[styles.content, { backgroundColor: theme.background, paddingHorizontal: pagePadding }]}>
           <SectionHeader title="New and noteworthy" />
           <HorizontalServiceList data={noteworthyServices} onPress={handleServicePress} />
 
@@ -264,7 +269,7 @@ export default function HomeScreen({
             product
           />
 
-          <Pressable style={styles.allServicesButton} onPress={() => setAllServicesOpen(true)}>
+          <Pressable style={[styles.allServicesButton, { backgroundColor: theme.slate }]} onPress={() => setAllServicesOpen(true)}>
             <MaterialCommunityIcons name="view-grid-outline" size={20} color="#ffffff" />
             <Text style={styles.allServicesButtonText}>See all services</Text>
           </Pressable>
@@ -282,25 +287,27 @@ export default function HomeScreen({
 }
 
 function Header() {
+  const theme = useThemeColors();
   return (
     <View style={styles.header}>
       <View style={styles.headerIcon}>
         <MaterialCommunityIcons name="wrench" size={28} color={PURPLE} />
       </View>
       <Text style={styles.headerTitle}>
-        <Text style={styles.headerTitleStrong}>Service</Text>
-        <Text style={styles.headerTitleMuted}> Hub</Text>
+        <Text style={[styles.headerTitleStrong, { color: theme.text }]}>Service</Text>
+        <Text style={[styles.headerTitleMuted, { color: theme.textMuted }]}> Hub</Text>
       </Text>
     </View>
   );
 }
 
 function SearchBar({ value, onChangeText, suggestion, onSuggestionPress, t }) {
+  const theme = useThemeColors();
   const showSuggestion = !value;
 
   return (
-    <View style={styles.searchBar}>
-      <View style={styles.searchIconBubble}>
+    <View style={[styles.searchBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={[styles.searchIconBubble, { backgroundColor: theme.surfaceMuted }]}>
         <MaterialCommunityIcons name="magnify" size={23} color={PURPLE} />
       </View>
       <View style={styles.searchInputWrap}>
@@ -309,20 +316,24 @@ function SearchBar({ value, onChangeText, suggestion, onSuggestionPress, t }) {
           onChangeText={onChangeText}
           placeholder=""
           placeholderTextColor="transparent"
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: theme.text }]}
           returnKeyType="search"
           autoCorrect={false}
         />
         {showSuggestion ? (
           <View pointerEvents="box-none" style={styles.searchPlaceholderRow}>
-            <Text style={styles.searchPlaceholderLead}>{t("search.searchFor", "Search for")}</Text>
+            <Text style={[styles.searchPlaceholderLead, { color: theme.textMuted }]}>{t("search.searchFor", "Search for")}</Text>
             <Pressable
               accessibilityLabel={`Open ${suggestion}`}
               accessibilityRole="button"
               onPress={() => onSuggestionPress(suggestion)}
-              style={({ pressed }) => [styles.searchSuggestionPill, pressed && styles.searchSuggestionPillPressed]}
+              style={({ pressed }) => [
+                styles.searchSuggestionPill,
+                { backgroundColor: theme.tealSoft, borderColor: theme.border },
+                pressed && styles.searchSuggestionPillPressed,
+              ]}
             >
-              <Text style={styles.searchSuggestionText} numberOfLines={1}>
+              <Text style={[styles.searchSuggestionText, { color: theme.teal }]} numberOfLines={1}>
                 {suggestion}
               </Text>
             </Pressable>
@@ -334,12 +345,17 @@ function SearchBar({ value, onChangeText, suggestion, onSuggestionPress, t }) {
 }
 
 function SearchResults({ results, onPress }) {
+  const theme = useThemeColors();
   return (
-    <View style={styles.searchResults}>
+    <View style={[styles.searchResults, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       {results.map((item) => (
-        <Pressable key={`${item.id || item.name}-result`} style={styles.searchResultRow} onPress={() => onPress(item)}>
+        <Pressable
+          key={`${item.id || item.name}-result`}
+          style={[styles.searchResultRow, { borderBottomColor: theme.border }]}
+          onPress={() => onPress(item)}
+        >
           <MaterialCommunityIcons name={item.icon || iconForCategory(item.category)} size={20} color={PURPLE} />
-          <Text style={styles.searchResultText} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.searchResultText, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
         </Pressable>
       ))}
     </View>
@@ -357,6 +373,7 @@ function QuickServiceGrid({ services, onPress }) {
 }
 
 function QuickServiceCard({ service, onPress }) {
+  const theme = useThemeColors();
   const visual = getServiceVisual(service);
   return (
     <Pressable style={styles.quickCard} onPress={() => onPress(service)}>
@@ -366,12 +383,13 @@ function QuickServiceCard({ service, onPress }) {
         </View>
         {service.badge ? <TimeBadge label={service.badge} style={styles.quickBadge} /> : null}
       </View>
-      <Text style={styles.quickTitle} numberOfLines={3}>{service.name}</Text>
+      <Text style={[styles.quickTitle, { color: theme.text }]} numberOfLines={3}>{service.name}</Text>
     </Pressable>
   );
 }
 
 function PromoCarousel({ banners, bannerWidth, activeIndex, onScroll, onAction, scrollRef }) {
+  const theme = useThemeColors();
   const goToNextBanner = useCallback(() => {
     if (!banners.length) return;
 
@@ -411,7 +429,14 @@ function PromoCarousel({ banners, bannerWidth, activeIndex, onScroll, onAction, 
       ) : null}
       <View style={styles.dots}>
         {banners.map((banner, index) => (
-          <View key={`${banner.id}-dot`} style={[styles.dot, activeIndex === index && styles.activeDot]} />
+          <View
+            key={`${banner.id}-dot`}
+            style={[
+              styles.dot,
+              { backgroundColor: theme.border },
+              activeIndex === index && { backgroundColor: theme.textMuted, width: 48 },
+            ]}
+          />
         ))}
       </View>
     </View>
@@ -419,14 +444,15 @@ function PromoCarousel({ banners, bannerWidth, activeIndex, onScroll, onAction, 
 }
 
 function PromoBanner({ banner, width, onAction }) {
+  const theme = useThemeColors();
   return (
-    <View style={[styles.banner, { width }]}>
+    <View style={[styles.banner, { backgroundColor: theme.surface, borderColor: theme.border, width }]}>
       <View style={styles.bannerText}>
         {banner.eyebrow ? <Text style={[styles.bannerEyebrow, { color: banner.accent }]}>{banner.eyebrow}</Text> : null}
-        <Text style={styles.bannerTitle}>{banner.title}</Text>
-        <Text style={styles.bannerSubtitle}>{banner.subtitle}</Text>
+        <Text style={[styles.bannerTitle, { color: theme.text }]}>{banner.title}</Text>
+        <Text style={[styles.bannerSubtitle, { color: theme.textMuted }]}>{banner.subtitle}</Text>
         <Pressable
-          style={styles.bannerButton}
+          style={[styles.bannerButton, { backgroundColor: theme.slate }]}
           onPress={() =>
             onAction({
               id: banner.id,
@@ -448,9 +474,10 @@ function PromoBanner({ banner, width, onAction }) {
 }
 
 function SectionHeader({ title, actionLabel, onAction }) {
+  const theme = useThemeColors();
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
       {actionLabel ? (
         <Pressable onPress={onAction} hitSlop={8}>
           <Text style={styles.sectionAction}>{actionLabel}</Text>
@@ -487,6 +514,7 @@ function HorizontalServiceList({ data, onPress, onAdd, product = false }) {
 }
 
 function ServiceProductCard({ service, onPress, onAdd }) {
+  const theme = useThemeColors();
   const visual = getServiceVisual(service);
   return (
     <Pressable style={styles.productCard} onPress={() => onPress(service)}>
@@ -496,13 +524,13 @@ function ServiceProductCard({ service, onPress, onAdd }) {
         </View>
       </View>
       <View style={styles.productBody}>
-        <Text style={styles.productName} numberOfLines={2}>{service.name}</Text>
+        <Text style={[styles.productName, { color: theme.text }]} numberOfLines={2}>{service.name}</Text>
         <View style={styles.ratingRow}>
-          <MaterialCommunityIcons name="star" size={13} color="#111111" />
-          <Text style={styles.ratingText}>{service.rating}</Text>
+          <MaterialCommunityIcons name="star" size={13} color={theme.text} />
+          <Text style={[styles.ratingText, { color: theme.text }]}>{service.rating}</Text>
         </View>
-        <Text style={styles.priceText} numberOfLines={1}>{service.price}</Text>
-        <Pressable style={styles.addButton} onPress={() => onAdd(service)}>
+        <Text style={[styles.priceText, { color: theme.textMuted }]} numberOfLines={1}>{service.price}</Text>
+        <Pressable style={[styles.addButton, { borderColor: theme.border }]} onPress={() => onAdd(service)}>
           <Text style={styles.addButtonText}>Add</Text>
         </Pressable>
       </View>
@@ -511,13 +539,14 @@ function ServiceProductCard({ service, onPress, onAdd }) {
 }
 
 function AllServicesSheet({ visible, categories, onClose, onServicePress }) {
+  const theme = useThemeColors();
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.sheetOverlay}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
-        <View style={styles.sheet}>
-          <Pressable style={styles.sheetClose} onPress={onClose}>
-            <MaterialCommunityIcons name="close" size={28} color={TEXT} />
+        <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
+          <Pressable style={[styles.sheetClose, { backgroundColor: theme.surfaceMuted }]} onPress={onClose}>
+            <MaterialCommunityIcons name="close" size={28} color={theme.text} />
           </Pressable>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
             {categories.map((category) => (
@@ -538,12 +567,13 @@ function AllServicesSheet({ visible, categories, onClose, onServicePress }) {
 }
 
 function CategorySection({ category, onServicePress }) {
+  const theme = useThemeColors();
   return (
-    <View style={styles.categorySection}>
-      <Text style={styles.categoryTitle}>{category.title}</Text>
+    <View style={[styles.categorySection, { borderBottomColor: theme.surfaceMuted }]}>
+      <Text style={[styles.categoryTitle, { color: theme.text }]}>{category.title}</Text>
       {category.groups.map((group, index) => (
         <View key={`${category.title}-${group.title || index}`} style={styles.categoryGroup}>
-          {group.title ? <Text style={styles.groupTitle}>{group.title}</Text> : null}
+          {group.title ? <Text style={[styles.groupTitle, { color: theme.text }]}>{group.title}</Text> : null}
           <View style={styles.serviceIconGrid}>
             {group.services.map((service) => (
               <ServiceIconCard key={service.name} service={service} onPress={onServicePress} />
@@ -556,6 +586,7 @@ function CategorySection({ category, onServicePress }) {
 }
 
 function ServiceIconCard({ service, onPress, wide = false }) {
+  const theme = useThemeColors();
   const visual = getServiceVisual(service);
   return (
     <Pressable style={[styles.iconCard, wide && styles.wideIconCard]} onPress={() => onPress(service)}>
@@ -565,15 +596,16 @@ function ServiceIconCard({ service, onPress, wide = false }) {
         </View>
         {service.badge ? <TimeBadge label={service.badge} style={styles.iconBadge} /> : null}
       </View>
-      <Text style={styles.iconCardTitle} numberOfLines={wide ? 2 : 3}>{service.name}</Text>
+      <Text style={[styles.iconCardTitle, { color: theme.text }]} numberOfLines={wide ? 2 : 3}>{service.name}</Text>
     </Pressable>
   );
 }
 
 function TimeBadge({ label, style }) {
+  const theme = useThemeColors();
   return (
-    <View style={[styles.timeBadge, style]}>
-      <Text style={styles.timeBadgeText}>{label}</Text>
+    <View style={[styles.timeBadge, { backgroundColor: theme.surface, borderColor: theme.border }, style]}>
+      <Text style={[styles.timeBadgeText, { color: theme.teal }]}>{label}</Text>
     </View>
   );
 }

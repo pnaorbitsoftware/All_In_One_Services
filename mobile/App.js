@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Appearance, Dimensions, Linking, Share, StatusBar, StyleSheet, useColorScheme, View } from "react-native";
+import { Alert, Appearance, Dimensions, Keyboard, Linking, Share, StatusBar, StyleSheet, useColorScheme, View } from "react-native";
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import BottomNav from "./src/components/BottomNav";
 import { LoadingState } from "./src/components/StateView";
 import Toast from "./src/components/Toast";
-import { apiRequest } from "./src/lib/api";
+import { AUTH_REQUEST_TIMEOUT_MS, apiRequest } from "./src/lib/api";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
 import {
   clearSession,
@@ -56,6 +56,7 @@ const safeAreaInitialMetrics = initialWindowMetrics || {
 };
 
 const APP_SHARE_LINK = process.env.EXPO_PUBLIC_APP_LINK || "https://servicehub.app/download";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeProviderDashboard(data) {
   return {
@@ -64,6 +65,63 @@ function normalizeProviderDashboard(data) {
     availableRequests: Array.isArray(data.availableRequests) ? data.availableRequests : [],
     paymentSummary: data.paymentSummary || null,
   };
+}
+
+function validateAuthForm({ mode, role, form, otpSent }) {
+  const email = form.email.trim();
+
+  if (!email) {
+    return "Enter your email address.";
+  }
+
+  if (!EMAIL_PATTERN.test(email)) {
+    return "Enter a valid email address.";
+  }
+
+  if (mode === "login") {
+    if (!form.password) {
+      return "Enter your password.";
+    }
+
+    return "";
+  }
+
+  if (otpSent) {
+    if (!form.otp.trim()) {
+      return "Enter the email OTP to finish registration.";
+    }
+
+    return "";
+  }
+
+  if (!form.name.trim()) {
+    return "Enter your full name.";
+  }
+
+  if (!form.phone.trim()) {
+    return "Enter your phone number.";
+  }
+
+  if (form.password.length < 6) {
+    return "Password must be at least 6 characters.";
+  }
+
+  if (form.password !== form.confirmPassword) {
+    return "Re-enter password must match your password.";
+  }
+
+  if (
+    role === "provider" &&
+    (!form.providerName.trim() ||
+      !form.category.trim() ||
+      !form.location.trim() ||
+      !form.price.trim() ||
+      !form.responseTime.trim())
+  ) {
+    return "Complete all provider service details before registering.";
+  }
+
+  return "";
 }
 
 function ServiceHubApp() {
@@ -260,6 +318,14 @@ function ServiceHubApp() {
 
   const handleAuthSubmit = useCallback(
     async ({ mode, role, form, otpSent }) => {
+      const validationMessage = validateAuthForm({ mode, role, form, otpSent });
+
+      if (validationMessage) {
+        setToast(validationMessage);
+        return null;
+      }
+
+      Keyboard.dismiss();
       setAuthSubmitting(true);
 
       try {
@@ -285,7 +351,10 @@ function ServiceHubApp() {
                 otp: otpSent ? form.otp.trim() : undefined,
               };
 
-        const data = await apiRequest(path, { body });
+        const data = await apiRequest(path, {
+          body,
+          timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        });
 
         if (data.requiresOtp) {
           setToast(data.message || "OTP sent to registered email.");
@@ -310,6 +379,7 @@ function ServiceHubApp() {
   );
 
   const requestPasswordResetOtp = useCallback(async ({ role, identifier }) => {
+    Keyboard.dismiss();
     setAuthSubmitting(true);
 
     try {
@@ -318,6 +388,7 @@ function ServiceHubApp() {
           role,
           identifier: identifier.trim(),
         },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
       });
       setToast(data.message || "OTP sent to registered email.");
       return data;
@@ -330,6 +401,7 @@ function ServiceHubApp() {
   }, []);
 
   const verifyPasswordResetOtp = useCallback(async ({ role, identifier, otp }) => {
+    Keyboard.dismiss();
     setAuthSubmitting(true);
 
     try {
@@ -339,6 +411,7 @@ function ServiceHubApp() {
           identifier: identifier.trim(),
           otp: otp.trim(),
         },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
       });
       setToast(data.message || "OTP verified.");
       return data;
@@ -351,6 +424,7 @@ function ServiceHubApp() {
   }, []);
 
   const resetPassword = useCallback(async ({ role, identifier, password, resetToken }) => {
+    Keyboard.dismiss();
     setAuthSubmitting(true);
 
     try {
@@ -361,6 +435,7 @@ function ServiceHubApp() {
           password,
           resetToken,
         },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
       });
       setToast(data.message || "Password updated successfully.");
       return data;
@@ -736,7 +811,13 @@ function ServiceHubApp() {
   }, [loadProviderDashboard, providerData, user]);
 
   const screen = useMemo(() => {
-    if (booting) return <LoadingState label="Starting ServiceHub..." />;
+    if (booting) {
+      return (
+        <View style={styles.startupLoader}>
+          <LoadingState label="Loading ServiceHub..." />
+        </View>
+      );
+    }
 
     if (activeTab === "services") {
       return (
@@ -888,7 +969,7 @@ function ServiceHubApp() {
         backgroundColor={appColors.background}
       />
       <ThemeColorsProvider value={appColors}>
-        <View key={effectiveAppearance} style={[styles.app, { backgroundColor: appColors.background }]}>
+        <View style={[styles.app, { backgroundColor: appColors.background }]}>
           <View style={styles.screen}>{screen}</View>
           <BottomNav activeTab={activeTab} onChange={setActiveTab} user={user} t={t} />
           <AuthSheet
@@ -1009,5 +1090,9 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
+  },
+  startupLoader: {
+    flex: 1,
+    justifyContent: "center",
   },
 });

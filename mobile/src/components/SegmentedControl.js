@@ -5,6 +5,7 @@ import { colors, radius, useThemeColors } from "../theme";
 
 function SegmentedControl({ value, options, onChange, disabled = false }) {
   const theme = useThemeColors();
+  const activeBackground = theme.background === "#0b1220" ? theme.teal : theme.slate;
 
   return (
     <View style={[styles.shell, { backgroundColor: theme.surfaceMuted }]}>
@@ -18,7 +19,7 @@ function SegmentedControl({ value, options, onChange, disabled = false }) {
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [
               styles.item,
-              active && { backgroundColor: theme.slate },
+              active && { backgroundColor: activeBackground },
               disabled && styles.disabled,
               pressed && !disabled && styles.pressed,
             ]}

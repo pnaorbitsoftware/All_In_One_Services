@@ -83,6 +83,7 @@ function SettingPanel({ icon, title, value, expanded, onPress, children }) {
 
 function LanguageGrid({ value, options, onChange }) {
   const theme = useThemeColors();
+  const activeBackground = theme.background === "#0b1220" ? theme.teal : theme.slate;
 
   return (
     <View style={styles.languageGrid}>
@@ -96,8 +97,8 @@ function LanguageGrid({ value, options, onChange }) {
             style={({ pressed }) => [
               styles.languageChip,
               {
-                backgroundColor: active ? theme.slate : theme.surfaceMuted,
-                borderColor: active ? theme.slate : theme.border,
+                backgroundColor: active ? activeBackground : theme.surfaceMuted,
+                borderColor: active ? activeBackground : theme.border,
               },
               pressed && styles.pressed,
             ]}

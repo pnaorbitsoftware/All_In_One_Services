@@ -103,6 +103,7 @@ export default function MyBookingsSheet({
             <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>{error}</Text>
           ) : null}
           <Section
+            title="Accepted Request Provider"
             bookings={groupedBookings.active}
             emptyCopy="No Active Booking"
             onCancel={onCancelBooking}
