@@ -34,7 +34,7 @@ function toProfileForm(provider = {}) {
     description: provider.description || "",
     about: provider.about || "",
     features: Array.isArray(provider.features) ? provider.features.join(", ") : provider.features || "",
-    image: provider.image || "",
+    image: provider.image || provider.profileImage || "",
   };
 }
 

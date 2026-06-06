@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Platform,
@@ -28,6 +28,10 @@ export default function ProviderScreen({
   onAccept,
   onComplete,
   onCancel,
+  onEstimate,
+  onUpdateAvailability,
+  onStartTracking,
+  onStopTracking,
 }) {
   const { width } = useWindowDimensions();
   const theme = useThemeColors();
@@ -50,8 +54,20 @@ export default function ProviderScreen({
     [bookings]
   );
   const historyCount = canceledBookings.length + completedBookings.length;
+  const providerUnavailable = provider && !provider.isBookable;
+
+  const dashboardLocked = Boolean(
+    providerData?.dashboardLocked || (provider && provider.approvalStatus && provider.approvalStatus !== "approved")
+  );
+  const approvalStatus = provider?.approvalStatus || (dashboardLocked ? "pending" : "approved");
+  const approvalTitle = approvalStatus === "rejected" ? "Approval not granted" : "Waiting for admin approval";
+  const approvalCopy = approvalStatus === "rejected"
+    ? "Your provider request was rejected by the website admin. Update your details or contact ServiceHub support before taking jobs."
+    : "Your provider registration is under review. The website admin dashboard manages all provider approvals for website and mobile requests.";
 
   const sections = useMemo(() => {
+    if (dashboardLocked) return [];
+
     const list = [];
     if (availableRequests.length) {
       list.push({ title: "Booking Request", type: "available", data: availableRequests });
@@ -66,7 +82,7 @@ export default function ProviderScreen({
       list.push({ title: "Completed Bookings", type: "history", data: completedBookings });
     }
     return list;
-  }, [acceptedBookings, availableRequests, canceledBookings, completedBookings, historyOpen]);
+  }, [acceptedBookings, availableRequests, canceledBookings, completedBookings, dashboardLocked, historyOpen]);
 
   const keyExtractor = useCallback((item) => String(item._id || item.id), []);
   const renderItem = useCallback(
@@ -77,9 +93,10 @@ export default function ProviderScreen({
         onAccept={onAccept}
         onComplete={onComplete}
         onCancel={onCancel}
+        onEstimate={onEstimate}
       />
     ),
-    [onAccept, onCancel, onComplete]
+    [onAccept, onCancel, onComplete, onEstimate]
   );
 
   const renderSectionHeader = useCallback(
@@ -116,6 +133,42 @@ export default function ProviderScreen({
     return <ErrorState copy={error} onRetry={onRefresh} />;
   }
 
+  if (dashboardLocked) {
+    return (
+      <View style={[styles.center, { paddingHorizontal: metrics.pagePadding }]}>
+        <View style={[styles.lockIcon, { backgroundColor: theme.tealSoft }]}>
+          <MaterialCommunityIcons name="shield-clock-outline" size={32} color={theme.teal} />
+        </View>
+        <Text style={[styles.statusLabel, { color: approvalStatus === "rejected" ? theme.rose : theme.teal }]}>
+          {approvalStatus}
+        </Text>
+        <Text style={[styles.title, { color: theme.text }]}>{approvalTitle}</Text>
+        <Text style={[styles.copy, { color: theme.textMuted }]}>{providerData?.message || approvalCopy}</Text>
+        {provider ? (
+          <View style={[styles.profileCard, { backgroundColor: theme.surface, borderColor: theme.border, width: "100%" }]}>
+            <View style={styles.profileTop}>
+              <View style={[styles.providerIcon, { backgroundColor: theme.tealSoft }]}>
+                {provider.image ? (
+                  <Image source={{ uri: provider.image }} style={styles.providerImage} resizeMode="cover" />
+                ) : (
+                  <MaterialCommunityIcons name="account-hard-hat-outline" size={28} color={theme.teal} />
+                )}
+              </View>
+              <View style={styles.providerText}>
+                <Text style={[styles.providerName, { color: theme.text }]} numberOfLines={1}>{provider.name}</Text>
+                <Text style={[styles.providerMeta, { color: theme.textMuted }]} numberOfLines={2}>
+                  {provider.category} | {provider.location} | {provider.phone}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+        {error ? <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>{error}</Text> : null}
+        <ActionButton title="Check approval status" icon="refresh" onPress={onRefresh} />
+      </View>
+    );
+  }
+
   return (
     <SectionList
       sections={sections}
@@ -142,7 +195,42 @@ export default function ProviderScreen({
                   </Text>
                 </View>
               </View>
-              <View style={styles.profileStats}>
+              <View style={styles.statusPanel}>
+                <View style={styles.statusHeader}>
+                  <Text style={[styles.statusPanelTitle, { color: theme.text }]}>Availability</Text>
+                  <Text style={[styles.statusLabel, { color: providerUnavailable ? theme.rose : theme.teal }]}>
+                    {provider.availabilityStatus || "available"}
+                  </Text>
+                </View>
+                {providerUnavailable ? <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>Provider is currently unavailable.</Text> : null}
+                <View style={styles.statusActions}>
+                  {["available", "active", "absent", "inactive"].map((status) => (
+                    <ActionButton
+                      key={status}
+                      title={status}
+                      icon={status === "absent" || status === "inactive" ? "pause-circle-outline" : "check-circle-outline"}
+                      variant={provider.availabilityStatus === status ? "primary" : "secondary"}
+                      onPress={() => onUpdateAvailability?.(status)}
+                      style={styles.statusAction}
+                    />
+                  ))}
+                </View>
+              </View>
+              <View style={[styles.statusPanel, { borderColor: theme.border }]}> 
+                <View style={styles.statusHeader}>
+                  <Text style={[styles.statusPanelTitle, { color: theme.text }]}>Duty tracking</Text>
+                  <Text style={[styles.statusLabel, { color: provider.trackingActive ? theme.teal : theme.textMuted }]}>
+                    {provider.trackingActive ? "tracking" : "off"}
+                  </Text>
+                </View>
+                <Text style={[styles.providerMeta, { color: theme.textMuted }]}>
+                  {provider.currentLocation?.address || "Start tracking to share your latest location with admin."}
+                </Text>
+                <View style={styles.statusActions}>
+                  <ActionButton title="Start Duty" icon="map-marker-radius-outline" onPress={onStartTracking} style={styles.statusAction} />
+                  <ActionButton title="Stop Tracking" icon="stop-circle-outline" variant="secondary" onPress={onStopTracking} style={styles.statusAction} />
+                </View>
+              </View>              <View style={styles.profileStats}>
                 <ProfileStat label="Rating" value={String(provider.rating || 0)} />
                 <ProfileStat label="Reviews" value={String(provider.reviews || 0)} />
                 <ProfileStat label="Price" value={provider.price || "Set price"} />
@@ -358,6 +446,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
   },
+  statusAction: {
+    flex: 1,
+    minWidth: 128,
+  },
+  statusActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  statusHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  statusPanel: {
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  statusPanelTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "900",
+  },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
@@ -370,7 +484,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0,
   },
-  softError: {
+  statusLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },  softError: {
     backgroundColor: colors.roseSoft,
     borderRadius: 12,
     color: colors.rose,
@@ -400,3 +519,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+

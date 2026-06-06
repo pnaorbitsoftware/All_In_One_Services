@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 
 import requireAuth from "../middleware/requireAuth.js";
 import Booking from "../models/Booking.js";
@@ -12,6 +12,37 @@ import { buildServiceRegexes } from "../utils/serviceMatching.js";
 import { buildProviderPaymentSummary, DEFAULT_PROVIDER_SHARE_PERCENT } from "../utils/paymentSummary.js";
 
 const router = express.Router();
+const availabilityStatuses = ["active", "inactive", "absent", "available"];
+const bookableAvailabilityStatuses = ["active", "available"];
+
+const isProviderApproved = (provider) => provider?.approvalStatus === "approved";
+const isProviderBookable = (provider) =>
+  Boolean(provider?.isActive && isProviderApproved(provider) && bookableAvailabilityStatuses.includes(provider.availabilityStatus || "available"));
+
+const lockedDashboardPayload = (provider) => ({
+  provider,
+  bookings: [],
+  availableRequests: [],
+  dashboardLocked: true,
+  message:
+    provider.approvalStatus === "rejected"
+      ? "Provider profile was not approved by admin."
+      : "Provider profile is waiting for admin approval.",
+});
+
+const unavailableProviderResponse = (res, provider) =>
+  res.status(403).json({
+    dashboardLocked: true,
+    provider,
+    message: "Provider is currently unavailable.",
+  });
+
+const normalizeLocationPayload = (body = {}) => ({
+  latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
+  longitude: Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
+  address: String(body.address || "").trim(),
+  timestamp: body.timestamp ? new Date(body.timestamp) : new Date(),
+});
 
 const requireProvider = (req, res, next) => {
   if (req.user.role !== "provider") {
@@ -45,8 +76,8 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
       return res.status(404).json({ message: "Provider profile not found." });
     }
 
-    if (!provider.isActive || provider.approvalStatus !== "approved") {
-      return res.status(403).json({ message: "Provider profile is waiting for admin approval." });
+    if (!isProviderApproved(provider)) {
+      return res.json(lockedDashboardPayload(provider));
     }
 
     const [bookings, availableRequests] = await Promise.all([
@@ -56,7 +87,9 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
           { requestedProvider: provider._id, status: "cancelled" },
         ],
       }).sort({ createdAt: -1 }),
-      Booking.find(buildAvailableBookingFilter(provider)).sort({ createdAt: -1 }),
+      isProviderBookable(provider)
+        ? Booking.find(buildAvailableBookingFilter(provider)).sort({ createdAt: -1 })
+        : [],
     ]);
 
     res.json({
@@ -64,6 +97,7 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
       bookings,
       availableRequests,
       paymentSummary: buildProviderPaymentSummary(bookings),
+      availabilityMessage: isProviderBookable(provider) ? "" : "Provider is currently unavailable.",
     });
   } catch (error) {
     res.status(500).json({ message: "Provider dashboard could not be loaded." });
@@ -127,6 +161,11 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.description = description.trim();
     provider.about = about?.trim() || description.trim();
     provider.image = typeof image === "string" ? image : "";
+    if (availabilityStatus && availabilityStatuses.includes(availabilityStatus)) {
+      provider.availabilityStatus = availabilityStatus;
+      provider.isActive = availabilityStatus !== "inactive";
+    }
+
     provider.features = Array.isArray(features)
       ? features.map((feature) => String(feature).trim()).filter(Boolean)
       : String(features).split(",").map((feature) => feature.trim()).filter(Boolean);
@@ -146,6 +185,95 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
   }
 });
 
+
+router.patch("/availability", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const { availabilityStatus } = req.body;
+
+    if (!availabilityStatuses.includes(availabilityStatus)) {
+      return res.status(400).json({ message: "Invalid provider availability status." });
+    }
+
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    if (!isProviderApproved(provider)) {
+      return res.status(403).json(lockedDashboardPayload(provider));
+    }
+
+    provider.availabilityStatus = availabilityStatus;
+    provider.isActive = availabilityStatus !== "inactive";
+    await provider.save();
+
+    res.json({ provider, message: "Provider availability updated." });
+  } catch (error) {
+    res.status(500).json({ message: "Provider availability could not be updated." });
+  }
+});
+
+router.post("/tracking/start", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    if (!isProviderApproved(provider)) {
+      return res.status(403).json(lockedDashboardPayload(provider));
+    }
+
+    provider.trackingConsent = true;
+    provider.trackingActive = true;
+    provider.currentLocation = normalizeLocationPayload(req.body);
+    await provider.save();
+
+    res.json({ provider, message: "Tracking started." });
+  } catch (error) {
+    res.status(500).json({ message: "Tracking could not be started." });
+  }
+});
+
+router.post("/tracking/stop", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    provider.trackingActive = false;
+    await provider.save();
+
+    res.json({ provider, message: "Tracking stopped." });
+  } catch (error) {
+    res.status(500).json({ message: "Tracking could not be stopped." });
+  }
+});
+
+router.patch("/tracking/location", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    if (!provider.trackingConsent || !provider.trackingActive) {
+      return res.status(403).json({ message: "Start tracking with consent before sending location updates." });
+    }
+
+    provider.currentLocation = normalizeLocationPayload(req.body);
+    await provider.save();
+
+    res.json({ provider, message: "Location updated." });
+  } catch (error) {
+    res.status(500).json({ message: "Location could not be updated." });
+  }
+});
 router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async (req, res) => {
   try {
     const provider = await Provider.findOne({ owner: req.user._id });
@@ -154,8 +282,12 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
       return res.status(404).json({ message: "Provider profile not found." });
     }
 
-    if (!provider.isActive || provider.approvalStatus !== "approved") {
-      return res.status(403).json({ message: "Provider profile is waiting for admin approval." });
+    if (!isProviderApproved(provider)) {
+      return res.json(lockedDashboardPayload(provider));
+    }
+
+    if (!isProviderBookable(provider)) {
+      return unavailableProviderResponse(res, provider);
     }
 
     const booking = await Booking.findOneAndUpdate(
@@ -203,6 +335,14 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    if (!isProviderApproved(provider)) {
+      return res.status(403).json(lockedDashboardPayload(provider));
+    }
+
+    if (!isProviderBookable(provider)) {
+      return unavailableProviderResponse(res, provider);
     }
 
     const update = { status };

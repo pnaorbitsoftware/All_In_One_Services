@@ -19,10 +19,11 @@ function InfoLine({ icon, children }) {
   );
 }
 
-function BookingCard({ booking, onCancel }) {
+function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate }) {
   const theme = useThemeColors();
   const cancelState = getClientCancelState(booking);
   const provider = booking.assignedProvider || booking.requestedProvider;
+  const estimateSubmitted = booking.estimateStatus === "submitted";
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -53,7 +54,29 @@ function BookingCard({ booking, onCancel }) {
         {booking.problemDescription ? (
           <InfoLine icon="text-box-outline">{booking.problemDescription}</InfoLine>
         ) : null}
+        {booking.finalEstimateAmount ? (
+          <InfoLine icon="cash-check">
+            Final estimate: {formatPrice(booking.finalEstimateAmount)} | {booking.estimateStatus || "not_submitted"} | {booking.paymentStatus || "unpaid"}
+          </InfoLine>
+        ) : null}
       </View>
+      {estimateSubmitted ? (
+        <View style={styles.actions}>
+          <ActionButton
+            title="Accept estimate"
+            icon="check-circle-outline"
+            onPress={() => onAcceptEstimate?.(booking)}
+            style={styles.estimateAction}
+          />
+          <ActionButton
+            title="Reject"
+            icon="close-circle-outline"
+            variant="danger"
+            onPress={() => onRejectEstimate?.(booking)}
+            style={styles.estimateAction}
+          />
+        </View>
+      ) : null}
       {cancelState.canCancel ? (
         <ActionButton
           title={cancelState.label}
@@ -77,6 +100,13 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 15,
     ...shadow,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  estimateAction: {
+    flex: 1,
   },
   header: {
     alignItems: "flex-start",

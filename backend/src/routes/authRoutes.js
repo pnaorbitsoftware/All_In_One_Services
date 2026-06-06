@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
@@ -212,9 +212,9 @@ router.post("/register", async (req, res) => {
         description: `${providerName} provides ${category} services in ${location}.`,
         about: `${providerName} is registered on ServiceHub as a ${category} provider.`,
         features: [category],
-        isActive: true,
-        approvalStatus: "approved",
-        approvedAt: new Date(),
+        isActive: false,
+        approvalStatus: "pending",
+        approvedAt: null,
       });
     }
 
@@ -235,8 +235,9 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password, role = "user" } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
@@ -244,7 +245,7 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid account type." });
     }
 
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email: normalizedEmail }).select("+password");
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid email or password." });
     }
@@ -396,7 +397,7 @@ router.get("/me", async (req, res) => {
 router.patch("/profile", async (req, res) => {
   try {
     const user = await getTokenUser(req);
-    const { name, email, phone = "", avatar = "" } = req.body;
+    const { name, email, phone = "", avatar = "", address = "", currentLocation = null } = req.body;
     const normalizedEmail = email?.trim().toLowerCase();
 
     if (!name?.trim() || !normalizedEmail) {
@@ -440,3 +441,5 @@ router.patch("/profile", async (req, res) => {
 });
 
 export default router;
+
+

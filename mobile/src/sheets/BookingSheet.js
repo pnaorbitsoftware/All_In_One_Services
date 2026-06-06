@@ -1,4 +1,4 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
+﻿import DateTimePicker from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -19,6 +19,7 @@ const emptyForm = {
   time: "10:00",
   duration: "1 hour",
   providerId: "",
+  addressLocation: null,
 };
 
 const defaultT = (_key, fallback) => fallback;
@@ -84,13 +85,14 @@ function PickerField({ label, value, placeholder, icon, onPress }) {
   );
 }
 
-export default function BookingSheet({ visible, service, user, submitting, t = defaultT, onClose, onSubmit }) {
+export default function BookingSheet({ visible, service, user, submitting, locatingAddress = false, t = defaultT, onClose, onSubmit, onUseCurrentLocation }) {
   const theme = useThemeColors();
   const { width } = useWindowDimensions();
   const [form, setForm] = useState(emptyForm);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const stackDateTimeFields = width < 380;
+  const providerUnavailable = service?.isBookable === false || ["inactive", "absent"].includes(service?.availabilityStatus);
 
   useEffect(() => {
     if (!visible) return;
@@ -126,6 +128,17 @@ export default function BookingSheet({ visible, service, user, submitting, t = d
     update("time")(`${hours}:${minutes}`);
   };
 
+
+  const useCurrentLocation = async () => {
+    if (!onUseCurrentLocation) return;
+    const location = await onUseCurrentLocation();
+    if (!location) return;
+    setForm((current) => ({
+      ...current,
+      address: location.address || current.address,
+      addressLocation: location,
+    }));
+  };
   const submit = () => {
     onSubmit({
       ...form,
@@ -143,7 +156,7 @@ export default function BookingSheet({ visible, service, user, submitting, t = d
         <ActionButton
           title={submitting ? t("common.saving", "Saving...") : t("booking.submit", "Submit booking")}
           icon="calendar-check-outline"
-          disabled={submitting}
+          disabled={submitting || providerUnavailable}
           onPress={submit}
         />
       }
@@ -151,7 +164,9 @@ export default function BookingSheet({ visible, service, user, submitting, t = d
       <TextField label={t("booking.name", "Name")} value={form.name} onChangeText={update("name")} placeholder={t("booking.customerName", "Customer name")} />
       <TextField label={t("booking.phone", "Phone")} value={form.phone} onChangeText={update("phone")} placeholder="+91..." keyboardType="phone-pad" />
       <TextField label={t("booking.service", "Service")} value={form.service} onChangeText={update("service")} placeholder={t("booking.serviceCategory", "Service category")} />
+      {providerUnavailable ? <Text style={[styles.unavailable, { backgroundColor: theme.roseSoft, color: theme.rose }]}>Provider is currently unavailable.</Text> : null}
       <TextField label={t("booking.address", "Address")} value={form.address} onChangeText={update("address")} placeholder={t("booking.addressPlaceholder", "House, street, city")} multiline />
+      <ActionButton title={locatingAddress ? "Detecting location..." : "Use Current Location"} icon="crosshairs-gps" variant="secondary" loading={locatingAddress} disabled={locatingAddress} onPress={useCurrentLocation} />
       <TextField
         label={t("booking.problemDetails", "Problem details")}
         value={form.problemDescription}
@@ -232,6 +247,14 @@ const styles = StyleSheet.create({
   },
   activeDurationText: {
     color: "#ffffff",
+  },
+  unavailable: {
+    borderRadius: radius.md,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   durationChip: {
     borderColor: colors.border,

@@ -1,4 +1,14 @@
-import mongoose from "mongoose";
+﻿import mongoose from "mongoose";
+
+const locationSchema = new mongoose.Schema(
+  {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    address: { type: String, default: "", trim: true },
+    timestamp: { type: Date, default: null },
+  },
+  { _id: false }
+);
 
 const providerSchema = new mongoose.Schema(
   {
@@ -74,16 +84,33 @@ const providerSchema = new mongoose.Schema(
     },
     isActive: {
       type: Boolean,
-      default: true,
+      default: false,
+    },
+    availabilityStatus: {
+      type: String,
+      enum: ["active", "inactive", "absent", "available"],
+      default: "available",
     },
     approvalStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
-      default: "approved",
+      default: "pending",
     },
     approvedAt: {
       type: Date,
       default: null,
+    },
+    trackingConsent: {
+      type: Boolean,
+      default: false,
+    },
+    trackingActive: {
+      type: Boolean,
+      default: false,
+    },
+    currentLocation: {
+      type: locationSchema,
+      default: () => ({}),
     },
   },
   { collection: "providers", timestamps: true }

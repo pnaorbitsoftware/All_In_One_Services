@@ -1,4 +1,4 @@
-import Booking from "../models/Booking.js";
+﻿import Booking from "../models/Booking.js";
 import Category from "../models/Category.js";
 import ContactMessage from "../models/ContactMessage.js";
 import Provider from "../models/Provider.js";
@@ -27,6 +27,14 @@ const models = [
 export default async function setupDatabase() {
   await Promise.all(models.map((model) => model.createCollection()));
   await User.updateMany({ role: { $exists: false } }, { $set: { role: "user", phone: "" } });
+  await User.updateMany(
+    { profileStatus: { $exists: false } },
+    { $set: { profileStatus: "active", address: "", currentLocation: {} } }
+  );
+  await Provider.updateMany(
+    { availabilityStatus: { $exists: false } },
+    { $set: { availabilityStatus: "available", trackingConsent: false, trackingActive: false, currentLocation: {} } }
+  );
   await Booking.updateMany(
     { costEstimate: { $exists: false } },
     { $set: { costEstimate: 299, workImage: "", completedAt: null } }

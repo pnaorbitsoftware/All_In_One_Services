@@ -1,4 +1,4 @@
-export const categoryImages = {
+﻿export const categoryImages = {
   Plumber: "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=900&q=78",
   Electrician: "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=900&q=78",
   Carpenter: "https://images.unsplash.com/photo-1601058268499-e52658b8bb88?auto=format&fit=crop&w=900&q=78",
@@ -209,8 +209,19 @@ export function imageForService(service = {}) {
 
 export function normalizeProvider(provider) {
   const category = provider.category || "Cleaning";
-  const profileImage = typeof provider.image === "string" ? provider.image.trim() : "";
+  const profileImage = typeof provider.profileImage === "string" && provider.profileImage.trim()
+    ? provider.profileImage.trim()
+    : typeof provider.image === "string"
+      ? provider.image.trim()
+      : "";
 
+  const approvalStatus = provider.approvalStatus || "approved";
+  const availabilityStatus = provider.availabilityStatus || (provider.isActive === false ? "inactive" : "available");
+  const isBookable =
+    approvalStatus !== "pending" &&
+    approvalStatus !== "rejected" &&
+    provider.isActive !== false &&
+    !["inactive", "absent"].includes(availabilityStatus);
   return {
     id: provider._id || provider.providerCode || `${provider.name}-${category}`,
     providerId: provider._id || "",
@@ -223,6 +234,12 @@ export function normalizeProvider(provider) {
     price: provider.price || "Contact for price",
     phone: provider.phone || "",
     email: provider.email || "",
+    isActive: provider.isActive !== false,
+    approvalStatus,
+    availabilityStatus,
+    profileStatus: provider.profileStatus || (provider.isActive === false ? "inactive" : "active"),
+    isBookable,
+    unavailableMessage: isBookable ? "" : "Provider is currently unavailable.",
     description: provider.description || `${provider.name || "This provider"} handles ${category} services.`,
     about: provider.about || provider.description || `${category} support for local homes.`,
     features: provider.features?.length ? provider.features : [category, "On-site visit", "Work inspection"],
@@ -239,6 +256,10 @@ export function buildMarketplace(providers = []) {
       {
         ...service,
         providerId: "",
+        availabilityStatus: "available",
+        profileStatus: "active",
+        isBookable: true,
+        unavailableMessage: "",
         icon: iconForCategory(service.category),
         profileImage: "",
         image: imageForService(service),
@@ -253,3 +274,6 @@ export function buildMarketplace(providers = []) {
 
   return [...map.values()];
 }
+
+
+

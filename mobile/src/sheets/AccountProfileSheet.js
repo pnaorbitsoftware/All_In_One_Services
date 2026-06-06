@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
@@ -12,6 +12,7 @@ const emptyProfile = {
   name: "",
   email: "",
   phone: "",
+  address: "",
   avatar: "",
 };
 
@@ -20,11 +21,12 @@ function toProfileForm(user = {}) {
     name: user.name || "",
     email: user.email || "",
     phone: user.phone || "",
-    avatar: user.avatar || "",
+    address: user.address || "",
+    avatar: user.avatar || user.profileImage || "",
   };
 }
 
-export default function AccountProfileSheet({ visible, user, submitting, onClose, onSubmit }) {
+export default function AccountProfileSheet({ visible, user, submitting, locatingAddress = false, onClose, onSubmit, onUseCurrentLocation }) {
   const [form, setForm] = useState(emptyProfile);
 
   useEffect(() => {
@@ -64,6 +66,12 @@ export default function AccountProfileSheet({ visible, user, submitting, onClose
   };
 
   const removeAvatar = () => setForm((current) => ({ ...current, avatar: "" }));
+  const useCurrentLocation = async () => {
+    if (!onUseCurrentLocation) return;
+    const location = await onUseCurrentLocation();
+    if (!location) return;
+    setForm((current) => ({ ...current, address: location.address || current.address, currentLocation: location }));
+  };
 
   return (
     <ModalSheet
@@ -124,6 +132,8 @@ export default function AccountProfileSheet({ visible, user, submitting, onClose
         autoCapitalize="none"
       />
       <TextField label="Phone" value={form.phone} onChangeText={update("phone")} placeholder="+91..." keyboardType="phone-pad" />
+      <TextField label="Address" value={form.address} onChangeText={update("address")} placeholder="House, street, city" multiline />
+      <ActionButton title={locatingAddress ? "Detecting location..." : "Use Current Location"} icon="crosshairs-gps" variant="secondary" loading={locatingAddress} disabled={locatingAddress} onPress={useCurrentLocation} />
     </ModalSheet>
   );
 }

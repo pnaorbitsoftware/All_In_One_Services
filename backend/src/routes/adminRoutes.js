@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 
 import requireAuth from "../middleware/requireAuth.js";
 import Booking from "../models/Booking.js";
@@ -11,6 +11,13 @@ import {
 } from "../services/mailService.js";
 
 const router = express.Router();
+const availabilityStatuses = ["active", "inactive", "absent", "available"];
+const bookableAvailabilityStatuses = ["active", "available"];
+
+const normalizeProviderAvailability = (availabilityStatus) => ({
+  availabilityStatus,
+  isActive: availabilityStatus !== "inactive",
+});
 
 const requireAdmin = (req, res, next) => {
   if (req.user.role !== "admin") {
@@ -83,6 +90,42 @@ router.patch("/providers/:providerId/approval", requireAuth, requireAdmin, async
   }
 });
 
+
+router.patch("/providers/:providerId/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { availabilityStatus } = req.body;
+
+    if (!availabilityStatuses.includes(availabilityStatus)) {
+      return res.status(400).json({ message: "Invalid provider availability status." });
+    }
+
+    const provider = await Provider.findByIdAndUpdate(
+      req.params.providerId,
+      normalizeProviderAvailability(availabilityStatus),
+      { new: true }
+    );
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found." });
+    }
+
+    res.json({ provider, message: "Provider status updated." });
+  } catch (error) {
+    res.status(500).json({ message: "Provider status could not be updated." });
+  }
+});
+
+router.get("/staff-locations", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const providers = await Provider.find({ approvalStatus: "approved" })
+      .select("name category phone email location isActive availabilityStatus trackingActive trackingConsent currentLocation updatedAt")
+      .sort({ "currentLocation.timestamp": -1, updatedAt: -1 });
+
+    res.json({ providers });
+  } catch (error) {
+    res.status(500).json({ message: "Staff locations could not be loaded." });
+  }
+});
 router.patch("/bookings/:bookingId", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status, providerId } = req.body;
@@ -112,7 +155,7 @@ router.patch("/bookings/:bookingId", requireAuth, requireAdmin, async (req, res)
       });
 
       if (!provider) {
-        return res.status(400).json({ message: "Choose an approved active provider." });
+        return res.status(400).json({ message: "Choose an approved available provider." });
       }
 
       update.assignedProvider = provider._id;
@@ -169,3 +212,4 @@ router.patch("/bookings/:bookingId", requireAuth, requireAdmin, async (req, res)
 });
 
 export default router;
+

@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
@@ -11,6 +11,7 @@ export default function ServiceDetailSheet({ service, visible, onClose, onBook }
   if (!service) return null;
 
   const features = service.features?.length ? service.features : [service.category, "On-site visit", "Work inspection"];
+  const isUnavailable = service.isBookable === false || ["inactive", "absent"].includes(service.availabilityStatus);
 
   return (
     <ModalSheet
@@ -20,10 +21,11 @@ export default function ServiceDetailSheet({ service, visible, onClose, onBook }
       onClose={onClose}
       footer={
         <View style={styles.footerActions}>
-          <ActionButton title="Book now" icon="calendar-check-outline" onPress={() => onBook(service)} style={styles.footerButton} />
+          <ActionButton title={isUnavailable ? "Unavailable" : "Book now"} icon={isUnavailable ? "alert-circle-outline" : "calendar-check-outline"} disabled={isUnavailable} onPress={() => onBook(service)} style={styles.footerButton} />
         </View>
       }
     >
+      {isUnavailable ? <Text style={[styles.unavailable, { backgroundColor: theme.roseSoft, color: theme.rose }]}>Provider is currently unavailable.</Text> : null}
       <Image source={{ uri: service.image }} style={[styles.image, { backgroundColor: theme.surfaceMuted }]} resizeMode="cover" />
       <View style={styles.stats}>
         <DetailStat icon="star-outline" label="Rating" value={`${service.rating || 0} (${service.reviews || 0})`} />
@@ -109,6 +111,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "900",
     letterSpacing: 0,
+  },
+  unavailable: {
+    borderRadius: radius.md,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   stat: {
     backgroundColor: colors.surfaceMuted,

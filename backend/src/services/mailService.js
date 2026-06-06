@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+﻿import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 
 dotenv.config();
@@ -194,3 +194,4 @@ export const sendProviderAcceptedEmail = ({ to, name, booking, provider }) =>
       `Scheduled time: ${new Date(booking.preferredDate).toLocaleDateString("en-IN")} at ${escapeHtml(booking.preferredTime)}`,
     ]),
   });
+

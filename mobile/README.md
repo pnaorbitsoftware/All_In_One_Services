@@ -11,9 +11,9 @@ npm run doctor
 npm run android
 ```
 
-The app is currently configured for this computer's Wi-Fi IP: `http://10.187.33.79:5000/api`.
+The app now uses the shared website backend API. Local default: `http://localhost:5000/api`.
 
-For a physical Android phone, keep the phone and computer on the same Wi-Fi, start the backend, then rebuild the APK after changing `EXPO_PUBLIC_API_URL` if your computer IP changes. Android emulators can also use this Wi-Fi IP, or `http://10.0.2.2:5000/api` when testing only in the emulator.
+For a physical Android phone, set `EXPO_PUBLIC_API_URL` to the website backend URL that the phone can reach, then rebuild the APK. Examples: `http://YOUR_COMPUTER_WIFI_IP:5000/api` for local Wi-Fi testing, or `https://YOUR-WEBSITE-BACKEND.onrender.com/api` for production.
 
 If the phone still cannot connect, run this once in an Administrator PowerShell:
 

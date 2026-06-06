@@ -1,4 +1,4 @@
-import cors from "cors";
+﻿import cors from "cors";
 import dns from "node:dns";
 import dotenv from "dotenv";
 import express from "express";
@@ -34,10 +34,20 @@ const mongoDirectHosts = (process.env.MONGO_DIRECT_HOSTS || "")
   .filter(Boolean);
 const mongoReplicaSet = process.env.MONGO_REPLICA_SET || "";
 const isConfiguredAtlasSrvUri = configuredMongoUri.startsWith("mongodb+srv://");
-const mongoDnsServers = (process.env.MONGO_DNS_SERVERS || "")
+const configuredMongoDnsServers = (process.env.MONGO_DNS_SERVERS || "")
   .split(",")
   .map((server) => server.trim())
   .filter(Boolean);
+const atlasDnsFallbackServers = ["1.1.1.1", "8.8.8.8", "9.9.9.9"];
+const localDnsServers = new Set(["127.0.0.1", "::1", "0.0.0.0"]);
+const nodeDnsServers = dns.getServers();
+const shouldUseAtlasDnsFallback =
+  isConfiguredAtlasSrvUri &&
+  !configuredMongoDnsServers.length &&
+  (!nodeDnsServers.length || nodeDnsServers.every((server) => localDnsServers.has(server)));
+const mongoDnsServers = shouldUseAtlasDnsFallback
+  ? atlasDnsFallbackServers
+  : configuredMongoDnsServers;
 
 function buildMongoUri(uri) {
   if (!uri.startsWith("mongodb+srv://") || !mongoDirectHosts.length) {
@@ -135,7 +145,7 @@ function getMongoConnectionHelp(error) {
     return [
       "Atlas SRV DNS lookup failed in Node.js.",
       `Node DNS servers: ${dns.getServers().join(", ") || "none"}`,
-      "Fix: keep MongoDB Atlas Network Access active. If your local Wi-Fi DNS blocks SRV lookup, set MONGO_DNS_SERVERS in backend\\.env to a working DNS server.",
+      "Fix: keep MongoDB Atlas Network Access active. MONGO_DNS_SERVERS is now supported; use 1.1.1.1,8.8.8.8 if local DNS blocks SRV lookup.",
       "Then restart backend with npm start.",
     ];
   }

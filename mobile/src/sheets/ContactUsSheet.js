@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Linking, StyleSheet, Text, View } from "react-native";
 
 import ActionButton from "../components/ActionButton";
 import ModalSheet from "../components/ModalSheet";
+import TextField from "../components/TextField";
 import { colors, radius, useThemeColors } from "../theme";
 
 const supportEmail = "support@servicehub.com";
@@ -25,7 +26,13 @@ function ContactRow({ icon, title, copy }) {
   );
 }
 
-export default function ContactUsSheet({ visible, onClose }) {
+export default function ContactUsSheet({ visible, submitting = false, onClose, onSubmit }) {
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (visible) setMessage("");
+  }, [visible]);
+
   const openEmail = useCallback(async () => {
     const url = `mailto:${supportEmail}?subject=ServiceHub%20Support`;
     const supported = await Linking.canOpenURL(url);
@@ -38,6 +45,16 @@ export default function ContactUsSheet({ visible, onClose }) {
     Linking.openURL(url);
   }, []);
 
+  const sendMessage = async () => {
+    if (!message.trim()) {
+      Alert.alert("Contact Us", "Enter your message for support.");
+      return;
+    }
+
+    const sent = await onSubmit?.(message.trim());
+    if (sent) setMessage("");
+  };
+
   return (
     <ModalSheet
       visible={visible}
@@ -46,12 +63,26 @@ export default function ContactUsSheet({ visible, onClose }) {
       onClose={onClose}
       footer={
         <ActionButton
-          title="Email support"
-          icon="email-fast-outline"
-          onPress={openEmail}
+          title={submitting ? "Sending..." : "Send message"}
+          icon="send-outline"
+          disabled={submitting}
+          onPress={sendMessage}
         />
       }
     >
+      <TextField
+        label="Message"
+        value={message}
+        onChangeText={setMessage}
+        placeholder="Tell support what happened..."
+        multiline
+      />
+      <ActionButton
+        title="Email support instead"
+        icon="email-fast-outline"
+        variant="secondary"
+        onPress={openEmail}
+      />
       <ContactRow icon="email-outline" title="Support email" copy={supportEmail} />
       <ContactRow icon="phone-outline" title="Phone support" copy={supportPhone} />
       <ContactRow icon="map-marker-outline" title="Service area" copy="Pune, Maharashtra and nearby cities" />

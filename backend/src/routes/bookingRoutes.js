@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 
 import requireAuth from "../middleware/requireAuth.js";
 import Booking from "../models/Booking.js";
@@ -22,6 +22,16 @@ const durationCostMap = {
 };
 
 const clientCancelWindowMs = 10 * 60 * 1000;
+
+const bookableAvailabilityStatuses = ["active", "available"];
+
+const isProviderBookable = (provider) =>
+  Boolean(
+    provider &&
+      provider.isActive &&
+      provider.approvalStatus === "approved" &&
+      bookableAvailabilityStatuses.includes(provider.availabilityStatus || "available")
+  );
 
 const parseBookingDate = (value) => {
   if (typeof value !== "string") return new Date(value);
@@ -50,7 +60,7 @@ const canClientCancelBooking = (booking) => {
 
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { name, phone, service, address, problemDescription, date, time, duration, providerId = "" } = req.body;
+    const { name, phone, service, address, addressLocation = null, problemDescription, date, time, duration, providerId = "" } = req.body;
 
     if (!name || !phone || !service || !address || !problemDescription || !date || !time || !duration) {
       return res.status(400).json({ message: "All booking fields are required." });
@@ -136,8 +146,8 @@ router.post("/", requireAuth, async (req, res) => {
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user._id })
-      .populate("assignedProvider", "name category location phone price responseTime rating reviews")
-      .populate("requestedProvider", "name category location phone price responseTime rating reviews")
+      .populate("assignedProvider", "name category location phone price responseTime rating reviews isActive availabilityStatus approvalStatus currentLocation")
+      .populate("requestedProvider", "name category location phone price responseTime rating reviews isActive availabilityStatus approvalStatus currentLocation")
       .sort({ createdAt: -1 });
     res.json({ bookings });
   } catch (error) {
@@ -169,4 +179,29 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   }
 });
 
+
+router.patch("/:bookingId/payment-confirmation", requireAuth, async (req, res) => {
+  try {
+    const { paymentReference = "", receiptUrl = "" } = req.body;
+    const booking = await Booking.findOne({ _id: req.params.bookingId, user: req.user._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (!paymentReference) {
+      return res.status(400).json({ message: "Payment reference is required after gateway confirmation." });
+    }
+
+    booking.clientPaymentStatus = "paid";
+    booking.clientPaidAt = new Date();
+    booking.paymentReference = paymentReference;
+    booking.receiptUrl = receiptUrl;
+    await booking.save();
+
+    res.json({ message: "Payment confirmed.", booking });
+  } catch (error) {
+    res.status(500).json({ message: "Payment confirmation could not be saved." });
+  }
+});
 export default router;

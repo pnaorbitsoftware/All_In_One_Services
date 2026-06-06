@@ -23,6 +23,8 @@ export default function BookingsScreen({
   refreshing,
   onRefresh,
   onCancelBooking,
+  onAcceptEstimate,
+  onRejectEstimate,
   onOpenAuth,
 }) {
   const { width } = useWindowDimensions();
@@ -31,8 +33,15 @@ export default function BookingsScreen({
 
   const keyExtractor = useCallback((item) => String(item._id || item.id), []);
   const renderItem = useCallback(
-    ({ item }) => <BookingCard booking={item} onCancel={onCancelBooking} />,
-    [onCancelBooking]
+    ({ item }) => (
+      <BookingCard
+        booking={item}
+        onCancel={onCancelBooking}
+        onAcceptEstimate={onAcceptEstimate}
+        onRejectEstimate={onRejectEstimate}
+      />
+    ),
+    [onAcceptEstimate, onCancelBooking, onRejectEstimate]
   );
 
   if (!user) {

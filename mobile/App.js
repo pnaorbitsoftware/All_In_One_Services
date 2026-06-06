@@ -1,12 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Appearance, Dimensions, Keyboard, Linking, Share, StatusBar, StyleSheet, useColorScheme, View } from "react-native";
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from "react-native-safe-area-context";
+import * as SplashScreen from "expo-splash-screen";
 
 import BottomNav from "./src/components/BottomNav";
 import { LoadingState } from "./src/components/StateView";
 import Toast from "./src/components/Toast";
-import { AUTH_REQUEST_TIMEOUT_MS, apiRequest } from "./src/lib/api";
+import OfflineBanner from "./src/components/OfflineBanner";
+import {
+  authApi,
+  bookingApi,
+  catalogApi,
+  contactApi,
+  normalizeProviderDashboard,
+  normalizeUser,
+  paymentApi,
+  providerApi,
+} from "./src/lib/api";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
+import { getCurrentReadableLocation, watchProviderLocation } from "./src/lib/location";
+import { useNetworkStatus } from "./src/lib/network";
 import {
   clearSession,
   defaultSettings,
@@ -20,6 +33,7 @@ import {
   saveSettings,
 } from "./src/lib/storage";
 import AccountScreen from "./src/screens/AccountScreen";
+import AdminScreen from "./src/screens/AdminScreen";
 import BookingsScreen from "./src/screens/BookingsScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import PaymentsScreen from "./src/screens/PaymentsScreen";
@@ -32,8 +46,10 @@ import AuthSheet from "./src/sheets/AuthSheet";
 import BookingSheet from "./src/sheets/BookingSheet";
 import CancelReasonSheet from "./src/sheets/CancelReasonSheet";
 import ContactUsSheet from "./src/sheets/ContactUsSheet";
+import EstimateSheet from "./src/sheets/EstimateSheet";
 import MyBookingsSheet from "./src/sheets/MyBookingsSheet";
 import PaymentMethodsSheet from "./src/sheets/PaymentMethodsSheet";
+import PaymentConfirmationSheet from "./src/sheets/PaymentConfirmationSheet";
 import ProviderProfileSheet from "./src/sheets/ProviderProfileSheet";
 import ServiceDetailSheet from "./src/sheets/ServiceDetailSheet";
 import SettingsSheet from "./src/sheets/SettingsSheet";
@@ -57,15 +73,8 @@ const safeAreaInitialMetrics = initialWindowMetrics || {
 
 const APP_SHARE_LINK = process.env.EXPO_PUBLIC_APP_LINK || "https://servicehub.app/download";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function normalizeProviderDashboard(data) {
-  return {
-    provider: data.provider || null,
-    bookings: Array.isArray(data.bookings) ? data.bookings : [],
-    availableRequests: Array.isArray(data.availableRequests) ? data.availableRequests : [],
-    paymentSummary: data.paymentSummary || null,
-  };
-}
+const UNAVAILABLE_STATUSES = ["inactive", "absent"];
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function validateAuthForm({ mode, role, form, otpSent }) {
   const email = form.email.trim();
@@ -102,6 +111,10 @@ function validateAuthForm({ mode, role, form, otpSent }) {
     return "Enter your phone number.";
   }
 
+  if (role === "user" && !form.address.trim()) {
+    return "Enter your service address.";
+  }
+
   if (form.password.length < 6) {
     return "Password must be at least 6 characters.";
   }
@@ -135,6 +148,8 @@ function ServiceHubApp() {
   const [persistedSettings, setPersistedSettings] = useState(defaultSettings);
   const [addresses, setAddresses] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const network = useNetworkStatus();
+  const trackingSubscriptionRef = useRef(null);
 
   const [catalogProviders, setCatalogProviders] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -157,6 +172,7 @@ function ServiceHubApp() {
   const [bookingService, setBookingService] = useState(null);
   const [providerProfileOpen, setProviderProfileOpen] = useState(false);
   const [providerCancelBooking, setProviderCancelBooking] = useState(null);
+  const [providerEstimateBooking, setProviderEstimateBooking] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsMode, setSettingsMode] = useState("settings");
   const [contactOpen, setContactOpen] = useState(false);
@@ -173,9 +189,13 @@ function ServiceHubApp() {
   const [accountProfileOpen, setAccountProfileOpen] = useState(false);
   const [accountSubmitting, setAccountSubmitting] = useState(false);
   const [providerSubmitting, setProviderSubmitting] = useState(false);
+  const [estimateSubmitting, setEstimateSubmitting] = useState(false);
+  const [contactSubmitting, setContactSubmitting] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
   const [addressesSubmitting, setAddressesSubmitting] = useState(false);
   const [paymentMethodsSubmitting, setPaymentMethodsSubmitting] = useState(false);
+  const [locatingAddress, setLocatingAddress] = useState(false);
+  const [paymentConfirmation, setPaymentConfirmation] = useState(null);
 
   const [toast, setToast] = useState("");
 
@@ -186,12 +206,13 @@ function ServiceHubApp() {
       .then(([session, savedSettings, savedAddresses, savedPaymentMethods]) => {
         if (!mounted) return;
         setToken(session.token);
-        setUser(session.user);
+        setUser(normalizeUser(session.user));
         setSettings(savedSettings);
         setPersistedSettings(savedSettings);
         setAddresses(savedAddresses);
         setPaymentMethods(savedPaymentMethods);
         if (session.user?.role === "provider") setActiveTab("provider");
+        if (session.user?.role === "admin") setActiveTab("admin");
       })
       .finally(() => {
         if (mounted) setBooting(false);
@@ -200,6 +221,15 @@ function ServiceHubApp() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!booting) SplashScreen.hideAsync().catch(() => {});
+  }, [booting]);
+
+  useEffect(() => () => {
+    trackingSubscriptionRef.current?.remove?.();
+    trackingSubscriptionRef.current = null;
   }, []);
 
   const effectiveAppearance = settings.appearance === "system" ? systemColorScheme || "light" : settings.appearance;
@@ -226,7 +256,7 @@ function ServiceHubApp() {
     setCatalogError("");
 
     try {
-      const data = await apiRequest("/catalog");
+      const data = await catalogApi.list();
       setCatalogProviders(data.providers || []);
     } catch (error) {
       setCatalogError(error.message);
@@ -248,7 +278,7 @@ function ServiceHubApp() {
       setBookingsError("");
 
       try {
-        const data = await apiRequest("/bookings/my", { token });
+        const data = await bookingApi.my(token);
         setBookings(data.bookings || []);
       } catch (error) {
         setBookingsError(error.message);
@@ -272,8 +302,21 @@ function ServiceHubApp() {
       setProviderError("");
 
       try {
-        const data = await apiRequest("/providers/dashboard", { token });
-        setProviderData(normalizeProviderDashboard(data));
+        const dashboard = await providerApi.dashboard(token);
+        const normalized = normalizeProviderDashboard(dashboard);
+
+        if (!normalized.dashboardLocked) {
+          try {
+            const earnings = await paymentApi.providerEarnings(token);
+            setProviderData(normalizeProviderDashboard({ ...dashboard, ...earnings, paymentSummary: earnings.summary }));
+            return;
+          } catch {
+            setProviderData(normalized);
+            return;
+          }
+        }
+
+        setProviderData(normalized);
       } catch (error) {
         setProviderError(error.message);
       } finally {
@@ -329,7 +372,6 @@ function ServiceHubApp() {
       setAuthSubmitting(true);
 
       try {
-        const path = mode === "login" ? "/auth/login" : "/auth/register";
         const body =
           mode === "login"
             ? {
@@ -342,6 +384,7 @@ function ServiceHubApp() {
                 email: form.email.trim(),
                 password: form.password,
                 phone: form.phone.trim(),
+                address: form.address.trim(),
                 role,
                 providerName: form.providerName.trim(),
                 category: form.category.trim(),
@@ -351,22 +394,20 @@ function ServiceHubApp() {
                 otp: otpSent ? form.otp.trim() : undefined,
               };
 
-        const data = await apiRequest(path, {
-          body,
-          timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
-        });
+        const data = mode === "login" ? await authApi.login(body) : await authApi.register(body);
 
         if (data.requiresOtp) {
           setToast(data.message || "OTP sent to registered email.");
           return data;
         }
 
-        await saveSession(data.token, data.user);
+        const nextUser = normalizeUser(data.user);
+        await saveSession(data.token, nextUser);
         setToken(data.token);
-        setUser(data.user);
+        setUser(nextUser);
         setAuthOpen(false);
-        setToast(mode === "login" ? "Logged in successfully." : "Account created successfully.");
-        setActiveTab(data.user?.role === "provider" ? "provider" : "home");
+        setToast(mode === "login" ? "Logged in successfully." : role === "provider" ? "Provider profile submitted. Wait for website admin approval." : "Account created successfully.");
+        setActiveTab(nextUser?.role === "provider" ? "provider" : nextUser?.role === "admin" ? "admin" : "home");
         return data;
       } catch (error) {
         setToast(error.message);
@@ -383,12 +424,9 @@ function ServiceHubApp() {
     setAuthSubmitting(true);
 
     try {
-      const data = await apiRequest("/auth/forgot-password/otp", {
-        body: {
-          role,
-          identifier: identifier.trim(),
-        },
-        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      const data = await authApi.forgotPasswordOtp({
+        role,
+        identifier: identifier.trim(),
       });
       setToast(data.message || "OTP sent to registered email.");
       return data;
@@ -405,13 +443,10 @@ function ServiceHubApp() {
     setAuthSubmitting(true);
 
     try {
-      const data = await apiRequest("/auth/forgot-password/verify", {
-        body: {
-          role,
-          identifier: identifier.trim(),
-          otp: otp.trim(),
-        },
-        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      const data = await authApi.forgotPasswordVerify({
+        role,
+        identifier: identifier.trim(),
+        otp: otp.trim(),
       });
       setToast(data.message || "OTP verified.");
       return data;
@@ -428,14 +463,11 @@ function ServiceHubApp() {
     setAuthSubmitting(true);
 
     try {
-      const data = await apiRequest("/auth/reset-password", {
-        body: {
-          role,
-          identifier: identifier.trim(),
-          password,
-          resetToken,
-        },
-        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      const data = await authApi.resetPassword({
+        role,
+        identifier: identifier.trim(),
+        password,
+        resetToken,
       });
       setToast(data.message || "Password updated successfully.");
       return data;
@@ -459,6 +491,12 @@ function ServiceHubApp() {
 
   const openBooking = useCallback(
     (service) => {
+      const unavailable = service?.isBookable === false || UNAVAILABLE_STATUSES.includes(service?.availabilityStatus);
+      if (unavailable) {
+        setToast("Provider is currently unavailable.");
+        return;
+      }
+
       if (!token || !user) {
         setToast("Please login before booking a service.");
         openAuth("login", "user");
@@ -471,6 +509,116 @@ function ServiceHubApp() {
     [openAuth, token, user]
   );
 
+  const getCurrentLocationForForm = useCallback(async () => {
+    setLocatingAddress(true);
+    try {
+      return await getCurrentReadableLocation();
+    } catch (error) {
+      setToast(error.message || "Could not detect your current location.");
+      return null;
+    } finally {
+      setLocatingAddress(false);
+    }
+  }, []);
+
+  const mergeProviderData = useCallback((provider) => {
+    setProviderData((current) => {
+      const normalized = normalizeProviderDashboard(current || {});
+      return {
+        ...normalized,
+        provider: normalizeProvider({
+          ...normalized.provider,
+          ...provider,
+        }),
+      };
+    });
+  }, []);
+
+  const updateProviderAvailability = useCallback(
+    async (availabilityStatus) => {
+      if (!token) return;
+      setProviderSubmitting(true);
+      try {
+        const data = await providerApi.updateAvailability(token, availabilityStatus);
+        mergeProviderData(data.provider);
+        await loadCatalog(true);
+        setToast(UNAVAILABLE_STATUSES.includes(availabilityStatus) ? "Provider is currently unavailable." : "Provider availability updated.");
+      } catch (error) {
+        setToast(error.message);
+      } finally {
+        setProviderSubmitting(false);
+      }
+    },
+    [loadCatalog, mergeProviderData, token]
+  );
+
+  const startProviderTracking = useCallback(async () => {
+    if (!token) return;
+    setProviderSubmitting(true);
+    try {
+      const location = await getCurrentReadableLocation();
+      const data = await providerApi.startTracking(token, location);
+      mergeProviderData(data.provider);
+      setToast("Duty tracking started.");
+    } catch (error) {
+      setToast(error.message || "Could not start duty tracking.");
+    } finally {
+      setProviderSubmitting(false);
+    }
+  }, [mergeProviderData, token]);
+
+  const stopProviderTracking = useCallback(async () => {
+    if (!token) return;
+    trackingSubscriptionRef.current?.remove?.();
+    trackingSubscriptionRef.current = null;
+    setProviderSubmitting(true);
+    try {
+      const data = await providerApi.stopTracking(token);
+      mergeProviderData(data.provider);
+      setToast("Duty tracking stopped.");
+    } catch (error) {
+      setToast(error.message || "Could not stop duty tracking.");
+    } finally {
+      setProviderSubmitting(false);
+    }
+  }, [mergeProviderData, token]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "provider" || !providerData?.provider?.trackingActive) return undefined;
+
+    let cancelled = false;
+    watchProviderLocation(
+      async (location) => {
+        if (cancelled) return;
+        try {
+          const data = await providerApi.updateTrackingLocation(token, location);
+          if (!cancelled) mergeProviderData(data.provider);
+        } catch (error) {
+          if (!cancelled) setToast(error.message || "Could not update duty location.");
+        }
+      },
+      (error) => {
+        if (!cancelled) setToast(error.message || "Location tracking stopped.");
+      }
+    )
+      .then((subscription) => {
+        if (cancelled) {
+          subscription?.remove?.();
+          return;
+        }
+        trackingSubscriptionRef.current = subscription;
+      })
+      .catch((error) => {
+        if (!cancelled) setToast(error.message || "Could not start location watcher.");
+      });
+
+    return () => {
+      cancelled = true;
+      trackingSubscriptionRef.current?.remove?.();
+      trackingSubscriptionRef.current = null;
+    };
+  }, [mergeProviderData, providerData?.provider?.trackingActive, token, user?.role]);
+
   const submitBooking = useCallback(
     async (form) => {
       if (!token) {
@@ -480,10 +628,7 @@ function ServiceHubApp() {
 
       setBookingSubmitting(true);
       try {
-        const data = await apiRequest("/bookings", {
-          token,
-          body: form,
-        });
+        const data = await bookingApi.create(token, form);
         setBookings((current) => [data.booking, ...current]);
         setBookingService(null);
         setActiveTab(user?.role === "provider" ? "provider" : "providers");
@@ -506,10 +651,7 @@ function ServiceHubApp() {
           style: "destructive",
           onPress: async () => {
             try {
-              const data = await apiRequest(`/bookings/${booking._id}/cancel`, {
-                method: "PATCH",
-                token,
-              });
+              const data = await bookingApi.cancel(token, booking._id);
               setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
               setToast("Booking cancelled successfully.");
             } catch (error) {
@@ -525,10 +667,7 @@ function ServiceHubApp() {
   const acceptProviderRequest = useCallback(
     async (booking) => {
       try {
-        const data = await apiRequest(`/providers/bookings/${booking._id}/accept`, {
-          method: "PATCH",
-          token,
-        });
+        const data = await providerApi.acceptBooking(token, booking._id);
         setProviderData((current) => {
           const normalized = normalizeProviderDashboard(current || {});
           return {
@@ -553,11 +692,7 @@ function ServiceHubApp() {
           text: "Complete",
           onPress: async () => {
             try {
-              const data = await apiRequest(`/providers/bookings/${booking._id}/status`, {
-                method: "PATCH",
-                token,
-                body: { status: "completed" },
-              });
+              const data = await providerApi.updateBookingStatus(token, booking._id, { status: "completed" });
               setProviderData((current) => {
                 const normalized = normalizeProviderDashboard(current || {});
                 return {
@@ -566,6 +701,66 @@ function ServiceHubApp() {
                 };
               });
               setToast("Job marked completed.");
+            } catch (error) {
+              setToast(error.message);
+            }
+          },
+        },
+      ]);
+    },
+    [token]
+  );
+
+  const submitProviderEstimate = useCallback(
+    async (amount) => {
+      if (!providerEstimateBooking) return;
+
+      setEstimateSubmitting(true);
+      try {
+        const data = await paymentApi.submitEstimate(token, providerEstimateBooking._id, amount);
+        setProviderData((current) => {
+          const normalized = normalizeProviderDashboard(current || {});
+          return {
+            ...normalized,
+            bookings: normalized.bookings.map((item) => (item._id === providerEstimateBooking._id ? data.booking : item)),
+          };
+        });
+        setProviderEstimateBooking(null);
+        setToast("Estimate sent to client.");
+      } catch (error) {
+        setToast(error.message);
+      } finally {
+        setEstimateSubmitting(false);
+      }
+    },
+    [providerEstimateBooking, token]
+  );
+
+  const acceptClientEstimate = useCallback(
+    async (booking) => {
+      try {
+        const data = await paymentApi.acceptEstimate(token, booking._id);
+        setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
+        setToast("Estimate accepted. Mobile Razorpay checkout SDK is still required for payment.");
+      } catch (error) {
+        setToast(error.message);
+      }
+    },
+    [token]
+  );
+
+  const rejectClientEstimate = useCallback(
+    (booking) => {
+      Alert.alert("Reject estimate", "Reject this provider estimate? A penalty may apply as configured by backend.", [
+        { text: "Keep estimate", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const data = await paymentApi.rejectEstimate(token, booking._id, "Rejected from mobile app.");
+              setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
+              setToast(data.message || "Estimate rejected.");
             } catch (error) {
               setToast(error.message);
             }
@@ -586,10 +781,9 @@ function ServiceHubApp() {
 
       setProviderSubmitting(true);
       try {
-        const data = await apiRequest(`/providers/bookings/${providerCancelBooking._id}/status`, {
-          method: "PATCH",
-          token,
-          body: { status: "cancelled", cancellationReason: reason.trim() },
+        const data = await providerApi.updateBookingStatus(token, providerCancelBooking._id, {
+          status: "cancelled",
+          cancellationReason: reason.trim(),
         });
         setProviderData((current) => {
           const normalized = normalizeProviderDashboard(current || {});
@@ -613,21 +807,25 @@ function ServiceHubApp() {
     async (form) => {
       setProviderSubmitting(true);
       try {
-        const data = await apiRequest("/providers/profile", {
-          method: "PATCH",
-          token,
-          body: form,
+        const data = await providerApi.updateProfile(token, {
+          ...form,
+          profileImage: form.image || "",
         });
+        const provider = {
+          ...data.provider,
+          image: data.provider?.image || data.provider?.profileImage || form.image || "",
+        };
         setProviderData((current) => ({
           ...normalizeProviderDashboard(current || {}),
-          provider: data.provider,
+          provider,
         }));
         const nextUser = {
           ...user,
-          name: data.provider.name,
-          email: data.provider.email,
-          phone: data.provider.phone,
-          avatar: data.provider.image || "",
+          name: provider.name,
+          email: provider.email,
+          phone: provider.phone,
+          avatar: provider.image || "",
+          profileImage: provider.image || "",
         };
         setUser(nextUser);
         await saveSession(token, nextUser);
@@ -647,21 +845,22 @@ function ServiceHubApp() {
     async (form) => {
       setAccountSubmitting(true);
       try {
-        const data = await apiRequest("/auth/profile", {
-          method: "PATCH",
-          token,
-          body: {
-            name: form.name.trim(),
-            email: form.email.trim(),
-            phone: form.phone.trim(),
-            avatar: form.avatar || "",
-          },
+        const profileData = await authApi.updateProfile(token, {
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          address: form.address?.trim() || user?.address || "",
+          currentLocation: form.currentLocation || user?.currentLocation || null,
         });
+        const imageData =
+          (form.avatar || "") !== (user?.avatar || user?.profileImage || "")
+            ? await authApi.updateProfileImage(token, form.avatar || "")
+            : profileData;
+        const nextUser = normalizeUser(imageData.user || profileData.user);
 
-        setUser(data.user);
-        await saveSession(token, data.user);
+        setUser(nextUser);
+        await saveSession(token, nextUser);
 
-        if (data.user?.role === "provider") {
+        if (nextUser?.role === "provider") {
           setProviderData((current) => {
             const normalized = normalizeProviderDashboard(current || {});
             return {
@@ -669,10 +868,11 @@ function ServiceHubApp() {
               provider: normalized.provider
                 ? {
                     ...normalized.provider,
-                    name: data.user.name,
-                    email: data.user.email,
-                    phone: data.user.phone,
-                    image: data.user.avatar || "",
+                    name: nextUser.name,
+                    email: nextUser.email,
+                    phone: nextUser.phone,
+                    image: nextUser.avatar || "",
+                    profileImage: nextUser.avatar || "",
                   }
                 : normalized.provider,
             };
@@ -803,6 +1003,30 @@ function ServiceHubApp() {
     loadBookings(true);
   }, [loadBookings, openAuth, token, user]);
 
+  const submitContactMessage = useCallback(
+    async (message) => {
+      if (!token || user?.role !== "user") {
+        setToast("Please login as a client to send a message.");
+        openAuth("login", "user");
+        return false;
+      }
+
+      setContactSubmitting(true);
+      try {
+        await contactApi.create(token, message);
+        setContactOpen(false);
+        setToast("Message sent successfully.");
+        return true;
+      } catch (error) {
+        setToast(error.message);
+        return false;
+      } finally {
+        setContactSubmitting(false);
+      }
+    },
+    [openAuth, token, user]
+  );
+
   const openProviderProfileEditor = useCallback(() => {
     if (user?.role === "provider" && !providerData?.provider) {
       loadProviderDashboard();
@@ -824,6 +1048,16 @@ function ServiceHubApp() {
         <ServicesScreen
           onViewDetails={setSelectedService}
           t={t}
+        />
+      );
+    }
+
+    if (activeTab === "admin") {
+      return (
+        <AdminScreen
+          token={token}
+          user={user}
+          onOpenAuth={openAuth}
         />
       );
     }
@@ -865,6 +1099,8 @@ function ServiceHubApp() {
           refreshing={bookingsRefreshing}
           onRefresh={() => loadBookings(true)}
           onCancelBooking={cancelClientBooking}
+          onAcceptEstimate={acceptClientEstimate}
+          onRejectEstimate={rejectClientEstimate}
           onOpenAuth={openAuth}
         />
       );
@@ -883,6 +1119,10 @@ function ServiceHubApp() {
           onAccept={acceptProviderRequest}
           onComplete={completeProviderJob}
           onCancel={setProviderCancelBooking}
+          onEstimate={setProviderEstimateBooking}
+          onUpdateAvailability={updateProviderAvailability}
+          onStartTracking={startProviderTracking}
+          onStopTracking={stopProviderTracking}
         />
       );
     }
@@ -939,6 +1179,7 @@ function ServiceHubApp() {
     catalogProviders,
     catalogRefreshing,
     completeProviderJob,
+    acceptClientEstimate,
     handleLogout,
     loadBookings,
     loadCatalog,
@@ -946,19 +1187,26 @@ function ServiceHubApp() {
     openAuth,
     openAddressBook,
     openBooking,
+    getCurrentLocationForForm,
+    locatingAddress,
     openPaymentMethods,
     openProviderProfileEditor,
     openMyBookings,
     openSettingsSheet,
     providerData,
+    startProviderTracking,
+    stopProviderTracking,
     providerError,
     providerLoading,
     providerRefreshing,
+    rejectClientEstimate,
     searchTerm,
     selectedCategory,
     settings,
     shareApp,
     t,
+    token,
+    updateProviderAvailability,
     user,
   ]);
 
@@ -970,6 +1218,14 @@ function ServiceHubApp() {
       />
       <ThemeColorsProvider value={appColors}>
         <View style={[styles.app, { backgroundColor: appColors.background }]}>
+          <OfflineBanner
+            visible={network.isOffline}
+            onRetry={() => {
+              loadCatalog(true);
+              loadBookings(true);
+              loadProviderDashboard(true);
+            }}
+          />
           <View style={styles.screen}>{screen}</View>
           <BottomNav activeTab={activeTab} onChange={setActiveTab} user={user} t={t} />
           <AuthSheet
@@ -1001,6 +1257,8 @@ function ServiceHubApp() {
             onClose={() => setBookingService(null)}
             onSubmit={submitBooking}
             t={t}
+            locatingAddress={locatingAddress}
+            onUseCurrentLocation={getCurrentLocationForForm}
           />
           <AccountProfileSheet
             visible={accountProfileOpen}
@@ -1008,6 +1266,8 @@ function ServiceHubApp() {
             submitting={accountSubmitting}
             onClose={() => setAccountProfileOpen(false)}
             onSubmit={submitAccountProfile}
+            locatingAddress={locatingAddress}
+            onUseCurrentLocation={getCurrentLocationForForm}
           />
           <ProviderProfileSheet
             visible={providerProfileOpen}
@@ -1029,7 +1289,9 @@ function ServiceHubApp() {
           />
           <ContactUsSheet
             visible={contactOpen}
+            submitting={contactSubmitting}
             onClose={() => setContactOpen(false)}
+            onSubmit={submitContactMessage}
           />
           <AddressBookSheet
             visible={addressesOpen}
@@ -1064,6 +1326,27 @@ function ServiceHubApp() {
             onClose={() => setProviderCancelBooking(null)}
             onSubmit={submitProviderCancel}
           />
+          <EstimateSheet
+            visible={Boolean(providerEstimateBooking)}
+            booking={providerEstimateBooking}
+            submitting={estimateSubmitting}
+            onClose={() => setProviderEstimateBooking(null)}
+            onSubmit={submitProviderEstimate}
+          />
+          <PaymentConfirmationSheet
+            visible={Boolean(paymentConfirmation)}
+            booking={paymentConfirmation}
+            onClose={() => setPaymentConfirmation(null)}
+            onGoToBookings={() => {
+              setPaymentConfirmation(null);
+              setActiveTab("bookings");
+              setMyBookingsOpen(true);
+              loadBookings(true);
+            }}
+            onViewReceipt={(receiptUrl) => {
+              if (receiptUrl) Linking.openURL(receiptUrl).catch(() => setToast("Receipt could not be opened."));
+            }}
+          />
           <Toast message={toast} onClose={() => setToast("")} />
         </View>
       </ThemeColorsProvider>
@@ -1096,3 +1379,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 });
+
+
+
+
+

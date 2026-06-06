@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useMemo } from "react";
 import {
   RefreshControl,
@@ -94,6 +94,11 @@ export default function PaymentsScreen({
   const { width } = useWindowDimensions();
   const metrics = responsiveMetrics(width);
   const theme = useThemeColors();
+  const provider = providerData?.provider;
+  const dashboardLocked = Boolean(
+    providerData?.dashboardLocked || (provider && provider.approvalStatus && provider.approvalStatus !== "approved")
+  );
+  const approvalStatus = provider?.approvalStatus || (dashboardLocked ? "pending" : "approved");
   const bookings = providerData?.bookings || [];
   const localSummary = useMemo(() => buildLocalPaymentSummary(bookings), [bookings]);
   const summary = { ...localSummary, ...(providerData?.paymentSummary || {}) };
@@ -118,6 +123,25 @@ export default function PaymentsScreen({
 
   if (error && !providerData) {
     return <ErrorState copy={error} onRetry={onRefresh} />;
+  }
+
+  if (dashboardLocked) {
+    return (
+      <View style={[styles.center, { paddingHorizontal: metrics.pagePadding }]}>
+        <View style={[styles.lockIcon, { backgroundColor: theme.tealSoft }]}>
+          <MaterialCommunityIcons name="shield-clock-outline" size={32} color={theme.teal} />
+        </View>
+        <Text style={[styles.statusLabel, { color: approvalStatus === "rejected" ? theme.rose : theme.teal }]}>
+          {approvalStatus}
+        </Text>
+        <Text style={[styles.title, { color: theme.text }]}>Payments locked</Text>
+        <Text style={[styles.copy, { color: theme.textMuted }]}>
+          Provider earnings and payout controls open after the website admin approves this provider profile.
+        </Text>
+        {error ? <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>{error}</Text> : null}
+        <ActionButton title="Check approval status" icon="refresh" onPress={onRefresh} />
+      </View>
+    );
   }
 
   return (
@@ -294,7 +318,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     textAlign: "center",
   },
-  softError: {
+  statusLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },  softError: {
     borderRadius: radius.md,
     fontSize: 13,
     fontWeight: "800",

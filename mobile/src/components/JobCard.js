@@ -7,10 +7,14 @@ import { colors, radius, shadow, useThemeColors } from "../theme";
 import ActionButton from "./ActionButton";
 import StatusPill from "./StatusPill";
 
-function JobCard({ booking, type, onAccept, onComplete, onCancel }) {
+function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate }) {
   const theme = useThemeColors();
   const isAvailable = type === "available";
   const canComplete = !["completed", "cancelled"].includes(booking.status);
+  const canEstimate =
+    !isAvailable &&
+    canComplete &&
+    !["submitted", "accepted"].includes(String(booking.estimateStatus || "not_submitted"));
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -47,6 +51,15 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel }) {
         <ActionButton title="Accept request" icon="check-circle-outline" onPress={() => onAccept(booking)} />
       ) : canComplete ? (
         <View style={styles.actions}>
+          {canEstimate ? (
+            <ActionButton
+              title="Estimate"
+              icon="cash-check"
+              variant="secondary"
+              onPress={() => onEstimate(booking)}
+              style={styles.action}
+            />
+          ) : null}
           <ActionButton
             title="Complete"
             icon="check-decagram-outline"

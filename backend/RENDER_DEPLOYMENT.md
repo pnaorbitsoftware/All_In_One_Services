@@ -1,4 +1,4 @@
-# ServiceHub Backend Render Checklist
+﻿# ServiceHub Backend Render Checklist
 
 Use these settings when creating the Render Web Service.
 
@@ -20,6 +20,8 @@ Set these values carefully:
 - `JWT_SECRET`: long random secret, not the local placeholder
 - `AUTH_REQUIRE_EMAIL_OTP`: `true`
 - `CLIENT_URL`: your Render backend URL after deploy
+- `BREVO_SMTP_HOST`: `smtp-relay.brevo.com`
+- `BREVO_SMTP_PORT`: `587`
 - `BREVO_SMTP_USER`, `BREVO_SMTP_KEY`, `MAIL_FROM_EMAIL`: your Brevo email values
 
 Generate a strong JWT secret locally with:
@@ -52,3 +54,4 @@ Expected result:
   "database": "connected"
 }
 ```
+

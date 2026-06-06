@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import ActionButton from "../components/ActionButton";
@@ -13,6 +13,7 @@ const initialForm = {
   password: "",
   confirmPassword: "",
   phone: "",
+  address: "",
   providerName: "",
   category: "",
   location: "",
@@ -65,13 +66,14 @@ export default function AuthSheet({
 
   const isRegister = mode === "register";
   const isPasswordReset = resetStep !== "login";
-  const selectedRole = role === "provider" ? "provider" : "user";
+  const selectedRole = role === "admin" && !isRegister && !isPasswordReset ? "admin" : role === "provider" ? "provider" : "user";
   const roleOptions = useMemo(
     () => [
       { label: t("common.client", "Client"), value: "user" },
       { label: t("common.provider", "Provider"), value: "provider" },
+      ...(!isRegister && !isPasswordReset ? [{ label: t("common.admin", "Admin"), value: "admin" }] : []),
     ],
-    [t]
+    [isPasswordReset, isRegister, t]
   );
 
   const update = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
@@ -243,7 +245,7 @@ export default function AuthSheet({
       centeredTitle
       footer={
         <View style={styles.footerStack}>
-          {!isRegister && !isPasswordReset ? (
+          {!isRegister && !isPasswordReset && selectedRole !== "admin" ? (
             <Pressable
               accessibilityRole="button"
               disabled={submitting}
@@ -333,6 +335,9 @@ export default function AuthSheet({
             <>
               <TextField label={t("auth.fullName", "Full name")} value={form.name} onChangeText={update("name")} placeholder={t("auth.yourName", "Your name")} />
               <TextField label={t("auth.phone", "Phone")} value={form.phone} onChangeText={update("phone")} placeholder="+91..." keyboardType="phone-pad" />
+              {selectedRole === "user" ? (
+                <TextField label={t("auth.address", "Address")} value={form.address} onChangeText={update("address")} placeholder="House, street, city" multiline />
+              ) : null}
             </>
           ) : null}
 
@@ -384,6 +389,7 @@ export default function AuthSheet({
           {isRegister && selectedRole === "provider" && !otpSent ? (
             <>
               <View style={styles.divider} />
+              <Text style={styles.providerApprovalCopy}>Website admin approval is required before provider jobs and payments unlock.</Text>
               <TextField label={t("auth.businessName", "Business Name")} value={form.providerName} onChangeText={update("providerName")} placeholder="Business or display name" />
               <TextField label={t("auth.serviceCategory", "Service category")} value={form.category} onChangeText={update("category")} placeholder="Plumber, Electrician, Cleaning..." />
               <TextField label={t("auth.location", "Location")} value={form.location} onChangeText={update("location")} placeholder="Pune, Mumbai..." />
@@ -418,6 +424,12 @@ const styles = StyleSheet.create({
     color: colors.teal,
     fontSize: 14,
     fontWeight: "900",
+  },
+  providerApprovalCopy: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
   },
   pressed: {
     opacity: 0.75,
