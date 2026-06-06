@@ -30,36 +30,48 @@ const mongoOptions = {
   serverSelectionTimeoutMS: 5000,
 };
 
-const allowedOrigins = new Set([
-  "http://127.0.0.1:5173",
+//
+// ✅ FIXED CORS CONFIG (PRODUCTION READY)
+//
+const allowedOrigins = [
   "http://localhost:5173",
-  process.env.CLIENT_URL,
-].filter(Boolean));
-
-const isAllowedDevOrigin = (origin) => {
-  try {
-    const url = new URL(origin);
-    return ["127.0.0.1", "localhost"].includes(url.hostname);
-  } catch {
-    return false;
-  }
-};
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "https://servicehub.aparaitech.org",
+  "https://www.servicehub.aparaitech.org",
+  process.env.CLIENT_URL // optional from env
+].filter(Boolean);
 
 const corsOptions = {
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin) || isAllowedDevOrigin(origin)) {
+  origin: function (origin, callback) {
+    // allow Postman or server-to-server
+    if (!origin) return callback(null, true);
+
+    // exact match
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+    // allow localhost variations
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1")
+    ) {
+      return callback(null, true);
+    }
+
+    console.error("❌ Blocked by CORS:", origin);
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
   },
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-
 app.use(express.json({ limit: "10mb" }));
 
+//
+// Health check
+//
 app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -71,37 +83,38 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+//
+// Middleware: DB check
+//
 const requireDatabase = (_req, res, next) => {
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
       message:
-        "Database is not connected. Start MongoDB on mongodb://localhost:27017/.",
+        "Database is not connected. Start MongoDB or check connection.",
     });
   }
-
   next();
 };
 
+//
+// Routes
+//
 app.use("/api/auth", requireDatabase, authRoutes);
-
 app.use("/api/admin", requireDatabase, adminRoutes);
-
 app.use("/api/bookings", requireDatabase, bookingRoutes);
-
 app.use("/api/contact", requireDatabase, contactRoutes);
-
 app.use("/api/catalog", requireDatabase, catalogRoutes);
-
 app.use("/api/location", requireDatabase, locationRoutes);
-
 app.use("/api/payments", requireDatabase, paymentRoutes);
-
 app.use("/api/providers", requireDatabase, providerRoutes);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ message: "API route not found." });
 });
 
+//
+// Start Server
+//
 const startServer = async () => {
   try {
     await mongoose.connect(mongoUri, mongoOptions);
@@ -112,37 +125,25 @@ const startServer = async () => {
       `Connected to MongoDB: ${mongoUri}${mongoDbName}`
     );
 
-    console.log(
-      "Collections ready: users, bookings, gps_history, chat_messages, payments, ledgers, contactmsgs, categories, providers, services, sessions, sitecontents"
-    );
-
     const server = http.createServer(app);
     const io = await setupTrackingSocket(server, corsOptions);
     app.set("io", io);
 
     server.listen(port, () => {
       console.log(
-        `Auth, payment, and tracking API running on http://localhost:${port}`
+        `Server running on http://localhost:${port}`
       );
     });
 
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
-        console.error(
-          `Port ${port} is already in use. Stop the running backend or set a different PORT.`
-        );
-        return;
+        console.error(`Port ${port} already in use`);
+      } else {
+        console.error(`Server error: ${error.message}`);
       }
-
-      console.error(`Server failed to start: ${error.message}`);
     });
   } catch (error) {
-    console.error(
-      `MongoDB connection failed: ${error.message}`
-    );
-    console.error(
-      "Start MongoDB locally, then restart the backend."
-    );
+    console.error(`MongoDB connection failed: ${error.message}`);
   }
 };
 
