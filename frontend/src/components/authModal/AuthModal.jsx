@@ -1,6 +1,6 @@
 import "./AuthModal.css";
 import { useState } from "react";
-import { BriefcaseBusiness, Clock, Eye, EyeOff, IndianRupee, Lock, Mail, MapPin, Phone, User, X } from "lucide-react";
+import { BriefcaseBusiness, Eye, EyeOff, IndianRupee, Lock, Mail, MapPin, Phone, User, X } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const AUTH_API_URLS = [...new Set([API_URL, "http://localhost:5000/api", "http://localhost:5001/api"])];
@@ -15,12 +15,29 @@ const providerCategories = [
   "Washing Machine Repair",
   "TV Repair",
 ];
+const providerLocations = [
+  "Pune City",
+  "Pimpri-Chinchwad",
+  "Haveli",
+  "Mulshi",
+  "Maval",
+  "Velhe",
+  "Bhor",
+  "Purandar",
+  "Baramati",
+  "Daund",
+  "Indapur",
+  "Khed",
+  "Shirur",
+  "Ambegaon",
+  "Junnar",
+];
 
 const authTranslations = {
   en: {
     resetPassword: "Reset Password",
     becomeProvider: "Become a Provider",
-    createClientAccount: "Create Client Account",
+    createClientAccount: "Client Registration",
     providerLogin: "Provider Login",
     clientLogin: "Client Login",
     resetCopy: "Use your registered email address or mobile number to create a new password.",
@@ -45,7 +62,7 @@ const authTranslations = {
   hi: {
     resetPassword: "पासवर्ड रीसेट करें",
     becomeProvider: "प्रदाता बनें",
-    createClientAccount: "क्लाइंट खाता बनाएं",
+    createClientAccount: "क्लाइंट रजिस्ट्रेशन",
     providerLogin: "प्रदाता लॉगिन",
     clientLogin: "क्लाइंट लॉगिन",
     resetCopy: "नया पासवर्ड बनाने के लिए अपना रजिस्टर्ड ईमेल या मोबाइल नंबर इस्तेमाल करें.",
@@ -70,7 +87,7 @@ const authTranslations = {
   mr: {
     resetPassword: "पासवर्ड रीसेट करा",
     becomeProvider: "प्रदाता बना",
-    createClientAccount: "क्लायंट खाते तयार करा",
+    createClientAccount: "क्लायंट रजिस्ट्रेशन",
     providerLogin: "प्रदाता लॉगिन",
     clientLogin: "क्लायंट लॉगिन",
     resetCopy: "नवीन पासवर्डसाठी तुमचा नोंदणीकृत ईमेल किंवा मोबाइल नंबर वापरा.",
@@ -134,10 +151,9 @@ export default function AuthModal({
     providerName: "",
     category: "",
     location: "",
+    preferredWorkLocation: "",
     price: "",
     responseTime: "",
-    responseTimeValue: "",
-    responseTimeUnit: "min",
     otpChannel: "email",
     resetOtpChannel: "email",
     registrationOtp: "",
@@ -282,7 +298,6 @@ export default function AuthModal({
         isRegister
           ? {
               ...form,
-              responseTime: isProviderRegister ? `${form.responseTimeValue} ${form.responseTimeUnit}` : form.responseTime,
               otpChannel: form.otpChannel,
               otp: registrationOtpRequired ? form.registrationOtp : "",
             }
@@ -601,18 +616,21 @@ export default function AuthModal({
                 Location
                 <div className="auth-input">
                   <MapPin size={18} />
-                  <input
-                    type="text"
+                  <select
                     value={form.location}
                     onChange={handleChange("location")}
-                    placeholder="City or service area"
                     required
-                  />
+                  >
+                    <option value="">Choose location</option>
+                    {providerLocations.map((location) => (
+                      <option key={location} value={location}>{location}</option>
+                    ))}
+                  </select>
                 </div>
               </label>
 
               <label>
-                Starting price
+                Service charges
                 <div className="auth-input">
                   <IndianRupee size={18} />
                   <input
@@ -626,26 +644,16 @@ export default function AuthModal({
               </label>
 
               <label>
-                Response time
-                <div className="auth-input response-time-picker">
-                  <Clock size={18} />
+                Preferred work location
+                <div className="auth-input">
+                  <MapPin size={18} />
                   <input
-                    type="number"
-                    value={form.responseTimeValue}
-                    onChange={handleChange("responseTimeValue")}
-                    placeholder="30"
-                    min="1"
+                    type="text"
+                    value={form.preferredWorkLocation}
+                    onChange={handleChange("preferredWorkLocation")}
+                    placeholder="Example: MIDC, Market Yard, Kasba"
                     required
                   />
-                  <select
-                    value={form.responseTimeUnit}
-                    onChange={handleChange("responseTimeUnit")}
-                    aria-label="Response time unit"
-                    required
-                  >
-                    <option value="min">min</option>
-                    <option value="hr">hr</option>
-                  </select>
                 </div>
               </label>
             </div>

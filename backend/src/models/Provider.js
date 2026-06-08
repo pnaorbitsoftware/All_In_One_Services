@@ -34,6 +34,11 @@ const providerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    preferredWorkLocation: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     phone: {
       type: String,
       required: true,

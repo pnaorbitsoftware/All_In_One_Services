@@ -129,7 +129,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       bankDetails = {},
     } = req.body;
 
-    if (!name || !category || !location || !phone || !email || !price || !responseTime || !description) {
+    if (!name || !category || !location || !phone || !email || !price || !description) {
       return res.status(400).json({ message: "Please fill all required provider profile fields." });
     }
 
@@ -152,7 +152,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.phone = phone.trim();
     provider.email = normalizedEmail;
     provider.price = price.trim();
-    provider.responseTime = responseTime.trim();
+    provider.responseTime = responseTime?.trim() || provider.responseTime || "";
     provider.description = description.trim();
     provider.about = about?.trim() || description.trim();
     provider.features = Array.isArray(features)
@@ -405,7 +405,6 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
 });
 
 export default router;
-
 
 
 

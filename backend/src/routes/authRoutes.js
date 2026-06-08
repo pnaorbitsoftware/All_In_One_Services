@@ -134,6 +134,7 @@ router.post("/register", async (req, res) => {
       providerName,
       category,
       location,
+      preferredWorkLocation,
       price,
       responseTime,
       otpChannel = "email",
@@ -160,9 +161,9 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Password and confirm password must match." });
     }
 
-    if (role === "provider" && (!providerName || !category || !location || !phone || !price || !responseTime)) {
+    if (role === "provider" && (!providerName || !category || !location || !preferredWorkLocation || !phone || !price)) {
       return res.status(400).json({
-        message: "Provider name, phone, category, location, price, and response time are required.",
+        message: "Provider name, phone, category, location, preferred work location, and price are required.",
       });
     }
 
@@ -227,10 +228,11 @@ router.post("/register", async (req, res) => {
         email,
         category,
         location,
+        preferredWorkLocation,
         phone,
         rating: 0,
         reviews: 0,
-        responseTime,
+        responseTime: responseTime || "",
         price,
         description: `${providerName} provides ${category} services in ${location}.`,
         about: `${providerName} is registered on ServiceHub as a ${category} provider.`,
