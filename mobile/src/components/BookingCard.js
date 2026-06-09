@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -19,11 +19,13 @@ function InfoLine({ icon, children }) {
   );
 }
 
-function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate }) {
+function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, onPayEstimate, onTrack }) {
   const theme = useThemeColors();
   const cancelState = getClientCancelState(booking);
   const provider = booking.assignedProvider || booking.requestedProvider;
   const estimateSubmitted = booking.estimateStatus === "submitted";
+  const estimateAccepted = booking.estimateStatus === "accepted";
+  const paymentPending = estimateAccepted && booking.paymentStatus !== "paid" && booking.clientPaymentStatus !== "paid";
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -60,6 +62,19 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate }) 
           </InfoLine>
         ) : null}
       </View>
+      <ActionButton
+        title="Track Service"
+        icon="timeline-clock-outline"
+        variant="secondary"
+        onPress={() => onTrack?.(booking)}
+      />
+      {paymentPending ? (
+        <ActionButton
+          title={`Pay final estimate ${formatPrice(booking.finalEstimateAmount || 0)}`}
+          icon="credit-card-check-outline"
+          onPress={() => onPayEstimate?.(booking)}
+        />
+      ) : null}
       {estimateSubmitted ? (
         <View style={styles.actions}>
           <ActionButton
@@ -146,3 +161,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 });
+
+
+

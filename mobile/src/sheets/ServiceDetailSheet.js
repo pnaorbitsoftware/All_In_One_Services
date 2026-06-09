@@ -12,6 +12,12 @@ export default function ServiceDetailSheet({ service, visible, onClose, onBook }
 
   const features = service.features?.length ? service.features : [service.category, "On-site visit", "Work inspection"];
   const isUnavailable = service.isBookable === false || ["inactive", "absent"].includes(service.availabilityStatus);
+  const imageSource =
+    typeof service.image === "number"
+      ? service.image
+      : typeof service.image === "string" && service.image.trim()
+        ? { uri: service.image.trim() }
+        : null;
 
   return (
     <ModalSheet
@@ -26,7 +32,11 @@ export default function ServiceDetailSheet({ service, visible, onClose, onBook }
       }
     >
       {isUnavailable ? <Text style={[styles.unavailable, { backgroundColor: theme.roseSoft, color: theme.rose }]}>Provider is currently unavailable.</Text> : null}
-      <Image source={{ uri: service.image }} style={[styles.image, { backgroundColor: theme.surfaceMuted }]} resizeMode="cover" />
+     
+     {imageSource ? (
+        <Image source={imageSource} style={[styles.image, { backgroundColor: theme.surfaceMuted }]} resizeMode="cover" />
+      ) : null}
+
       <View style={styles.stats}>
         <DetailStat icon="star-outline" label="Rating" value={`${service.rating || 0} (${service.reviews || 0})`} />
         <DetailStat icon="clock-outline" label="Response" value={service.responseTime || "~1 hr"} />
@@ -143,3 +153,5 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 });
+
+

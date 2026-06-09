@@ -12,6 +12,8 @@ import {
   bookingApi,
   catalogApi,
   contactApi,
+  notificationApi,
+  normalizeProvider,
   normalizeProviderDashboard,
   normalizeUser,
   paymentApi,
@@ -25,27 +27,33 @@ import {
   defaultSettings,
   loadAddresses,
   loadPaymentMethods,
+  loadRecentLocations,
+  loadSelectedLocation,
   loadSession,
   loadSettings,
   saveAddresses,
   savePaymentMethods,
+  saveRecentLocations,
+  saveSelectedLocation,
   saveSession,
   saveSettings,
 } from "./src/lib/storage";
 import AccountScreen from "./src/screens/AccountScreen";
-import AdminScreen from "./src/screens/AdminScreen";
 import BookingsScreen from "./src/screens/BookingsScreen";
 import HomeScreen from "./src/screens/HomeScreen";
+import NotificationsScreen from "./src/screens/NotificationsScreen";
 import PaymentsScreen from "./src/screens/PaymentsScreen";
 import ProviderScreen from "./src/screens/ProviderScreen";
 import ProvidersScreen from "./src/screens/ProvidersScreen";
 import ServicesScreen from "./src/screens/ServicesScreen";
+import TrackingScreen from "./src/screens/TrackingScreen";
 import AccountProfileSheet from "./src/sheets/AccountProfileSheet";
 import AddressBookSheet from "./src/sheets/AddressBookSheet";
 import AuthSheet from "./src/sheets/AuthSheet";
 import BookingSheet from "./src/sheets/BookingSheet";
 import CancelReasonSheet from "./src/sheets/CancelReasonSheet";
 import ContactUsSheet from "./src/sheets/ContactUsSheet";
+import LocationSearchSheet from "./src/sheets/LocationSearchSheet";
 import EstimateSheet from "./src/sheets/EstimateSheet";
 import MyBookingsSheet from "./src/sheets/MyBookingsSheet";
 import PaymentMethodsSheet from "./src/sheets/PaymentMethodsSheet";
@@ -75,6 +83,40 @@ const APP_SHARE_LINK = process.env.EXPO_PUBLIC_APP_LINK || "https://servicehub.a
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UNAVAILABLE_STATUSES = ["inactive", "absent"];
 SplashScreen.preventAutoHideAsync().catch(() => {});
+const MOCK_NOTIFICATIONS = [
+  {
+    id: "mock-booking-update",
+    type: "booking",
+    title: "Booking updates",
+    message: "Confirmed, cancelled, and assigned service updates will appear here.",
+    time: "ServiceHub",
+    read: false,
+  },
+  {
+    id: "mock-payment-update",
+    type: "payment",
+    title: "Payment updates",
+    message: "Payment confirmations and receipt updates will appear here.",
+    time: "ServiceHub",
+    read: false,
+  },
+  {
+    id: "mock-provider-update",
+    type: "provider",
+    title: "Provider status updates",
+    message: "Provider approval, availability, and arrival updates will appear here.",
+    time: "ServiceHub",
+    read: true,
+  },
+  {
+    id: "mock-offer-update",
+    type: "offer",
+    title: "Offers and service updates",
+    message: "New offers and recommended services will appear here.",
+    time: "ServiceHub",
+    read: true,
+  },
+];
 
 function validateAuthForm({ mode, role, form, otpSent }) {
   const email = form.email.trim();
@@ -148,6 +190,9 @@ function ServiceHubApp() {
   const [persistedSettings, setPersistedSettings] = useState(defaultSettings);
   const [addresses, setAddresses] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [recentLocations, setRecentLocations] = useState([]);
+  const [locationSearchOpen, setLocationSearchOpen] = useState(false);
   const network = useNetworkStatus();
   const trackingSubscriptionRef = useRef(null);
 
@@ -167,9 +212,12 @@ function ServiceHubApp() {
   const [providerError, setProviderError] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedProviderService, setSelectedProviderService] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedService, setSelectedService] = useState(null);
   const [bookingService, setBookingService] = useState(null);
+  const [trackingBookingId, setTrackingBookingId] = useState("");
+  const [trackingBackTab, setTrackingBackTab] = useState("bookings");
   const [providerProfileOpen, setProviderProfileOpen] = useState(false);
   const [providerCancelBooking, setProviderCancelBooking] = useState(null);
   const [providerEstimateBooking, setProviderEstimateBooking] = useState(null);
@@ -196,14 +244,18 @@ function ServiceHubApp() {
   const [paymentMethodsSubmitting, setPaymentMethodsSubmitting] = useState(false);
   const [locatingAddress, setLocatingAddress] = useState(false);
   const [paymentConfirmation, setPaymentConfirmation] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsRefreshing, setNotificationsRefreshing] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
 
   const [toast, setToast] = useState("");
 
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([loadSession(), loadSettings(), loadAddresses(), loadPaymentMethods()])
-      .then(([session, savedSettings, savedAddresses, savedPaymentMethods]) => {
+    Promise.all([loadSession(), loadSettings(), loadAddresses(), loadPaymentMethods(), loadSelectedLocation(), loadRecentLocations()])
+      .then(([session, savedSettings, savedAddresses, savedPaymentMethods, savedLocation, savedRecentLocations]) => {
         if (!mounted) return;
         setToken(session.token);
         setUser(normalizeUser(session.user));
@@ -211,8 +263,9 @@ function ServiceHubApp() {
         setPersistedSettings(savedSettings);
         setAddresses(savedAddresses);
         setPaymentMethods(savedPaymentMethods);
+        setSelectedLocation(savedLocation);
+        setRecentLocations(savedRecentLocations);
         if (session.user?.role === "provider") setActiveTab("provider");
-        if (session.user?.role === "admin") setActiveTab("admin");
       })
       .finally(() => {
         if (mounted) setBooting(false);
@@ -327,6 +380,132 @@ function ServiceHubApp() {
     [token, user]
   );
 
+  const unreadNotificationsCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications]
+  );
+
+  const loadNotifications = useCallback(
+    async (refreshing = false) => {
+      if (refreshing) setNotificationsRefreshing(true);
+      else setNotificationsLoading(true);
+      setNotificationsError("");
+
+      if (!token) {
+        setNotifications(MOCK_NOTIFICATIONS);
+        setNotificationsLoading(false);
+        setNotificationsRefreshing(false);
+        return;
+      }
+
+      try {
+        const data = await notificationApi.list(token);
+        const nextNotifications = Array.isArray(data.notifications) ? data.notifications : [];
+        setNotifications(nextNotifications.length ? nextNotifications : MOCK_NOTIFICATIONS);
+      } catch {
+        // TODO: remove this fallback when backend implements GET /api/notifications.
+        setNotifications(MOCK_NOTIFICATIONS);
+        setNotificationsError("");
+      } finally {
+        setNotificationsLoading(false);
+        setNotificationsRefreshing(false);
+      }
+    },
+    [token]
+  );
+
+  const openNotificationsScreen = useCallback(() => {
+    setActiveTab("notifications");
+    loadNotifications(true);
+  }, [loadNotifications]);
+
+  const markNotificationRead = useCallback(
+    async (notification) => {
+      if (!notification) return;
+      const notificationId = notification.id || notification._id;
+      setNotifications((current) => current.map((item) => ((item.id || item._id) === notificationId ? { ...item, read: true } : item)));
+      if (!token || String(notificationId).startsWith("mock-")) return;
+
+      try {
+        await notificationApi.markRead(token, notificationId);
+      } catch {
+        // TODO: backend endpoint PATCH /api/notifications/:id/read is not available yet.
+      }
+    },
+    [token]
+  );
+
+  const markAllNotificationsRead = useCallback(async () => {
+    setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+    if (!token) return;
+
+    try {
+      await notificationApi.markAllRead(token);
+    } catch {
+      // TODO: backend endpoint PATCH /api/notifications/read-all is not available yet.
+    }
+  }, [token]);
+
+  const saveLocationChoice = useCallback(
+    async (location) => {
+      if (!location?.address) return null;
+      const nextLocation = {
+        id: location.id || `${location.latitude || "manual"}-${Date.now()}`,
+        label: location.label || location.address,
+        address: location.address,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timestamp: location.timestamp || new Date().toISOString(),
+        source: location.source || "selected",
+      };
+
+      const deduped = [nextLocation, ...recentLocations.filter((item) => item.address !== nextLocation.address)].slice(0, 6);
+      setSelectedLocation(nextLocation);
+      setRecentLocations(deduped);
+      await Promise.all([saveSelectedLocation(nextLocation), saveRecentLocations(deduped)]);
+      setLocationSearchOpen(false);
+      return nextLocation;
+    },
+    [recentLocations]
+  );
+
+  const useCurrentLocationForHome = useCallback(async () => {
+    setLocatingAddress(true);
+    try {
+      const location = await getCurrentReadableLocation();
+      await saveLocationChoice({ ...location, source: "gps" });
+      setToast("Location updated.");
+      return location;
+    } catch (error) {
+      setToast(error.message || "Location permission is required to detect your current address.");
+      return null;
+    } finally {
+      setLocatingAddress(false);
+    }
+  }, [saveLocationChoice]);
+
+  const openProvidersForService = useCallback((service) => {
+    setSelectedProviderService(service || null);
+    setSearchTerm("");
+    setActiveTab("providers");
+  }, []);
+
+  const clearProviderServiceFilter = useCallback(() => setSelectedProviderService(null), []);
+  const openTrackingScreen = useCallback((booking) => {
+    const bookingId = booking?._id || booking?.id || booking;
+    if (!bookingId) {
+      setToast("Booking tracking is not available yet.");
+      return;
+    }
+    setTrackingBookingId(String(bookingId));
+    setTrackingBackTab(activeTab === "tracking" ? "bookings" : activeTab || "bookings");
+    setActiveTab("tracking");
+  }, [activeTab]);
+
+  const closeTrackingScreen = useCallback(() => {
+    setActiveTab(trackingBackTab || "bookings");
+  }, [trackingBackTab]);
+
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
@@ -338,6 +517,10 @@ function ServiceHubApp() {
   }, [loadBookings, token, user]);
 
   useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  useEffect(() => {
     if (token && user?.role === "provider") {
       loadProviderDashboard();
     }
@@ -345,7 +528,7 @@ function ServiceHubApp() {
 
   const openAuth = useCallback((mode = "login", role = "user") => {
     setAuthMode(mode);
-    setAuthRole(role === "admin" && mode === "register" ? "user" : role);
+    setAuthRole(role === "provider" ? "provider" : "user");
     setAuthSessionKey((current) => current + 1);
     setAuthOpen(true);
   }, []);
@@ -354,10 +537,10 @@ function ServiceHubApp() {
 
   const changeAuthMode = useCallback((mode) => {
     setAuthMode(mode);
-    if (mode === "register" && authRole === "admin") setAuthRole("user");
+    if (mode === "register" && authRole !== "provider") setAuthRole("user");
   }, [authRole]);
 
-  const changeAuthRole = useCallback((role) => setAuthRole(role), []);
+  const changeAuthRole = useCallback((role) => setAuthRole(role === "provider" ? "provider" : "user"), []);
 
   const handleAuthSubmit = useCallback(
     async ({ mode, role, form, otpSent }) => {
@@ -407,7 +590,7 @@ function ServiceHubApp() {
         setUser(nextUser);
         setAuthOpen(false);
         setToast(mode === "login" ? "Logged in successfully." : role === "provider" ? "Provider profile submitted. Wait for website admin approval." : "Account created successfully.");
-        setActiveTab(nextUser?.role === "provider" ? "provider" : nextUser?.role === "admin" ? "admin" : "home");
+        setActiveTab(nextUser?.role === "provider" ? "provider" : "home");
         return data;
       } catch (error) {
         setToast(error.message);
@@ -684,31 +867,43 @@ function ServiceHubApp() {
     [token]
   );
 
-  const completeProviderJob = useCallback(
-    (booking) => {
-      Alert.alert("Complete job", "Mark this service as completed?", [
-        { text: "Not yet", style: "cancel" },
-        {
-          text: "Complete",
-          onPress: async () => {
-            try {
-              const data = await providerApi.updateBookingStatus(token, booking._id, { status: "completed" });
-              setProviderData((current) => {
-                const normalized = normalizeProviderDashboard(current || {});
-                return {
-                  ...normalized,
-                  bookings: normalized.bookings.map((item) => (item._id === booking._id ? data.booking : item)),
-                };
-              });
-              setToast("Job marked completed.");
-            } catch (error) {
-              setToast(error.message);
-            }
-          },
-        },
-      ]);
+  const updateProviderTrackingStatus = useCallback(
+    (booking, status) => {
+      if (!booking?._id || !status) return;
+
+      const runUpdate = async () => {
+        try {
+          const data = await bookingApi.updateTracking(token, booking._id, { status });
+          setProviderData((current) => {
+            const normalized = normalizeProviderDashboard(current || {});
+            return {
+              ...normalized,
+              bookings: normalized.bookings.map((item) => (item._id === booking._id ? data.booking : item)),
+            };
+          });
+          setToast(`${status} updated.`);
+          loadBookings(true);
+        } catch (error) {
+          setToast(error.message);
+        }
+      };
+
+      if (status === "Completed") {
+        Alert.alert("Complete service", "Mark this service as completed?", [
+          { text: "Not yet", style: "cancel" },
+          { text: "Complete", onPress: runUpdate },
+        ]);
+        return;
+      }
+
+      runUpdate();
     },
-    [token]
+    [loadBookings, token]
+  );
+
+  const completeProviderJob = useCallback(
+    (booking) => updateProviderTrackingStatus(booking, "Completed"),
+    [updateProviderTrackingStatus]
   );
 
   const submitProviderEstimate = useCallback(
@@ -741,7 +936,23 @@ function ServiceHubApp() {
       try {
         const data = await paymentApi.acceptEstimate(token, booking._id);
         setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
-        setToast("Estimate accepted. Mobile Razorpay checkout SDK is still required for payment.");
+        setToast("Estimate accepted. Continue to final estimate payment.");
+      } catch (error) {
+        setToast(error.message);
+      }
+    },
+    [token]
+  );
+  const payClientEstimate = useCallback(
+    async (booking) => {
+      try {
+        const data = await paymentApi.createOrder(token, booking._id);
+        setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
+        setToast(
+          data.gateway === "razorpay"
+            ? "Razorpay order created. Complete checkout with Razorpay SDK, then verify payment."
+            : data.message || "Payment order created."
+        );
       } catch (error) {
         setToast(error.message);
       }
@@ -767,6 +978,24 @@ function ServiceHubApp() {
           },
         },
       ]);
+    },
+    [token]
+  );
+  const withdrawProviderEarnings = useCallback(
+    async () => {
+      try {
+        const data = await paymentApi.withdrawProviderEarnings(token, {});
+        setProviderData((current) =>
+          normalizeProviderDashboard({
+            ...(current || {}),
+            ...data,
+            paymentSummary: data.summary,
+          })
+        );
+        setToast(data.message || "Withdrawal recorded.");
+      } catch (error) {
+        setToast(error.message);
+      }
     },
     [token]
   );
@@ -1043,24 +1272,30 @@ function ServiceHubApp() {
       );
     }
 
+    if (activeTab === "notifications") {
+      return (
+        <NotificationsScreen
+          notifications={notifications}
+          loading={notificationsLoading}
+          error={notificationsError}
+          refreshing={notificationsRefreshing}
+          onBack={() => setActiveTab("home")}
+          onRefresh={() => loadNotifications(true)}
+          onMarkRead={markNotificationRead}
+          onMarkAllRead={markAllNotificationsRead}
+        />
+      );
+    }
     if (activeTab === "services") {
       return (
         <ServicesScreen
           onViewDetails={setSelectedService}
+          onOpenProvidersForService={openProvidersForService}
           t={t}
         />
       );
     }
 
-    if (activeTab === "admin") {
-      return (
-        <AdminScreen
-          token={token}
-          user={user}
-          onOpenAuth={openAuth}
-        />
-      );
-    }
 
     if (activeTab === "providers") {
       return (
@@ -1071,6 +1306,9 @@ function ServiceHubApp() {
           refreshing={catalogRefreshing}
           onRefresh={() => loadCatalog(true)}
           onViewDetails={setSelectedService}
+          onBook={openBooking}
+          selectedServiceFilter={selectedProviderService}
+          onClearServiceFilter={clearProviderServiceFilter}
         />
       );
     }
@@ -1085,6 +1323,7 @@ function ServiceHubApp() {
           refreshing={providerRefreshing}
           onRefresh={() => loadProviderDashboard(true)}
           onOpenAuth={openAuth}
+          onWithdraw={withdrawProviderEarnings}
         />
       );
     }
@@ -1101,6 +1340,8 @@ function ServiceHubApp() {
           onCancelBooking={cancelClientBooking}
           onAcceptEstimate={acceptClientEstimate}
           onRejectEstimate={rejectClientEstimate}
+          onPayEstimate={payClientEstimate}
+          onTrackBooking={openTrackingScreen}
           onOpenAuth={openAuth}
         />
       );
@@ -1118,6 +1359,7 @@ function ServiceHubApp() {
           onOpenAuth={openAuth}
           onAccept={acceptProviderRequest}
           onComplete={completeProviderJob}
+          onUpdateTrackingStatus={updateProviderTrackingStatus}
           onCancel={setProviderCancelBooking}
           onEstimate={setProviderEstimateBooking}
           onUpdateAvailability={updateProviderAvailability}
@@ -1136,7 +1378,7 @@ function ServiceHubApp() {
           onEditAccount={() => setAccountProfileOpen(true)}
           onEditProviderProfile={openProviderProfileEditor}
           onOpenSettings={() => openSettingsSheet("settings")}
-          onOpenNotifications={() => openSettingsSheet("notifications")}
+          onOpenNotifications={openNotificationsScreen}
           onOpenContact={() => setContactOpen(true)}
           onOpenMyBookings={openMyBookings}
           onOpenAddresses={openAddressBook}
@@ -1157,11 +1399,16 @@ function ServiceHubApp() {
         onRefresh={() => loadCatalog(true)}
         onBook={openBooking}
         onViewDetails={setSelectedService}
+        onOpenProvidersForService={openProvidersForService}
         searchTerm={searchTerm}
         selectedCategory={selectedCategory}
         onSearchChange={setSearchTerm}
         onCategoryChange={setSelectedCategory}
         dataSaver={settings.dataSaver}
+        selectedLocation={selectedLocation}
+        onOpenLocation={() => setLocationSearchOpen(true)}
+        onOpenNotifications={openNotificationsScreen}
+        unreadNotificationsCount={unreadNotificationsCount}
         t={t}
       />
     );
@@ -1179,11 +1426,20 @@ function ServiceHubApp() {
     catalogProviders,
     catalogRefreshing,
     completeProviderJob,
+    updateProviderTrackingStatus,
     acceptClientEstimate,
     handleLogout,
     loadBookings,
     loadCatalog,
     loadProviderDashboard,
+    closeTrackingScreen,
+    loadNotifications,
+    markAllNotificationsRead,
+    markNotificationRead,
+    notifications,
+    notificationsError,
+    notificationsLoading,
+    notificationsRefreshing,
     openAuth,
     openAddressBook,
     openBooking,
@@ -1193,6 +1449,10 @@ function ServiceHubApp() {
     openProviderProfileEditor,
     openMyBookings,
     openSettingsSheet,
+    openTrackingScreen,
+    openNotificationsScreen,
+    openProvidersForService,
+    clearProviderServiceFilter,
     providerData,
     startProviderTracking,
     stopProviderTracking,
@@ -1200,12 +1460,17 @@ function ServiceHubApp() {
     providerLoading,
     providerRefreshing,
     rejectClientEstimate,
+    withdrawProviderEarnings,
     searchTerm,
     selectedCategory,
+    selectedLocation,
+    selectedProviderService,
     settings,
     shareApp,
     t,
     token,
+    trackingBookingId,
+    unreadNotificationsCount,
     updateProviderAvailability,
     user,
   ]);
@@ -1242,6 +1507,16 @@ function ServiceHubApp() {
             onForgotPasswordVerify={verifyPasswordResetOtp}
             onResetPassword={resetPassword}
             t={t}
+          />
+          <LocationSearchSheet
+            visible={locationSearchOpen}
+            selectedLocation={selectedLocation}
+            recentLocations={recentLocations}
+            detecting={locatingAddress}
+            onClose={() => setLocationSearchOpen(false)}
+            onUseCurrentLocation={useCurrentLocationForHome}
+            onSelectLocation={saveLocationChoice}
+            onSaveManualLocation={saveLocationChoice}
           />
           <ServiceDetailSheet
             visible={Boolean(selectedService)}
@@ -1318,6 +1593,10 @@ function ServiceHubApp() {
             onClose={() => setMyBookingsOpen(false)}
             onRefresh={() => loadBookings(true)}
             onCancelBooking={cancelClientBooking}
+            onAcceptEstimate={acceptClientEstimate}
+            onRejectEstimate={rejectClientEstimate}
+            onPayEstimate={payClientEstimate}
+            onTrackBooking={openTrackingScreen}
           />
           <CancelReasonSheet
             visible={Boolean(providerCancelBooking)}
@@ -1379,6 +1658,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

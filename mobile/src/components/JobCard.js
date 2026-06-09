@@ -7,10 +7,12 @@ import { colors, radius, shadow, useThemeColors } from "../theme";
 import ActionButton from "./ActionButton";
 import StatusPill from "./StatusPill";
 
-function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate }) {
+function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, onUpdateTrackingStatus }) {
   const theme = useThemeColors();
   const isAvailable = type === "available";
-  const canComplete = !["completed", "cancelled"].includes(booking.status);
+  const normalizedStatus = normalizeTrackingStatus(booking.status);
+  const canComplete = !["Completed", "Cancelled"].includes(normalizedStatus);
+  const nextTrackingAction = getNextTrackingAction(normalizedStatus);
   const canEstimate =
     !isAvailable &&
     canComplete &&
@@ -59,13 +61,14 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate }) 
               onPress={() => onEstimate(booking)}
               style={styles.action}
             />
+          ) : null}          {nextTrackingAction ? (
+            <ActionButton
+              title={nextTrackingAction.label}
+              icon={nextTrackingAction.icon}
+              onPress={() => onUpdateTrackingStatus?.(booking, nextTrackingAction.status)}
+              style={styles.action}
+            />
           ) : null}
-          <ActionButton
-            title="Complete"
-            icon="check-decagram-outline"
-            onPress={() => onComplete(booking)}
-            style={styles.action}
-          />
           <ActionButton
             title="Cancel"
             icon="close-circle-outline"
@@ -79,6 +82,35 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate }) 
   );
 }
 
+
+function normalizeTrackingStatus(status = "") {
+  const lower = String(status || "").toLowerCase();
+  if (lower === "confirmed") return "Confirmed";
+  if (["accepted", "assigned", "provider assigned"].includes(lower)) return "Provider Assigned";
+  if (lower === "on the way") return "On The Way";
+  if (lower === "arrived") return "Arrived";
+  if (lower === "service started") return "Service Started";
+  if (lower === "completed") return "Completed";
+  if (lower === "cancelled") return "Cancelled";
+  return "Confirmed";
+}
+
+function getNextTrackingAction(status) {
+  switch (status) {
+    case "Confirmed":
+      return { status: "Provider Assigned", label: "Mark as Assigned", icon: "account-check-outline" };
+    case "Provider Assigned":
+      return { status: "On The Way", label: "Mark as On The Way", icon: "truck-fast-outline" };
+    case "On The Way":
+      return { status: "Arrived", label: "Mark as Arrived", icon: "map-marker-check-outline" };
+    case "Arrived":
+      return { status: "Service Started", label: "Start Service", icon: "play-circle-outline" };
+    case "Service Started":
+      return { status: "Completed", label: "Complete Service", icon: "check-decagram-outline" };
+    default:
+      return null;
+  }
+}
 export default React.memo(JobCard);
 
 const styles = StyleSheet.create({
@@ -136,3 +168,5 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 });
+
+

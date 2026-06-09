@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -9,7 +9,7 @@ import { colors, radius, useThemeColors } from "../theme";
 
 const historyStatuses = new Set(["completed", "cancelled"]);
 
-function Section({ title, copy, bookings, emptyCopy, onCancel }) {
+function Section({ title, copy, bookings, emptyCopy, onCancel, onAcceptEstimate, onRejectEstimate, onPayEstimate, onTrack }) {
   const theme = useThemeColors();
 
   return (
@@ -28,6 +28,10 @@ function Section({ title, copy, bookings, emptyCopy, onCancel }) {
               key={String(booking._id || booking.id)}
               booking={booking}
               onCancel={onCancel}
+              onAcceptEstimate={onAcceptEstimate}
+              onRejectEstimate={onRejectEstimate}
+              onPayEstimate={onPayEstimate}
+              onTrack={onTrack}
             />
           ))}
         </View>
@@ -49,6 +53,10 @@ export default function MyBookingsSheet({
   onClose,
   onRefresh,
   onCancelBooking,
+  onAcceptEstimate,
+  onRejectEstimate,
+  onPayEstimate,
+  onTrackBooking,
 }) {
   const theme = useThemeColors();
   const groupedBookings = useMemo(() => {
@@ -107,12 +115,20 @@ export default function MyBookingsSheet({
             bookings={groupedBookings.active}
             emptyCopy="No Active Booking"
             onCancel={onCancelBooking}
+            onAcceptEstimate={onAcceptEstimate}
+            onRejectEstimate={onRejectEstimate}
+            onPayEstimate={onPayEstimate}
+            onTrack={onTrackBooking}
           />
           <Section
             title="Booking History"
             bookings={groupedBookings.history}
             emptyCopy="Book your frist service"
             onCancel={onCancelBooking}
+            onAcceptEstimate={onAcceptEstimate}
+            onRejectEstimate={onRejectEstimate}
+            onPayEstimate={onPayEstimate}
+            onTrack={onTrackBooking}
           />
         </>
       )}
@@ -191,3 +207,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
 });
+
+
+

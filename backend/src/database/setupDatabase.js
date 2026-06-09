@@ -11,6 +11,8 @@ import {
   defaultProviders,
   defaultServices,
   defaultSiteContents,
+  finalCategoryTitles,
+  finalServiceTitles,
 } from "../data/defaultCatalog.js";
 
 const models = [
@@ -53,6 +55,30 @@ export default async function setupDatabase() {
         adminPayoutNote: "",
       },
     }
+  );
+  await Booking.updateMany(
+    { estimateStatus: { $exists: false } },
+    {
+      $set: {
+        finalEstimateAmount: 0,
+        estimateStatus: "not_submitted",
+        estimateSubmittedAt: null,
+        estimateAcceptedAt: null,
+        estimateRejectedAt: null,
+        estimateRejectionReason: "",
+        paymentStatus: "unpaid",
+        paymentReference: "",
+        receiptUrl: "",
+      },
+    }
+  );
+  await Booking.updateMany(
+    { paymentOrderId: { $exists: false } },
+    { $set: { paymentOrderId: "", paymentGateway: "" } }
+  );
+  await Booking.updateMany(
+    { adminCommissionAmount: { $exists: false } },
+    { $set: { adminCommissionPercent: 20, adminCommissionAmount: 0 } }
   );
 
   const adminEmail = process.env.ADMIN_EMAIL || "admin@servicehub.com";
@@ -104,7 +130,7 @@ export default async function setupDatabase() {
     defaultServices.map((service) => ({
       updateOne: {
         filter: { serviceCode: service.serviceCode },
-        update: { $setOnInsert: service },
+        update: { $set: service },
         upsert: true,
       },
     }))
@@ -139,4 +165,38 @@ export default async function setupDatabase() {
       },
     }))
   );
+
+  await Category.updateMany(
+    { title: { $nin: finalCategoryTitles } },
+    { $set: { isActive: false } }
+  );
+  await Service.updateMany(
+    { title: { $nin: finalServiceTitles } },
+    { $set: { isActive: false } }
+  );
+
+  const providerCategoryNormalizations = [
+    { from: ["Washing Machine Repair"], to: "Washing Machine" },
+    { from: ["Refrigerator Repair", "Fridge Repair"], to: "Refrigerator" },
+    { from: ["TV Repair", "Television Repair"], to: "Television" },
+    { from: ["Water Purifier", "Water Purifier Service and Repair", "RO Purifier"], to: "RO/Water Purifier" },
+    { from: ["Cooler Repair"], to: "Air Cooler" },
+    { from: ["Geyser Service & Repair", "Geyser Service"], to: "Geyser" },
+    { from: ["Furniture", "Furniture Repair"], to: "Furniture Assembly" },
+    { from: ["Painting Service", "Painter", "Water Proofing"], to: "Painting & Water-proofing" },
+    { from: ["Bed Bug Control", "Bedbugs Control"], to: "Bed Bugs Control" },
+  ];
+
+  for (const { from, to } of providerCategoryNormalizations) {
+    await Provider.updateMany(
+      { category: { $in: from } },
+      { $set: { category: to, isActive: true, availabilityStatus: "available" } }
+    );
+  }
+
+  await Provider.updateMany(
+    { category: { $in: finalServiceTitles }, isActive: false, approvalStatus: "approved" },
+    { $set: { isActive: true, availabilityStatus: "available" } }
+  );
 }
+

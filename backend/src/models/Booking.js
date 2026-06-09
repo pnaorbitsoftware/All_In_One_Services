@@ -54,6 +54,38 @@ const bookingSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
+    finalEstimateAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    estimateStatus: {
+      type: String,
+      enum: ["not_submitted", "submitted", "accepted", "rejected"],
+      default: "not_submitted",
+    },
+    estimateSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    estimateAcceptedAt: {
+      type: Date,
+      default: null,
+    },
+    estimateRejectedAt: {
+      type: Date,
+      default: null,
+    },
+    estimateRejectionReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "pending", "paid", "failed", "refunded"],
+      default: "unpaid",
+    },
     address: {
       type: String,
       required: true,
@@ -66,8 +98,23 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "accepted", "assigned", "confirmed", "completed", "cancelled"],
-      default: "pending",
+      enum: [
+        "pending",
+        "accepted",
+        "assigned",
+        "confirmed",
+        "completed",
+        "cancelled",
+        "Pending",
+        "Confirmed",
+        "Provider Assigned",
+        "On The Way",
+        "Arrived",
+        "Service Started",
+        "Completed",
+        "Cancelled",
+      ],
+      default: "Confirmed",
     },
     assignedProvider: {
       type: mongoose.Schema.Types.ObjectId,
@@ -128,6 +175,26 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    paymentReference: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    paymentOrderId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    paymentGateway: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    receiptUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     adminPayoutStatus: {
       type: String,
       enum: ["not_ready", "pending", "released"],
@@ -140,6 +207,17 @@ const bookingSchema = new mongoose.Schema(
       max: 100,
     },
     providerPayoutAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    adminCommissionPercent: {
+      type: Number,
+      default: 20,
+      min: 0,
+      max: 100,
+    },
+    adminCommissionAmount: {
       type: Number,
       default: 0,
       min: 0,
@@ -158,6 +236,34 @@ const bookingSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    trackingHistory: [
+      {
+        status: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        title: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        description: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+        updatedBy: {
+          type: String,
+          enum: ["system", "client", "provider", "admin"],
+          default: "system",
+        },
+        updatedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { collection: "bookings", timestamps: true }
 );
@@ -165,3 +271,6 @@ const bookingSchema = new mongoose.Schema(
 const Booking = mongoose.model("Booking", bookingSchema);
 
 export default Booking;
+
+
+

@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useCallback } from "react";
 import {
   FlatList,
@@ -25,6 +25,8 @@ export default function BookingsScreen({
   onCancelBooking,
   onAcceptEstimate,
   onRejectEstimate,
+  onPayEstimate,
+  onTrackBooking,
   onOpenAuth,
 }) {
   const { width } = useWindowDimensions();
@@ -39,9 +41,11 @@ export default function BookingsScreen({
         onCancel={onCancelBooking}
         onAcceptEstimate={onAcceptEstimate}
         onRejectEstimate={onRejectEstimate}
+        onPayEstimate={onPayEstimate}
+        onTrack={onTrackBooking}
       />
     ),
-    [onAcceptEstimate, onCancelBooking, onRejectEstimate]
+    [onAcceptEstimate, onCancelBooking, onPayEstimate, onRejectEstimate, onTrackBooking]
   );
 
   if (!user) {
@@ -164,3 +168,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+

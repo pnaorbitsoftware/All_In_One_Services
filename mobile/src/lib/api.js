@@ -56,6 +56,8 @@ export function normalizeProviderDashboard(data = {}) {
           completedPaidBookings: summary.completedPaidBookings ?? summary.totalBookingsPaid ?? 0,
           awaitingClientPayment: summary.awaitingClientPayment ?? 0,
           adminReleased: summary.adminReleased ?? summary.adminReleasedAmount ?? 0,
+          adminCommission: summary.adminCommission ?? 0,
+          adminCommissionPercent: summary.adminCommissionPercent ?? 20,
           alreadyWithdrawn: summary.alreadyWithdrawn ?? summary.withdrawnAmount ?? 0,
           availableToWithdraw: summary.availableToWithdraw ?? 0,
           providerSharePercent: summary.providerSharePercent ?? 80,
@@ -201,6 +203,8 @@ export const bookingApi = {
   cancel: (token, bookingId) => apiRequest(`/bookings/${bookingId}/cancel`, { method: "PATCH", token }),
   review: (token, bookingId, body) => apiRequest(`/bookings/${bookingId}/review`, { method: "PATCH", token, body }),
   tracking: (token, bookingId) => apiRequest(`/bookings/${bookingId}/tracking`, { token }),
+  updateTracking: (token, bookingId, body) =>
+    apiRequest(`/bookings/${bookingId}/tracking`, { method: "PATCH", token, body }),
   updateClientLocation: (token, bookingId, body) =>
     apiRequest(`/bookings/${bookingId}/client-location`, { method: "PATCH", token, body }),
 };
@@ -249,33 +253,10 @@ export const paymentApi = {
 export const contactApi = {
   create: (token, message) => apiRequest("/contact", { token, body: { message } }),
 };
-
-export const adminApi = {
-  dashboard: (token) => apiRequest("/admin/dashboard", { token }),
-  approveProvider: (token, providerId) =>
-    apiRequest(`/admin/providers/${providerId}/approval`, {
-      method: "PATCH",
-      token,
-      body: { approvalStatus: "approved" },
-    }),
-  rejectProvider: (token, providerId, rejectionReason = "") =>
-    apiRequest(`/admin/providers/${providerId}/approval`, {
-      method: "PATCH",
-      token,
-      body: { approvalStatus: "rejected", rejectionReason },
-    }),
-  updateBooking: (token, bookingId, body) =>
-    apiRequest(`/admin/bookings/${bookingId}`, { method: "PATCH", token, body }),
-  updateProviderStatus: (token, providerId, availabilityStatus) =>
-    apiRequest(`/admin/providers/${providerId}/status`, { method: "PATCH", token, body: { availabilityStatus } }),
-  staffLocations: (token) => apiRequest("/admin/staff-locations", { token }),
-  contactMessages: (token) => apiRequest("/admin/contact-messages", { token }),
-  markContactReplied: (token, messageId, reply) =>
-    apiRequest(`/admin/contact-messages/${messageId}/mark-replied`, {
-      method: "PATCH",
-      token,
-      body: { reply },
-    }),
+export const notificationApi = {
+  list: (token) => apiRequest("/notifications", { token }),
+  markRead: (token, notificationId) => apiRequest(`/notifications/${notificationId}/read`, { method: "PATCH", token }),
+  markAllRead: (token) => apiRequest("/notifications/read-all", { method: "PATCH", token }),
 };
 
 

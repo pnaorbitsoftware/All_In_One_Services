@@ -11,14 +11,7 @@ function BottomNav({ activeTab, onChange, user, t = defaultT }) {
   const insets = useSafeAreaInsets();
   const theme = useThemeColors();
   const isProvider = user?.role === "provider";
-  const isAdmin = user?.role === "admin";
-  const items = isAdmin
-    ? [
-        { id: "admin", label: t("nav.admin", "Admin"), icon: "shield-account-outline" },
-        { id: "home", label: t("nav.home", "Home"), icon: "home-variant-outline" },
-        { id: "account", label: t("nav.account", "Account"), icon: "account-circle-outline" },
-      ]
-    : isProvider
+  const items = isProvider
     ? [
         { id: "home", label: t("nav.home", "Home"), icon: "home-variant-outline" },
         { id: "provider", label: t("nav.bookings", "Bookings"), icon: "calendar-check-outline" },
@@ -105,3 +98,6 @@ const styles = StyleSheet.create({
     ...shadow,
   },
 });
+
+
+

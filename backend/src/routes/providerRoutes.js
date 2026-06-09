@@ -8,8 +8,9 @@ import {
   sendProviderAcceptedEmail,
   sendServiceCompletedEmail,
 } from "../services/mailService.js";
-import { buildServiceRegexes } from "../utils/serviceMatching.js";
+import { buildServiceRegexes, isAllowedServiceName, normalizeServiceName } from "../utils/serviceMatching.js";
 import { buildProviderPaymentSummary, DEFAULT_PROVIDER_SHARE_PERCENT } from "../utils/paymentSummary.js";
+import { buildTrackingEvent, ensureTrackingHistory, normalizeTrackingStatus } from "../utils/tracking.js";
 
 const router = express.Router();
 const availabilityStatuses = ["active", "inactive", "absent", "available"];
@@ -65,7 +66,7 @@ const buildAvailableBookingFilter = (provider) => ({
       ],
     },
   ],
-  status: { $in: ["pending", "accepted"] },
+  status: { $in: ["pending", "accepted", "confirmed", "Confirmed"] },
 });
 
 router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
@@ -132,10 +133,16 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       about,
       image = "",
       features = "",
+      availabilityStatus,
     } = req.body;
 
     if (!name || !category || !location || !phone || !email || !price || !responseTime || !description) {
       return res.status(400).json({ message: "Please fill all required provider profile fields." });
+    }
+
+    const normalizedCategory = normalizeServiceName(category);
+    if (!isAllowedServiceName(normalizedCategory)) {
+      return res.status(400).json({ message: "Please select a valid ServiceHub service category." });
     }
 
     const provider = await Provider.findOne({ owner: req.user._id });
@@ -152,7 +159,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     }
 
     provider.name = name.trim();
-    provider.category = category.trim();
+    provider.category = normalizedCategory;
     provider.location = location.trim();
     provider.phone = phone.trim();
     provider.email = normalizedEmail;
@@ -290,24 +297,25 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
       return unavailableProviderResponse(res, provider);
     }
 
-    const booking = await Booking.findOneAndUpdate(
-      {
-        _id: req.params.bookingId,
-        ...buildAvailableBookingFilter(provider),
-      },
-      {
-        assignedProvider: provider._id,
-        assignedProviderName: provider.name,
-        status: "confirmed",
-        acceptedAt: new Date(),
-        assignedAt: new Date(),
-      },
-      { new: true }
-    );
+        const booking = await Booking.findOne({
+      _id: req.params.bookingId,
+      ...buildAvailableBookingFilter(provider),
+    });
 
     if (!booking) {
       return res.status(404).json({ message: "Booking request is no longer available." });
     }
+
+    booking.assignedProvider = provider._id;
+    booking.assignedProviderName = provider.name;
+    booking.status = "Provider Assigned";
+    booking.acceptedAt = booking.acceptedAt || new Date();
+    booking.assignedAt = booking.assignedAt || new Date();
+    ensureTrackingHistory(booking);
+    if (normalizeTrackingStatus(booking.trackingHistory.at(-1)?.status) !== "Provider Assigned") {
+      booking.trackingHistory.push(buildTrackingEvent("Provider Assigned", { updatedBy: "provider" }));
+    }
+    await booking.save();
     const client = await User.findById(booking.user);
     await sendProviderAcceptedEmail({
       to: client?.email,
@@ -325,7 +333,7 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
 router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async (req, res) => {
   try {
     const { status, workImage = "", cancellationReason = "" } = req.body;
-    const allowedStatuses = ["confirmed", "completed", "cancelled"];
+    const allowedStatuses = ["confirmed", "completed", "cancelled", "Confirmed", "Provider Assigned", "On The Way", "Arrived", "Service Started", "Completed", "Cancelled"];
 
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid booking status." });
@@ -345,16 +353,17 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       return unavailableProviderResponse(res, provider);
     }
 
-    const update = { status };
+    const normalizedStatus = normalizeTrackingStatus(status);
+    const update = { status: normalizedStatus };
 
-    if (status === "completed") {
+    if (normalizedStatus === "Completed") {
       if (workImage) {
         update.workImage = workImage;
       }
       update.completedAt = new Date();
       update.providerSharePercent = DEFAULT_PROVIDER_SHARE_PERCENT;
       update.adminPayoutStatus = "pending";
-    } else if (status === "cancelled") {
+    } else if (normalizedStatus === "Cancelled") {
       if (!cancellationReason.trim()) {
         return res.status(400).json({ message: "Please describe why this booking is being cancelled." });
       }
@@ -374,7 +383,13 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       return res.status(404).json({ message: "Booking not found for this provider." });
     }
 
-    if (status === "completed") {
+    ensureTrackingHistory(booking);
+    if (normalizeTrackingStatus(booking.trackingHistory.at(-1)?.status) !== normalizedStatus) {
+      booking.trackingHistory.push(buildTrackingEvent(normalizedStatus, { updatedBy: "provider" }));
+      await booking.save();
+    }
+
+    if (normalizedStatus === "Completed") {
       const client = await User.findById(booking.user);
       await sendServiceCompletedEmail({
         to: client?.email,
@@ -391,3 +406,6 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
 });
 
 export default router;
+
+
+

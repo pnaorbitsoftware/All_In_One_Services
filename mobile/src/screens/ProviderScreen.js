@@ -29,6 +29,7 @@ export default function ProviderScreen({
   onComplete,
   onCancel,
   onEstimate,
+  onUpdateTrackingStatus,
   onUpdateAvailability,
   onStartTracking,
   onStopTracking,
@@ -42,15 +43,15 @@ export default function ProviderScreen({
   const availableRequests = providerData?.availableRequests || [];
   const bookings = providerData?.bookings || [];
   const acceptedBookings = useMemo(
-    () => bookings.filter((booking) => !["completed", "cancelled"].includes(booking.status)),
+    () => bookings.filter((booking) => !["completed", "cancelled"].includes(String(booking.status || "").toLowerCase())),
     [bookings]
   );
   const canceledBookings = useMemo(
-    () => bookings.filter((booking) => booking.status === "cancelled"),
+    () => bookings.filter((booking) => String(booking.status || "").toLowerCase() === "cancelled"),
     [bookings]
   );
   const completedBookings = useMemo(
-    () => bookings.filter((booking) => booking.status === "completed"),
+    () => bookings.filter((booking) => String(booking.status || "").toLowerCase() === "completed"),
     [bookings]
   );
   const historyCount = canceledBookings.length + completedBookings.length;
@@ -94,9 +95,10 @@ export default function ProviderScreen({
         onComplete={onComplete}
         onCancel={onCancel}
         onEstimate={onEstimate}
+        onUpdateTrackingStatus={onUpdateTrackingStatus}
       />
     ),
-    [onAccept, onCancel, onComplete, onEstimate]
+    [onAccept, onCancel, onComplete, onEstimate, onUpdateTrackingStatus]
   );
 
   const renderSectionHeader = useCallback(
@@ -519,4 +521,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+
 

@@ -4,6 +4,7 @@ import requireAuth from "../middleware/requireAuth.js";
 import Booking from "../models/Booking.js";
 import Provider from "../models/Provider.js";
 import User from "../models/User.js";
+import { applyPaymentSplit } from "../utils/paymentSummary.js";
 import {
   sendProviderAcceptedEmail,
   sendProviderRequestEmail,
@@ -211,5 +212,48 @@ router.patch("/bookings/:bookingId", requireAuth, requireAdmin, async (req, res)
   }
 });
 
+
+router.patch("/bookings/:bookingId/payout/release", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { note = "" } = req.body;
+    const booking = await Booking.findById(req.params.bookingId)
+      .populate("user", "name email phone role")
+      .populate("assignedProvider")
+      .populate("requestedProvider");
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (!booking.assignedProvider) {
+      return res.status(400).json({ message: "Assign a provider before releasing payout." });
+    }
+
+    if (booking.clientPaymentStatus !== "paid" && booking.paymentStatus !== "paid") {
+      return res.status(400).json({ message: "Client final estimate payment is not completed yet." });
+    }
+
+    applyPaymentSplit(booking);
+    booking.adminPayoutStatus = "released";
+    booking.adminPayoutReleasedAt = new Date();
+    booking.adminPayoutNote = String(note || "Provider 80% payout released by admin.").trim();
+    await booking.save();
+
+    res.json({
+      message: "Provider payout released.",
+      booking,
+      payout: {
+        providerSharePercent: booking.providerSharePercent,
+        providerPayoutAmount: booking.providerPayoutAmount,
+        adminCommissionPercent: booking.adminCommissionPercent,
+        adminCommissionAmount: booking.adminCommissionAmount,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Provider payout could not be released." });
+  }
+});
 export default router;
+
+
 

@@ -17,9 +17,9 @@ Set these values carefully:
 
 - `MONGO_URI`: MongoDB Atlas connection string
 - `MONGO_DB_NAME`: `all_in_one_services`
-- `JWT_SECRET`: long random secret, not the local placeholder
+- `JWT_SECRET`:
 - `AUTH_REQUIRE_EMAIL_OTP`: `true`
-- `CLIENT_URL`: your Render backend URL after deploy
+- `CLIENT_URL`:
 - `BREVO_SMTP_HOST`: `smtp-relay.brevo.com`
 - `BREVO_SMTP_PORT`: `587`
 - `BREVO_SMTP_USER`, `BREVO_SMTP_KEY`, `MAIL_FROM_EMAIL`: your Brevo email values

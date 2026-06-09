@@ -10,6 +10,7 @@ import bookingRoutes from "./src/routes/bookingRoutes.js";
 import catalogRoutes from "./src/routes/catalogRoutes.js";
 import contactRoutes from "./src/routes/contactRoutes.js";
 import providerRoutes from "./src/routes/providerRoutes.js";
+import paymentRoutes from "./src/routes/paymentRoutes.js";
 import setupDatabase from "./src/database/setupDatabase.js";
 import { getMailStatus } from "./src/services/mailService.js";
 
@@ -264,6 +265,8 @@ app.use("/api/catalog", requireDatabase, catalogRoutes);
 
 app.use("/api/providers", requireDatabase, providerRoutes);
 
+app.use("/api/payments", requireDatabase, paymentRoutes);
+
 app.use("/api", (_req, res) => {
   res.status(404).json({ message: "API route not found." });
 });
@@ -306,3 +309,4 @@ const startServer = async () => {
 };
 
 startServer();
+

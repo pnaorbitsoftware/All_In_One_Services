@@ -6,6 +6,7 @@ import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from
 import ActionButton from "../components/ActionButton";
 import ModalSheet from "../components/ModalSheet";
 import TextField from "../components/TextField";
+import { finalServiceNames } from "../data/servicesData";
 import { durationOptions } from "../lib/formatters";
 import { colors, radius, useThemeColors } from "../theme";
 
@@ -100,7 +101,11 @@ export default function BookingSheet({ visible, service, user, submitting, locat
       ...emptyForm,
       name: user?.name || "",
       phone: user?.phone || "",
-      service: service?.category || service?.name || "",
+      service: finalServiceNames.includes(service?.name)
+        ? service.name
+        : finalServiceNames.includes(service?.category)
+          ? service.category
+          : service?.name || service?.category || "",
       providerId: service?.providerId || "",
       date: formatDisplayDate(startOfToday()),
     });
@@ -323,3 +328,4 @@ const styles = StyleSheet.create({
     flexDirection: "column",
   },
 });
+

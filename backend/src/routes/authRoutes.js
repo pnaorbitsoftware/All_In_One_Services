@@ -9,6 +9,7 @@ import {
   sendOtpEmail,
   sendWelcomeEmail,
 } from "../services/mailService.js";
+import { isAllowedServiceName, normalizeServiceName } from "../utils/serviceMatching.js";
 
 const router = express.Router();
 const jwtSecret = process.env.JWT_SECRET || "dev_servicehub_secret_change_me";
@@ -143,6 +144,11 @@ router.post("/register", async (req, res) => {
       });
     }
 
+    const normalizedProviderCategory = role === "provider" ? normalizeServiceName(category) : "";
+    if (role === "provider" && !isAllowedServiceName(normalizedProviderCategory)) {
+      return res.status(400).json({ message: "Please select a valid ServiceHub service category." });
+    }
+
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(409).json({ message: "An account with this email already exists." });
@@ -202,16 +208,16 @@ router.post("/register", async (req, res) => {
         providerCode: `${slugify(providerName)}-${Date.now()}`,
         name: providerName,
         email: normalizedEmail,
-        category,
+        category: normalizedProviderCategory,
         location,
         phone,
         rating: 0,
         reviews: 0,
         responseTime,
         price,
-        description: `${providerName} provides ${category} services in ${location}.`,
-        about: `${providerName} is registered on ServiceHub as a ${category} provider.`,
-        features: [category],
+        description: `${providerName} provides ${normalizedProviderCategory} services in ${location}.`,
+        about: `${providerName} is registered on ServiceHub as a ${normalizedProviderCategory} provider.`,
+        features: [normalizedProviderCategory],
         isActive: false,
         approvalStatus: "pending",
         approvedAt: null,
@@ -441,5 +447,6 @@ router.patch("/profile", async (req, res) => {
 });
 
 export default router;
+
 
 

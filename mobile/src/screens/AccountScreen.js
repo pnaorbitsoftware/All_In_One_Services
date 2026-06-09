@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
@@ -126,7 +126,6 @@ export default function AccountScreen({
                 />
               </>
             ) : null}
-            <ActionButton title={t("account.logout", "Logout")} icon="logout" variant="dangerSoft" onPress={onLogout} />
           </View>
         </View>
       ) : (
@@ -202,6 +201,10 @@ export default function AccountScreen({
           onPress={onOpenContact}
         />
       </View>
+
+      {user ? (
+        <ActionButton title={t("account.logout", "Logout")} icon="logout" variant="dangerSoft" onPress={onLogout} />
+      ) : null}
     </ScrollView>
   );
 }
@@ -326,3 +329,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+

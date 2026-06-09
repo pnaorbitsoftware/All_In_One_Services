@@ -30,7 +30,7 @@ export default function PaymentConfirmationSheet({ visible, booking, onClose, on
         <Line label="Service" value={booking.service} />
         <Line label="Provider" value={provider.name || booking.assignedProviderName || booking.requestedProviderName || "Provider pending"} />
         <Line label="Date and time" value={`${new Date(booking.preferredDate).toLocaleDateString("en-IN")} ${booking.preferredTime || ""}`} />
-        <Line label="Amount paid" value={formatPrice(booking.costEstimate || 0)} />
+        <Line label="Amount paid" value={formatPrice(booking.finalEstimateAmount || booking.costEstimate || 0)} />
         <Line label="Booking ID" value={booking._id || booking.id || "Pending"} />
       </View>
       {!booking.receiptUrl ? <Text style={[styles.note, { color: theme.textMuted }]}>Receipt download is ready for backend invoice integration.</Text> : null}
@@ -85,4 +85,5 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 });
+
 

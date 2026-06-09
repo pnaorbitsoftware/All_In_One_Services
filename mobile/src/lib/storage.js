@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
 const TOKEN_KEY = "servicehub_token";
@@ -5,6 +6,8 @@ const USER_KEY = "servicehub_user";
 const SETTINGS_KEY = "servicehub_settings";
 const ADDRESSES_KEY = "servicehub_addresses";
 const PAYMENT_METHODS_KEY = "servicehub_payment_methods";
+const SELECTED_LOCATION_KEY = "servicehub_selected_location";
+const RECENT_LOCATIONS_KEY = "servicehub_recent_locations";
 const fallbackStore = {};
 
 export const defaultSettings = {
@@ -130,3 +133,45 @@ export async function loadPaymentMethods() {
 export async function savePaymentMethods(paymentMethods) {
   return saveJsonList(PAYMENT_METHODS_KEY, paymentMethods);
 }
+
+export async function loadSelectedLocation() {
+  const savedLocation = await getItem(SELECTED_LOCATION_KEY);
+  if (!savedLocation) return null;
+
+  try {
+    return JSON.parse(savedLocation);
+  } catch {
+    await deleteItem(SELECTED_LOCATION_KEY);
+    return null;
+  }
+}
+
+export async function saveSelectedLocation(location) {
+  const nextLocation = location && typeof location === "object" ? location : null;
+  if (!nextLocation) {
+    await deleteItem(SELECTED_LOCATION_KEY);
+    return null;
+  }
+
+  await setItem(SELECTED_LOCATION_KEY, JSON.stringify(nextLocation));
+  return nextLocation;
+}
+
+export async function loadRecentLocations() {
+  try {
+    const savedLocations = await AsyncStorage.getItem(RECENT_LOCATIONS_KEY);
+    if (!savedLocations) return [];
+    const parsedLocations = JSON.parse(savedLocations);
+    return Array.isArray(parsedLocations) ? parsedLocations : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveRecentLocations(locations) {
+  const nextLocations = Array.isArray(locations) ? locations : [];
+  await AsyncStorage.setItem(RECENT_LOCATIONS_KEY, JSON.stringify(nextLocations));
+  return nextLocations;
+}
+
+

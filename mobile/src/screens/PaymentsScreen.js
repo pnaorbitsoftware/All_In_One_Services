@@ -21,11 +21,11 @@ function getPayoutAmount(booking) {
   if (savedAmount > 0) return savedAmount;
 
   const sharePercent = Number(booking.providerSharePercent || DEFAULT_PROVIDER_SHARE_PERCENT);
-  return Math.round((Number(booking.costEstimate || 0) * sharePercent) / 100);
+  return Math.round((Number(booking.finalEstimateAmount || booking.costEstimate || 0) * sharePercent) / 100);
 }
 
 function buildLocalPaymentSummary(bookings = []) {
-  const completedBookings = bookings.filter((booking) => booking.status === "completed");
+  const completedBookings = bookings.filter((booking) => String(booking.status || "").toLowerCase() === "completed");
   const releasedBookings = completedBookings.filter(
     (booking) => booking.adminPayoutStatus === "released"
   );
@@ -33,7 +33,7 @@ function buildLocalPaymentSummary(bookings = []) {
     (booking) => booking.adminPayoutStatus !== "released"
   );
   const awaitingClientPaymentBookings = bookings.filter((booking) =>
-    ["accepted", "assigned", "confirmed"].includes(String(booking.status || "")) &&
+    ["accepted", "assigned", "confirmed", "provider assigned", "on the way", "arrived", "service started"].includes(String(booking.status || "").toLowerCase()) &&
     booking.clientPaymentStatus !== "paid"
   );
   const adminReleased = releasedBookings.reduce((total, booking) => total + getPayoutAmount(booking), 0);
@@ -90,6 +90,7 @@ export default function PaymentsScreen({
   refreshing,
   onRefresh,
   onOpenAuth,
+  onWithdraw,
 }) {
   const { width } = useWindowDimensions();
   const metrics = responsiveMetrics(width);
@@ -171,18 +172,15 @@ export default function PaymentsScreen({
           icon="wallet-outline"
         >
           <DetailLine label="Admin released" value={formatPrice(summary.adminReleased)} />
+          <DetailLine label={`Admin commission (${summary.adminCommissionPercent || 20}%)`} value={formatPrice(summary.adminCommission || 0)} />
           <DetailLine label="Already withdrawn" value={formatPrice(summary.alreadyWithdrawn)} />
           <DetailLine label="Available to withdraw" value={formatPrice(availableToWithdraw)} highlight />
-          <View
-            style={[
-              styles.payoutButton,
-              { backgroundColor: availableToWithdraw > 0 ? theme.teal : theme.surfaceMuted },
-            ]}
-          >
-            <Text style={[styles.payoutText, { color: availableToWithdraw > 0 ? "#ffffff" : theme.textMuted }]}>
-              {availableToWithdraw > 0 ? "Admin payout released" : "Waiting for admin payout"}
-            </Text>
-          </View>
+          <ActionButton
+            title={availableToWithdraw > 0 ? "Withdraw released amount" : "Waiting for admin payout"}
+            icon={availableToWithdraw > 0 ? "bank-transfer-out" : "clock-outline"}
+            disabled={availableToWithdraw <= 0}
+            onPress={onWithdraw}
+          />
         </PaymentCard>
 
         <PaymentCard
@@ -344,3 +342,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+
+
+

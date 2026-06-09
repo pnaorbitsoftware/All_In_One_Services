@@ -66,14 +66,13 @@ export default function AuthSheet({
 
   const isRegister = mode === "register";
   const isPasswordReset = resetStep !== "login";
-  const selectedRole = role === "admin" && !isRegister && !isPasswordReset ? "admin" : role === "provider" ? "provider" : "user";
+  const selectedRole = role === "provider" ? "provider" : "user";
   const roleOptions = useMemo(
     () => [
       { label: t("common.client", "Client"), value: "user" },
       { label: t("common.provider", "Provider"), value: "provider" },
-      ...(!isRegister && !isPasswordReset ? [{ label: t("common.admin", "Admin"), value: "admin" }] : []),
     ],
-    [isPasswordReset, isRegister, t]
+    [t]
   );
 
   const update = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
@@ -245,7 +244,7 @@ export default function AuthSheet({
       centeredTitle
       footer={
         <View style={styles.footerStack}>
-          {!isRegister && !isPasswordReset && selectedRole !== "admin" ? (
+          {!isRegister && !isPasswordReset ? (
             <Pressable
               accessibilityRole="button"
               disabled={submitting}
@@ -435,3 +434,6 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
 });
+
+
+
