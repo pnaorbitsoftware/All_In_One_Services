@@ -1,0 +1,242 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700;800;900&family=Roboto:wght@400;500;700;900&family=Syne:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: Roboto, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: Poppins, Roboto, ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #0f172a;
+  --color-honey: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-width: 280px;
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(20, 184, 166, 0.16), transparent 26rem),
+    radial-gradient(circle at 86% 14%, rgba(37, 99, 235, 0.14), transparent 28rem),
+    linear-gradient(135deg, #f8fafc 0%, #f7fbf7 42%, #fff7ed 100%);
+  color: #0f172a;
+  font-family: Roboto, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark body,
+body:has(.dark) {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(20, 184, 166, 0.18), transparent 28rem),
+    radial-gradient(circle at 86% 14%, rgba(59, 130, 246, 0.16), transparent 30rem),
+    linear-gradient(135deg, #020617 0%, #07111f 48%, #111827 100%);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-display,
+[class*="heading"],
+[class*="title"] {
+  font-family: Poppins, Roboto, ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 700;
+  letter-spacing: 0 !important;
+  line-height: 1.25;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  max-width: 100%;
+}
+
+button {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+::selection {
+  background: rgba(251, 191, 36, 0.35);
+}
+
+#root {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  min-width: 0;
+}
+
+p,
+span,
+strong,
+button,
+label,
+td,
+th,
+h1,
+h2,
+h3 {
+  overflow-wrap: anywhere;
+}
+
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    background:
+      radial-gradient(circle at 8% 6%, rgba(20, 184, 166, 0.14), transparent 16rem),
+      linear-gradient(135deg, #f8fafc 0%, #fff7ed 100%);
+  }
+
+  .dark body,
+  body:has(.dark) {
+    background:
+      radial-gradient(circle at 8% 6%, rgba(20, 184, 166, 0.16), transparent 16rem),
+      linear-gradient(135deg, #020617 0%, #111827 100%);
+  }
+
+  h1,
+  .text-5xl,
+  .text-4xl {
+    font-size: clamp(1.85rem, 9vw, 2.65rem) !important;
+    line-height: 1.15 !important;
+  }
+
+  h2,
+  .text-3xl {
+    font-size: clamp(1.45rem, 7vw, 2rem) !important;
+    line-height: 1.2 !important;
+  }
+
+  section,
+  main,
+  footer {
+    min-width: 0;
+  }
+
+  .fixed.inset-0 {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+  }
+
+  .grid {
+    min-width: 0;
+  }
+
+  [class*="rounded-[2rem]"],
+  [class*="rounded-[1.7rem]"] {
+    border-radius: 1.25rem;
+  }
+
+  [class*="max-w-7xl"],
+  [class*="max-w-6xl"],
+  [class*="max-w-5xl"],
+  [class*="max-w-4xl"],
+  [class*="max-w-3xl"] {
+    max-width: 100%;
+  }
+
+  [class*="grid-cols-2"],
+  [class*="grid-cols-3"],
+  [class*="grid-cols-4"],
+  [class*="md:grid-cols"],
+  [class*="lg:grid-cols"],
+  [class*="xl:grid-cols"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
+
+  button:not([aria-label]) {
+    white-space: normal;
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+  }
+
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 380px) {
+  body {
+    min-width: 280px;
+  }
+
+  .px-8,
+  .p-8 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .px-6,
+  .p-6,
+  .px-5,
+  .p-5 {
+    padding-left: 0.875rem !important;
+    padding-right: 0.875rem !important;
+  }
+
+  .gap-10,
+  .gap-8,
+  .gap-6,
+  .gap-5 {
+    gap: 1rem !important;
+  }
+}
