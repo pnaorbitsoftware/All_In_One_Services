@@ -180,8 +180,30 @@ export default function AuthModal({
   const isLogin = mode === "login" && !isResetMode;
   const isPasswordReset = mode === "login" && isResetMode;
   const isProviderRegister = isRegister && form.role === "provider";
-  const roleOptions = [lockedRole ? initialRole : "user"];
+  const roleOptions = lockedRole ? [initialRole] : ["user"];
   const t = (key) => authTranslations[language]?.[key] || authTranslations.en[key] || key;
+  const authTitle = isPasswordReset
+    ? t("resetPassword")
+    : isProviderRegister
+    ? t("becomeProvider")
+    : isRegister
+    ? t("createClientAccount")
+    : form.role === "provider"
+    ? t("providerLogin")
+    : t("clientLogin");
+  const authCopy = isPasswordReset
+    ? t("resetCopy")
+    : isProviderRegister
+    ? t("providerRegisterCopy")
+    : isRegister
+    ? t("registerCopy")
+    : t("loginCopy");
+  const modeLabel = isPasswordReset ? "Secure reset" : isRegister ? "Create account" : "Welcome back";
+  const modalClassName = [
+    "auth-modal",
+    isProviderRegister ? "auth-modal-wide" : "",
+    isRegister ? "auth-modal-register" : "auth-modal-login",
+  ].filter(Boolean).join(" ");
   const lockedRoleTitle = isRegister
     ? form.role === "provider"
       ? "Provider registration"
@@ -203,6 +225,18 @@ export default function AuthModal({
 
   const togglePasswordVisibility = (field) => {
     setVisiblePasswords((current) => ({ ...current, [field]: !current[field] }));
+  };
+
+  const handleRequestClose = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    onClose();
+  };
+
+  const handleBackdropClose = (event) => {
+    if (event.target === event.currentTarget) {
+      handleRequestClose(event);
+    }
   };
 
   useEffect(() => {
@@ -423,32 +457,25 @@ export default function AuthModal({
   };
 
   return (
-    <div className="auth-backdrop" onClick={onClose}>
-      <div className={`auth-modal ${isProviderRegister ? "auth-modal-wide" : ""}`} onClick={(event) => event.stopPropagation()}>
-        <button className="auth-close" type="button" onClick={onClose} aria-label="Close">
+    <div className="auth-backdrop" onMouseDown={handleBackdropClose}>
+      <div className={modalClassName} onMouseDown={(event) => event.stopPropagation()}>
+        <button className="auth-close" type="button" onMouseDown={(event) => event.stopPropagation()} onClick={handleRequestClose} aria-label="Close">
           <X size={18} />
         </button>
 
-        <h2>
-          {isPasswordReset
-            ? t("resetPassword")
-            : isProviderRegister
-            ? t("becomeProvider")
-            : isRegister
-            ? t("createClientAccount")
-            : form.role === "provider"
-            ? t("providerLogin")
-            : t("clientLogin")}
-        </h2>
-        <p>
-          {isPasswordReset
-            ? t("resetCopy")
-            : isProviderRegister
-            ? t("providerRegisterCopy")
-            : isRegister
-            ? t("registerCopy")
-            : t("loginCopy")}
-        </p>
+        <div className="auth-hero">
+          <div className="auth-hero-icon">
+            <BadgeIcon role={form.role} />
+          </div>
+          <span className="auth-eyebrow">{modeLabel}</span>
+          <h2>{authTitle}</h2>
+          <p>{authCopy}</p>
+          <div className="auth-trust-row" aria-label="ServiceHub trust signals">
+            <span>Verified services</span>
+            <span>OTP secure</span>
+            <span>Fast booking</span>
+          </div>
+        </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           {lockedRole || roleOptions.length === 1 ? (

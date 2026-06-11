@@ -721,9 +721,18 @@ export default function Home() {
   }, [statusMessage]);
 
   useEffect(() => {
-    const syncLoggedOutSession = () => {
-      if (localStorage.getItem("servicehub_token")) return;
+    const syncAuthSession = () => {
+      const savedToken = localStorage.getItem("servicehub_token");
+      const savedUser = getSavedUser();
 
+      if (savedToken && savedUser) {
+        setUser((current) => (current?._id === savedUser._id && current?.role === savedUser.role ? current : savedUser));
+        return;
+      }
+
+      if (savedToken && !savedUser) return;
+
+      localStorage.removeItem("servicehub_token");
       localStorage.removeItem("servicehub_user");
       setUser(null);
       setBookings([]);
@@ -736,17 +745,17 @@ export default function Home() {
     };
 
     const handleVisibilityChange = () => {
-      if (!document.hidden) syncLoggedOutSession();
+      if (!document.hidden) syncAuthSession();
     };
 
-    syncLoggedOutSession();
-    window.addEventListener("storage", syncLoggedOutSession);
-    window.addEventListener("focus", syncLoggedOutSession);
+    syncAuthSession();
+    window.addEventListener("storage", syncAuthSession);
+    window.addEventListener("focus", syncAuthSession);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("storage", syncLoggedOutSession);
-      window.removeEventListener("focus", syncLoggedOutSession);
+      window.removeEventListener("storage", syncAuthSession);
+      window.removeEventListener("focus", syncAuthSession);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [closeSessionUi]);
@@ -2108,6 +2117,10 @@ export default function Home() {
           onModeChange={setAuthMode}
           onAuthSuccess={(nextUser) => {
             setUser(nextUser);
+            setLoginMenuOpen(false);
+            setAccountMenuOpen(false);
+            setMoreMenuOpen(false);
+            setMobileNavOpen(false);
             setActiveView(nextUser.role === "provider" ? "provider" : nextUser.role === "admin" ? "admin" : "client");
             if (nextUser.role === "provider") loadProviderDashboard();
             if (nextUser.role === "admin") loadAdminDashboard();
