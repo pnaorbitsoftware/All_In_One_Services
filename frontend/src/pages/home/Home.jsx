@@ -70,6 +70,17 @@ import {
 } from "../../components/tracking/trackingShared";
 import useProviderAlerts from "../../components/tracking/useProviderAlerts";
 import { services } from "../../data/Services";
+import SEO from "../../seo/SEO";
+import {
+  buildBreadcrumbSchema,
+  faqItems,
+  faqSchema,
+  localBusinessSchema,
+  organizationSchema,
+  reviewSchema,
+  serviceSchema,
+  targetKeywords,
+} from "../../seo/seoData";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const AUTH_API_URLS = [...new Set([API_URL, "http://localhost:5000/api", "http://localhost:5001/api"])];
@@ -666,7 +677,7 @@ export default function Home() {
   const [providerAccountOpen, setProviderAccountOpen] = useState(false);
   const [providerAccountEditOpen, setProviderAccountEditOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [showAllProviders, setShowAllProviders] = useState(false);
+  const [providerVisibleCount, setProviderVisibleCount] = useState(4);
   const [providerClientMode, setProviderClientMode] = useState(false);
   const [selectedProviders, setSelectedProviders] = useState({});
   const [bookingForm, setBookingForm] = useState({
@@ -689,12 +700,56 @@ export default function Home() {
   const isDark = theme === "dark";
   const t = useCallback((key) => translations[language]?.[key] || translations.en[key] || key, [language]);
 
+  const closeSessionUi = useCallback(() => {
+    setAccountMenuOpen(false);
+    setLoginMenuOpen(false);
+    setMoreMenuOpen(false);
+    setMobileNavOpen(false);
+    setAuthMode(null);
+    setAuthLocked(false);
+    setBookingOpen(false);
+    setProfileImageOpen(false);
+    setProviderAccountOpen(false);
+    setProviderAccountEditOpen(false);
+  }, []);
+
   useEffect(() => {
     if (!statusMessage) return undefined;
 
     const timer = window.setTimeout(() => setStatusMessage(""), 4200);
     return () => window.clearTimeout(timer);
   }, [statusMessage]);
+
+  useEffect(() => {
+    const syncLoggedOutSession = () => {
+      if (localStorage.getItem("servicehub_token")) return;
+
+      localStorage.removeItem("servicehub_user");
+      setUser(null);
+      setBookings([]);
+      setProviderData(null);
+      setProviderEarnings(null);
+      setAdminData(null);
+      setAdminPaymentData(null);
+      setProviderClientMode(false);
+      closeSessionUi();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) syncLoggedOutSession();
+    };
+
+    syncLoggedOutSession();
+    window.addEventListener("storage", syncLoggedOutSession);
+    window.addEventListener("focus", syncLoggedOutSession);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("storage", syncLoggedOutSession);
+      window.removeEventListener("focus", syncLoggedOutSession);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [closeSessionUi]);
 
   useEffect(() => {
     const closeMoreMenu = (event) => {
@@ -1055,6 +1110,7 @@ export default function Home() {
     const roleLabel = formatRoleLabel(user?.role);
     localStorage.removeItem("servicehub_token");
     localStorage.removeItem("servicehub_user");
+    closeSessionUi();
     setUser(null);
     setBookings([]);
     setProviderData(null);
@@ -1220,7 +1276,7 @@ export default function Home() {
     };
     const category = categoryMap[serviceTitle] || serviceTitle;
     setSelectedCategory(category);
-    setShowAllProviders(false);
+    setProviderVisibleCount(4);
     window.setTimeout(() => document.querySelector("#providers")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
 
@@ -1251,7 +1307,7 @@ export default function Home() {
     }
 
     setSelectedCategory(nextCategory);
-    setShowAllProviders(false);
+    setProviderVisibleCount(4);
     window.setTimeout(() => {
       const serviceCard = document.querySelector(`[data-popular-service="${getServiceSlug(getPopularServiceTitle(nextCategory))}"]`);
       (serviceCard || document.querySelector("#services"))?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1541,6 +1597,20 @@ export default function Home() {
 
   return (
     <div className={isDark ? "dark" : ""}>
+      <SEO
+        title="ServiceHub India | Best Home Services and Local Service Booking Platform"
+        description="Book verified electricians, plumbers, AC repair, cleaners, painters, carpenters, and appliance repair providers on ServiceHub India, a trusted local service marketplace."
+        keywords={targetKeywords}
+        path="/"
+        schema={[
+          organizationSchema,
+          localBusinessSchema,
+          faqSchema,
+          reviewSchema,
+          ...serviceSchema,
+          buildBreadcrumbSchema([{ name: "Home", path: "/" }]),
+        ]}
+      />
       <div className="min-h-screen bg-[linear-gradient(135deg,#f8fafc_0%,#ecfeff_38%,#fff7ed_100%)] text-slate-950 transition-colors duration-500 dark:bg-[linear-gradient(135deg,#020617_0%,#07111f_48%,#111827_100%)] dark:text-white">
         <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${navScrolled ? "border-b border-teal-100/80 bg-[linear-gradient(120deg,rgba(255,255,255,0.94),rgba(236,254,255,0.92),rgba(255,247,237,0.9))] shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur-2xl dark:border-white/10 dark:bg-[linear-gradient(120deg,rgba(2,6,23,0.92),rgba(8,47,73,0.84),rgba(15,23,42,0.9))]" : "border-b border-transparent bg-[linear-gradient(120deg,rgba(255,255,255,0.8),rgba(236,254,255,0.76),rgba(255,247,237,0.72))] backdrop-blur-xl dark:bg-[linear-gradient(120deg,rgba(2,6,23,0.72),rgba(8,47,73,0.64),rgba(15,23,42,0.68))]"}`}>
           <nav className={`mx-auto flex max-w-[96rem] items-center justify-between gap-4 px-4 transition-all duration-300 sm:px-6 lg:px-8 ${navScrolled ? "h-16" : "h-20"}`}>
@@ -1882,13 +1952,13 @@ export default function Home() {
                   selectedCategory={selectedCategory}
                   setSelectedCategory={(category) => {
                     setSelectedCategory(category);
-                    setShowAllProviders(false);
+                    setProviderVisibleCount(4);
                   }}
                 />
                 <Providers
                   services={filteredServices}
-                  showAllProviders={showAllProviders}
-                  setShowAllProviders={setShowAllProviders}
+                  providerVisibleCount={providerVisibleCount}
+                  setProviderVisibleCount={setProviderVisibleCount}
                   setSelectedService={setSelectedService}
                   openBooking={openBooking}
                   userRole={user?.role || ""}
@@ -1952,7 +2022,7 @@ export default function Home() {
         )}
 
         {activeView === "home" && <ClientSupportSection user={user} setStatusMessage={setStatusMessage} />}
-        <ServiceHubFooter onServiceClick={openPopularService} />
+        {activeView !== "admin" && <ServiceHubFooter onServiceClick={openPopularService} />}
         <button type="button" onClick={toggleChat} className="fixed bottom-5 right-5 z-[85] grid h-14 w-14 place-items-center rounded-2xl bg-amber-300 text-slate-950 shadow-2xl shadow-amber-300/40">
           {chatOpen ? <X /> : <MessageCircle />}
         </button>
@@ -2072,8 +2142,6 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
           backgroundImage: "linear-gradient(120deg, rgba(14,165,233,0.16) 0%, rgba(20,184,166,0.12) 42%, rgba(15,23,42,0.06) 100%)",
         }}
       />
-      <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-sky-200/35 blur-3xl" aria-hidden="true" />
-      <div className="pointer-events-none absolute right-1/4 bottom-0 h-64 w-64 rounded-full bg-teal-200/20 blur-3xl" aria-hidden="true" />
       <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.92fr_1.08fr]">
         <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-3xl">
           <motion.span variants={fadeUp} className="inline-flex items-center gap-2 border-l-4 border-amber-300 bg-white px-3.5 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm">
@@ -2111,6 +2179,7 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
                   key={heroStage.title}
                   src={heroStage.image}
                   alt={`${heroStage.title} service`}
+                  fetchPriority="high"
                   initial={{ opacity: 0, scale: 1.06, x: 18 }}
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   exit={{ opacity: 0, scale: 0.98, x: -18 }}
@@ -2137,6 +2206,8 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
                     key={nextHeroStage.title}
                     src={nextHeroStage.image}
                     alt={`${nextHeroStage.title} service preview`}
+                    loading="lazy"
+                    decoding="async"
                     initial={{ opacity: 0, scale: 1.05 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.97 }}
@@ -2176,7 +2247,7 @@ function ProfileAvatar({ user, onClick, size = "md" }) {
       title={label}
       aria-label={label}
     >
-      {imageUrl ? <img src={imageUrl} alt={label} className="h-full w-full object-cover" /> : <DefaultProfileSymbol />}
+      {imageUrl ? <img src={imageUrl} alt={label} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <DefaultProfileSymbol />}
     </Component>
   );
 }
@@ -2314,7 +2385,7 @@ function ProfileImageModal({ user, onClose, onSave, onProfileSave, onProviderDet
           <div className="grid gap-5 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
             <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
               <div className="mx-auto grid h-28 w-28 place-items-center overflow-hidden rounded-full border-4 border-white bg-slate-100 text-3xl font-black text-white shadow-2xl shadow-blue-600/20 ring-1 ring-slate-200 dark:border-slate-900 dark:bg-slate-800 dark:ring-white/10 sm:h-32 sm:w-32">
-                {preview ? <img src={preview} alt={label} className="h-full w-full object-cover" /> : <DefaultProfileSymbol />}
+                {preview ? <img src={preview} alt={label} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <DefaultProfileSymbol />}
               </div>
 
               <label className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-teal-300 bg-teal-50/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-teal-500 hover:bg-teal-50 dark:border-teal-300/30 dark:bg-teal-300/10 dark:hover:bg-teal-300/15">
@@ -2545,7 +2616,9 @@ function PopularServicesGrid({ openPopularService }) {
                 <div className="relative overflow-hidden">
                   <img
                     src={service.image}
-                    alt={`${service.title} service`}
+                    alt={`${service.title} home service provider on ServiceHub India`}
+                    loading="lazy"
+                    decoding="async"
                     className="h-36 w-full object-cover transition duration-500 group-hover:scale-105"
                   />
                 </div>
@@ -2598,10 +2671,19 @@ function Categories({ categories, selectedCategory, setSelectedCategory }) {
   );
 }
 
-function Providers({ services, showAllProviders, setShowAllProviders, setSelectedService, openBooking, userRole, canBookServices, ownProviderId = "" }) {
-  const visibleServices = showAllProviders ? services : services.slice(0, 4);
-  const hasMoreProviders = services.length > 4;
+function Providers({ services, providerVisibleCount, setProviderVisibleCount, setSelectedService, openBooking, userRole, canBookServices, ownProviderId = "" }) {
+  const providersGridRef = useRef(null);
+  const providerBatchSize = 4;
+  const visibleCount = Math.min(providerVisibleCount, services.length);
+  const visibleServices = services.slice(0, visibleCount);
+  const hasMoreProviders = visibleCount < services.length;
+  const canShowLessProviders = visibleCount > providerBatchSize;
   const showBookingAction = userRole !== "admin" && (userRole !== "provider" || canBookServices);
+  const scrollToProvidersGrid = () => {
+    window.setTimeout(() => {
+      providersGridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   return (
     <div id="providers" className="bg-[#fbfaf6] px-4 py-10 dark:bg-slate-950 sm:px-6 lg:px-8">
@@ -2616,7 +2698,7 @@ function Providers({ services, showAllProviders, setShowAllProviders, setSelecte
           </div>
         </div>
         {visibleServices.length ? (
-          <div className="grid gap-6 md:grid-cols-2">
+          <div ref={providersGridRef} className="scroll-mt-24 grid gap-6 md:grid-cols-2">
             {visibleServices.map((service, index) => {
               const isOwnProviderCard = Boolean(service.providerId && ownProviderId && String(service.providerId) === String(ownProviderId));
               const canBookProvider = showBookingAction && !isOwnProviderCard;
@@ -2677,14 +2759,30 @@ function Providers({ services, showAllProviders, setShowAllProviders, setSelecte
         ) : (
           <EmptyState title="No providers found" copy="Try another service category or clear the search box." />
         )}
-        {hasMoreProviders && (
-          <button
-            type="button"
-            onClick={() => setShowAllProviders((current) => !current)}
-            className="mx-auto mt-7 flex rounded-full bg-gradient-to-r from-teal-600 to-blue-600 px-7 py-3.5 text-base font-black text-white shadow-xl shadow-blue-600/20"
-          >
-            {showAllProviders ? "Show less providers" : "See more providers"}
-          </button>
+        {(hasMoreProviders || canShowLessProviders) && (
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
+            {canShowLessProviders && (
+              <button
+                type="button"
+                onClick={() => {
+                  setProviderVisibleCount((current) => Math.max(providerBatchSize, current - providerBatchSize));
+                  scrollToProvidersGrid();
+                }}
+                className="rounded-full border border-[#ded7ca] bg-white px-7 py-3.5 text-base font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:text-teal-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
+              >
+                View less
+              </button>
+            )}
+            {hasMoreProviders && (
+              <button
+                type="button"
+                onClick={() => setProviderVisibleCount((current) => Math.min(services.length, current + providerBatchSize))}
+                className="rounded-full bg-gradient-to-r from-teal-600 to-blue-600 px-7 py-3.5 text-base font-black text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5"
+              >
+                View more
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -2692,25 +2790,6 @@ function Providers({ services, showAllProviders, setShowAllProviders, setSelecte
 }
 
 function FAQ() {
-  const faqs = [
-    {
-      question: "How do bookings work?",
-      answer: "Choose a service, select a provider, add your preferred date and time, then send the request. The provider can accept it from their dashboard.",
-    },
-    {
-      question: "Do I need an account?",
-      answer: "Yes. A client account keeps your booking history, provider details, status updates, and completion records in one place.",
-    },
-    {
-      question: "Can providers manage jobs?",
-      answer: "Providers get a dashboard for new client requests, accepted jobs, pricing, service timing, and completion updates.",
-    },
-    {
-      question: "Is there an admin panel?",
-      answer: "Yes. Admins can sign in using their credentials from the normal login form and manage providers, bookings, and approvals.",
-    },
-  ];
-
   return (
     <section id="faq" className="bg-[#fbfaf6] px-4 py-14 dark:bg-slate-950 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
@@ -2718,10 +2797,10 @@ function FAQ() {
           FAQ
         </span>
         <h2 className="mt-4 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
-          Answers before customers book.
+          Answers before customers book home services.
         </h2>
         <div className="mt-7 grid gap-0 border-y border-slate-200 dark:border-white/10">
-          {faqs.map((item) => (
+          {faqItems.map((item) => (
             <details
               key={item.question}
               className="group border-b border-slate-200 px-1 py-4 last:border-b-0 dark:border-white/10"
@@ -3685,14 +3764,15 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
   const [clientMessagesOpen, setClientMessagesOpen] = useState(false);
   const [acceptedRequestsOpen, setAcceptedRequestsOpen] = useState(false);
   const [completedHistoryOpen, setCompletedHistoryOpen] = useState(false);
+  const [adminPaymentPageOpen, setAdminPaymentPageOpen] = useState(false);
   const [rejectReasons, setRejectReasons] = useState({});
   const [contactReplyDrafts, setContactReplyDrafts] = useState({});
 
   useEffect(() => {
-    if (clientRequestsOpen || completedHistoryOpen || clientMessagesOpen || acceptedRequestsOpen) {
+    if (clientRequestsOpen || completedHistoryOpen || clientMessagesOpen || acceptedRequestsOpen || adminPaymentPageOpen) {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [clientRequestsOpen, completedHistoryOpen, clientMessagesOpen, acceptedRequestsOpen]);
+  }, [clientRequestsOpen, completedHistoryOpen, clientMessagesOpen, acceptedRequestsOpen, adminPaymentPageOpen]);
 
   if (!adminData) {
     return <DashboardShell title="Admin Panel" subtitle="Load the admin panel from the navigation after signing in as admin."><EmptyState title="No admin data loaded" copy="Sign in as admin and open the admin panel." /></DashboardShell>;
@@ -3705,9 +3785,11 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
   const pendingClientRequests = visibleClientRequests.filter((booking) => booking.status === "pending");
   const confirmedClientRequests = visibleClientRequests.filter((booking) => booking.status === "confirmed");
   const assignedClientRequests = visibleClientRequests.filter((booking) => booking.status === "assigned");
-  const otherClientRequests = visibleClientRequests.filter((booking) => !["pending", "confirmed", "assigned"].includes(booking.status));
+  const providerCancelledRequests = visibleClientRequests.filter((booking) => booking.status === "cancelled" && booking.cancelledBy === "provider");
   const clientRequestSections = [
-    { title: "Active requests", emptyTitle: "No active requests", emptyCopy: "Accepted, provider-cancelled, or unusual active requests will appear here.", bookings: otherClientRequests },
+    ...(providerCancelledRequests.length
+      ? [{ title: "Active requests", emptyTitle: "No provider-cancelled requests", emptyCopy: "Provider-cancelled bookings that need a new provider will appear here.", bookings: providerCancelledRequests }]
+      : []),
     { title: "Pending profiles", emptyTitle: "No pending profiles", emptyCopy: "Client bookings with pending status will appear here.", bookings: pendingClientRequests },
     { title: "Confirmed profiles", emptyTitle: "No confirmed profiles", emptyCopy: "Client bookings with confirmed status will appear here.", bookings: confirmedClientRequests },
     { title: "Assigned profiles", emptyTitle: "No assigned profiles", emptyCopy: "Client bookings assigned to providers will appear here.", bookings: assignedClientRequests },
@@ -3734,7 +3816,15 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
       return acceptedByProvider && provider && !["completed", "cancelled"].includes(booking.status);
     })
     .sort((first, second) => new Date(second.acceptedAt || second.assignedAt || second.updatedAt || second.createdAt || 0) - new Date(first.acceptedAt || first.assignedAt || first.updatedAt || first.createdAt || 0));
-  const recentAcceptedProviderRequests = acceptedProviderRequests.slice(0, 4);
+
+  if (adminPaymentPageOpen) {
+    return (
+      <AdminPaymentPage
+        paymentData={paymentData}
+        onBack={() => setAdminPaymentPageOpen(false)}
+      />
+    );
+  }
 
   const markContactMessageReplied = (message, reply) => {
     const repliedMessage = {
@@ -4297,7 +4387,27 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
           })),
       ]}
     >
-      <div className="grid gap-5 lg:grid-cols-4">
+      <AdminPaymentOverview paymentData={paymentData} setStatusMessage={setStatusMessage} refreshAdminPayments={refreshAdminPayments} onOpenPaymentPage={() => setAdminPaymentPageOpen(true)} />
+      <div className="mb-6 grid gap-4 rounded-[1.35rem] border border-slate-200/80 bg-slate-950 p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/8 md:grid-cols-[1.2fr_0.8fr]">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-teal-200">Operations command center</p>
+          <h2 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">Monitor bookings, providers, payments, and support from one workspace.</h2>
+          <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-300">Review active client requests, approve provider permissions, inspect service history, and release payouts with a consistent admin workflow.</p>
+        </div>
+        <div className="grid content-center gap-3 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3">
+          {[
+            ["Open requests", clientRequests.length],
+            ["Pending providers", providerPermissions.length],
+            ["Client messages", contactMessages.length],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-2xl font-black">{value}</p>
+              <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-slate-300">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={CalendarCheck} label="Bookings" value={adminData.stats.totalBookings} />
         <StatCard icon={Bell} label="Open work" value={adminData.stats.pendingWork} />
         <StatCard icon={UserRoundCheck} label="Providers" value={adminData.stats.totalProviders} />
@@ -4592,7 +4702,7 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
             </div>
           </div>
         </Panel>
-        <AdminAcceptedProviderRequests bookings={recentAcceptedProviderRequests} totalCount={acceptedProviderRequests.length} compact onOpenAll={() => setAcceptedRequestsOpen(true)} />
+        <AdminAcceptedProviderRequests bookings={acceptedProviderRequests} totalCount={acceptedProviderRequests.length} compact />
         </div>
         <div className="grid content-start gap-5">
         <Panel title="Provider permissions">
@@ -4719,12 +4829,14 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
         </Panel>
         </div>
       </div>
-      <AdminPaymentOverview paymentData={paymentData} setStatusMessage={setStatusMessage} refreshAdminPayments={refreshAdminPayments} />
     </DashboardShell>
   );
 }
 
-function AdminAcceptedProviderRequests({ bookings = [], compact = false, totalCount = bookings.length, onOpenAll }) {
+function AdminAcceptedProviderRequests({ bookings = [], compact = false, totalCount = bookings.length }) {
+  const [compactOpen, setCompactOpen] = useState(false);
+  const shouldShowDetails = !compact || compactOpen;
+
   return (
     <Panel title="Provider accepted client requests">
       <div className="grid gap-4">
@@ -4737,15 +4849,15 @@ function AdminAcceptedProviderRequests({ bookings = [], compact = false, totalCo
               </div>
               <button
                 type="button"
-                onClick={onOpenAll}
+                onClick={() => setCompactOpen((current) => !current)}
                 className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
               >
-                Open accepted history
+                {compactOpen ? "Hide accepted history" : "Open accepted history"}
               </button>
             </div>
           </div>
         )}
-        {bookings.map((booking) => {
+        {shouldShowDetails && bookings.map((booking) => {
           const provider = booking.assignedProvider || booking.requestedProvider || null;
           const providerName = booking.assignedProviderName || booking.requestedProviderName || provider?.name || "Provider";
           const clientName = booking.user?.name || booking.userName || booking.name || "Client";
@@ -4787,7 +4899,7 @@ function AdminAcceptedProviderRequests({ bookings = [], compact = false, totalCo
             </div>
           );
         })}
-        {!bookings.length && (
+        {shouldShowDetails && !bookings.length && (
           <EmptyState
             title="No accepted provider requests"
             copy="When a provider accepts a client request, the details will appear here."
@@ -4854,7 +4966,145 @@ function AdminProviderDetails({ provider }) {
   );
 }
 
-function AdminPaymentOverview({ paymentData, setStatusMessage, refreshAdminPayments }) {
+function AdminPaymentPage({ paymentData, onBack }) {
+  const overview = paymentData?.overview || {};
+  const recentPayments = paymentData?.recentPayments || [];
+  const providerPayoutHistory = paymentData?.providerPayoutHistory || [];
+  const providerPayouts = paymentData?.providerPayouts || [];
+  const payoutHistoryByProvider = Object.values(
+    providerPayoutHistory.reduce((groups, entry) => {
+      const key = entry.providerId || entry.providerName || "unknown-provider";
+      if (!groups[key]) {
+        groups[key] = {
+          providerId: entry.providerId,
+          providerName: entry.providerName,
+          providerCategory: entry.providerCategory,
+          totalAmount: 0,
+          entries: [],
+        };
+      }
+      groups[key].totalAmount += entry.amount || 0;
+      groups[key].entries.push(entry);
+      return groups;
+    }, {})
+  ).map((group) => ({
+    ...group,
+    entries: group.entries.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
+  }));
+  const notifications = [
+    ...providerPayouts
+      .filter((payout) => Number(payout.totalPayable || payout.readyToWithdraw || 0) > 0)
+      .slice(0, 2)
+      .map((payout) => ({
+        title: "Provider payout ready",
+        message: `${payout.name || "Provider"} has ${formatMoney(payout.totalPayable || payout.readyToWithdraw || 0)} ready to release.`,
+      })),
+    ...recentPayments.slice(0, 2).map((payment) => ({
+      title: "Payment update",
+      message: `${payment.booking?.service || "Booking"} payment is ${payment.status || "updated"}.`,
+    })),
+  ];
+
+  return (
+    <DashboardShell
+      title="Admin Payments"
+      subtitle="View revenue, platform commission, provider payable amounts, payout history, and payment transactions."
+      notifications={notifications}
+      headerActions={(
+        <button type="button" onClick={onBack} className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15">
+          <ArrowLeft size={17} />
+          Back to admin
+        </button>
+      )}
+    >
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <PaymentSummaryCard icon={IndianRupee} title="Gross Revenue" amount={formatMoney(overview.grossRevenue || 0)} />
+        <PaymentSummaryCard icon={ShieldCheck} title="Platform Commission 20%" amount={formatMoney(overview.platformRevenue || 0)} />
+        <PaymentSummaryCard icon={Wallet} title="Provider Payable 80%" amount={formatMoney(overview.providerPayable || 0)} />
+        <PaymentSummaryCard icon={AlertTriangle} title="Penalty Collected" amount={formatMoney(overview.penaltyCollected || 0)} />
+        <PaymentSummaryCard icon={Clock} title="Pending Payments" amount={overview.pendingPayments || 0} />
+        <PaymentSummaryCard icon={CheckCircle} title="Paid Bookings" amount={overview.paidPayments || 0} />
+      </div>
+
+      <div className="mt-6 grid gap-5">
+        <Panel title="Provider payout history">
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-300">Money released by admin to provider dashboard balances.</p>
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            {payoutHistoryByProvider.length ? payoutHistoryByProvider.map((group) => (
+              <div key={group.providerId || group.providerName} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black leading-tight text-slate-950 dark:text-white">{group.providerName || "Provider"}</p>
+                    <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-300">{group.providerCategory || "Provider"} | {group.entries.length} transaction{group.entries.length === 1 ? "" : "s"}</p>
+                  </div>
+                  <p className="font-black text-slate-950 dark:text-white">{formatMoney(group.totalAmount || 0)}</p>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {group.entries.map((entry) => (
+                    <div key={entry.id} className="rounded-xl bg-white p-3 dark:bg-slate-950">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black leading-tight text-slate-950 dark:text-white">{formatMoney(entry.amount || 0)}</p>
+                          <p className="mt-1 text-[11px] font-bold text-slate-500 dark:text-slate-300">{formatDateTime(entry.createdAt)}</p>
+                        </div>
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ${entry.status === "completed" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-100" : entry.status === "failed" ? "bg-rose-100 text-rose-700 dark:bg-rose-400/10 dark:text-rose-100" : "bg-amber-100 text-amber-700 dark:bg-amber-400/10 dark:text-amber-100"}`}>
+                          {entry.status || "pending"}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-300 sm:grid-cols-2">
+                        <span className="min-w-0 truncate rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-white/5">Provider ID: {entry.providerId || "Not available"}</span>
+                        <span className="min-w-0 truncate rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-white/5">Sent by: {entry.metadata?.sentBy || "Admin"}</span>
+                        <span className="min-w-0 truncate rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-white/5">Sent at: {formatDateTime(entry.metadata?.sentAt || entry.createdAt)}</span>
+                        <span className="min-w-0 truncate rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-white/5">Payout ref: {entry.metadata?.razorpayPayoutId || entry.id || "Ledger payout"}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )) : <EmptyState title="No provider payouts sent yet" copy="Successful admin payments to providers will appear here." />}
+          </div>
+        </Panel>
+
+        <Panel title="Payment transaction records">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:bg-white/5 dark:text-slate-300">
+                <tr>
+                  <th className="px-4 py-3">Client</th>
+                  <th className="px-4 py-3">Booking</th>
+                  <th className="px-4 py-3">Provider</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Payment Status</th>
+                  <th className="px-4 py-3">Razorpay Payment ID</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                {recentPayments.map((payment) => {
+                  const booking = payment.booking || {};
+                  const user = payment.user || {};
+                  const provider = payment.provider || {};
+                  return (
+                    <tr key={payment._id} className="align-top">
+                      <td className="px-4 py-3 font-bold">{user.name || booking.userName || "Client"}</td>
+                      <td className="px-4 py-3">{booking.service || "Booking"}</td>
+                      <td className="px-4 py-3">{provider.name || booking.assignedProviderName || "Provider not assigned"}</td>
+                      <td className="px-4 py-3 font-black">{formatMoney(payment.amount || 0)}</td>
+                      <td className="px-4 py-3"><PaymentStatusBadge status={payment.status} /></td>
+                      <td className="max-w-[180px] break-all px-4 py-3 text-xs font-bold text-slate-500">{payment.razorpayPaymentId || "Not paid"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {!recentPayments.length && <EmptyState title="No payment records yet" copy="Razorpay orders, penalties, and verified payments will appear here." />}
+          </div>
+        </Panel>
+      </div>
+    </DashboardShell>
+  );
+}
+
+function AdminPaymentOverview({ paymentData, setStatusMessage, refreshAdminPayments, onOpenPaymentPage }) {
   const [providerPaymentsOpen, setProviderPaymentsOpen] = useState(false);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
   const [payingProviderId, setPayingProviderId] = useState("");
@@ -4898,7 +5148,7 @@ function AdminPaymentOverview({ paymentData, setStatusMessage, refreshAdminPayme
   };
 
   return (
-    <Panel title="Payment overview" className="mt-8">
+    <Panel title="Payment overview" className="mb-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <PaymentSummaryCard icon={IndianRupee} title="Gross Revenue" amount={formatMoney(overview.grossRevenue || 0)} />
         <PaymentSummaryCard icon={ShieldCheck} title="Platform Commission 20%" amount={formatMoney(overview.platformRevenue || 0)} />
@@ -4989,10 +5239,10 @@ function AdminPaymentOverview({ paymentData, setStatusMessage, refreshAdminPayme
           </div>
           <button
             type="button"
-            onClick={() => setPaymentHistoryOpen((current) => !current)}
+            onClick={onOpenPaymentPage}
             className="rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
           >
-            {paymentHistoryOpen ? "Hide payment history" : "Open payment history"}
+            Open payment history
           </button>
         </div>
       </div>
@@ -5410,19 +5660,25 @@ function FormInput({ label, type = "text", value, defaultValue, onChange, placeh
 function DashboardShell({ title, subtitle, children, notifications = [], headerActions = null, workspaceLabel = "ServiceHub workspace" }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const hasNotifications = notifications.length > 0;
+  const isAdminWorkspace = /admin/i.test(title);
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-28 dark:bg-slate-950 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div><p className="font-black text-amber-600">{workspaceLabel}</p><h1 className="mt-2 text-4xl font-black tracking-[-0.035em]">{title}</h1><p className="mt-2 text-slate-500 dark:text-slate-300">{subtitle}</p></div>
-          <div className="relative flex flex-wrap items-center justify-end gap-3">
+    <main className={`min-h-screen px-4 pb-16 pt-28 sm:px-6 lg:px-8 ${isAdminWorkspace ? "bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f5_42%,#f8fafc_100%)] dark:bg-[linear-gradient(180deg,#020617_0%,#08111f_52%,#020617_100%)]" : "dark:bg-slate-950"}`}>
+      <div className="mx-auto max-w-[92rem]">
+        <div className={`relative z-20 mb-8 overflow-visible rounded-[1.35rem] border p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:p-6 ${isAdminWorkspace ? "border-white/80 bg-white/88 dark:border-white/10 dark:bg-white/7" : "border-transparent bg-transparent shadow-none"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-teal-700 dark:text-teal-200">{workspaceLabel}</p>
+            <h1 className="mt-2 text-3xl font-black leading-tight text-slate-950 dark:text-white sm:text-4xl">{title}</h1>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500 dark:text-slate-300 sm:text-base">{subtitle}</p>
+          </div>
+          <div className="relative z-30 flex flex-wrap items-center justify-end gap-3">
             {headerActions}
             <button
               type="button"
               onClick={() => setNotificationsOpen((current) => !current)}
               aria-label="Open notifications"
-              className="relative rounded-full bg-white px-4 py-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:bg-white/10"
+              className="relative grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:text-teal-700 hover:shadow-lg dark:border-white/10 dark:bg-white/10 dark:text-white"
             >
               <Bell size={18} />
               {hasNotifications && (
@@ -5432,7 +5688,7 @@ function DashboardShell({ title, subtitle, children, notifications = [], headerA
               )}
             </button>
             {notificationsOpen && (
-              <div className="absolute right-0 top-14 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl dark:border-white/10 dark:bg-slate-900 dark:text-white">
+              <div className="absolute right-0 top-14 z-[120] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl dark:border-white/10 dark:bg-slate-900 dark:text-white">
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-white/10">
                   <p className="font-black">Notifications</p>
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600 dark:bg-white/10 dark:text-slate-200">{notifications.length}</span>
@@ -5453,6 +5709,7 @@ function DashboardShell({ title, subtitle, children, notifications = [], headerA
               </div>
             )}
           </div>
+          </div>
         </div>
         {children}
       </div>
@@ -5462,16 +5719,29 @@ function DashboardShell({ title, subtitle, children, notifications = [], headerA
 
 function StatCard({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-[1.7rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
-      <Icon className="text-amber-500" />
-      <p className="mt-5 text-3xl font-black">{value}</p>
-      <p className="mt-1 text-sm font-bold text-slate-500">{label}</p>
+    <div className="group relative overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:border-teal-200 hover:shadow-[0_22px_60px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-white/5">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-500 via-blue-600 to-amber-300" />
+      <div className="flex items-start justify-between gap-4">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100 transition group-hover:scale-105 dark:bg-teal-300/10 dark:text-teal-100 dark:ring-teal-300/20">
+          <Icon size={22} />
+        </div>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:bg-white/10 dark:text-slate-300">Live</span>
+      </div>
+      <p className="mt-5 text-3xl font-black leading-none text-slate-950 dark:text-white">{value}</p>
+      <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-300">{label}</p>
     </div>
   );
 }
 
 function Panel({ title, children, className = "", sectionRef }) {
-  return <section ref={sectionRef} className={`h-fit rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5 ${className}`}><h2 className="mb-5 text-xl font-black">{title}</h2>{children}</section>;
+  return (
+    <section ref={sectionRef} className={`h-fit overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-[0_16px_45px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5 ${className}`}>
+      <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-white/10 dark:bg-white/5 sm:px-6">
+        <h2 className="text-lg font-black text-slate-950 dark:text-white">{title}</h2>
+      </div>
+      <div className="p-5 sm:p-6">{children}</div>
+    </section>
+  );
 }
 
 function JobCard({ booking, actionLabel, onAction, secondaryAction, disabled, onEstimateClick, alertMode = false }) {
@@ -6140,7 +6410,12 @@ function ServiceHubFooter({ onServiceClick }) {
 
         <div className="mt-10 flex flex-wrap justify-between gap-4 border-t border-white/15 pt-6 text-base text-slate-200">
           <span>© 2026 ServiceHub. All Rights Reserved.</span>
-          <span>Serving homes across Pune and nearby cities.</span>
+          <div className="flex flex-wrap gap-4">
+            <a href="/contact" className="transition hover:text-amber-300">Contact</a>
+            <a href="/privacy-policy" className="transition hover:text-amber-300">Privacy Policy</a>
+            <a href="/terms-and-conditions" className="transition hover:text-amber-300">Terms</a>
+            <span>Serving homes across Pune and nearby cities.</span>
+          </div>
         </div>
       </div>
     </footer>

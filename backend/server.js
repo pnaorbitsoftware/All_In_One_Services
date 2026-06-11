@@ -22,6 +22,24 @@ const app = express();
 
 const port = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === "production";
+const siteUrl = (process.env.SITE_URL || process.env.CLIENT_URL || "https://servicehub.aparaitech.org").replace(/\/$/, "");
+const sitemapRoutes = [
+  "/",
+  "/contact",
+  "/privacy-policy",
+  "/terms-and-conditions",
+  "/services/electrician-near-me",
+  "/services/plumber-near-me",
+  "/services/carpenter-near-me",
+  "/services/ac-repair-near-me",
+  "/services/home-cleaning-services",
+  "/services/painting-services",
+  "/services/appliance-repair",
+  "/locations/pune",
+  "/locations/mumbai",
+  "/locations/nashik",
+  "/locations/baramati",
+];
 
 //
 // ✅ FIXED CORS CONFIG (PRODUCTION READY)
@@ -62,6 +80,17 @@ const corsOptions = {
 };
 
 app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  if (isProduction && process.env.FORCE_HTTPS !== "false" && req.headers["x-forwarded-proto"] === "http") {
+    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+  }
+
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
+  next();
+});
 app.use(cors(corsOptions));
 app.use(responseTimeLogger);
 app.use(compression());
@@ -102,6 +131,22 @@ app.get("/api/health", (_req, res) => {
     databaseName: mongoDbName,
     database: dbStatus.connected ? "connected" : "disconnected",
   });
+});
+
+app.get("/robots.txt", (_req, res) => {
+  res.type("text/plain").send(`User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}/sitemap.xml\n`);
+});
+
+app.get("/sitemap.xml", (_req, res) => {
+  const urls = sitemapRoutes
+    .map((route) => {
+      const priority = route === "/" ? "1.0" : route.startsWith("/services") ? "0.9" : "0.8";
+      const changefreq = route === "/" ? "daily" : route.includes("policy") || route.includes("terms") ? "yearly" : "weekly";
+      return `  <url><loc>${siteUrl}${route === "/" ? "" : route}</loc><changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`;
+    })
+    .join("\n");
+
+  res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
 });
 
 //
