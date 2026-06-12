@@ -214,6 +214,7 @@ router.post("/register", async (req, res) => {
       category,
       location,
       preferredWorkLocation,
+      workImage = "",
       price,
       responseTime,
       otpChannel = "email",
@@ -248,6 +249,15 @@ router.post("/register", async (req, res) => {
 
     if (role === "user" && !String(address || "").trim()) {
       return res.status(400).json({ message: "Address is required for client registration." });
+    }
+
+    const normalizedWorkImage = String(workImage || "").trim();
+    if (role === "provider" && !isValidProfileImage(normalizedWorkImage)) {
+      return res.status(400).json({ message: "Please upload a PNG, JPG, JPEG, or WEBP work photo." });
+    }
+
+    if (normalizedWorkImage.length > 1_500_000) {
+      return res.status(400).json({ message: "Work photo must be smaller than 1.5 MB." });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -317,6 +327,7 @@ router.post("/register", async (req, res) => {
         description: `${providerName} provides ${category} services in ${location}.`,
         about: `${providerName} is registered on ServiceHub as a ${category} provider.`,
         features: [category],
+        profileImage: normalizedWorkImage,
         isActive: false,
         approvalStatus: "pending",
       });

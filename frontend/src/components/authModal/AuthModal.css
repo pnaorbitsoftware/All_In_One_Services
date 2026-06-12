@@ -375,6 +375,15 @@
   font-weight: 700;
 }
 
+.auth-file-selected {
+  display: block;
+  margin-top: 0.45rem;
+  color: #0f766e;
+  font-size: 0.82rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .auth-password-toggle {
   display: grid;
   flex: 0 0 auto;
@@ -694,6 +703,10 @@
 .dark .auth-input input::placeholder,
 .dark .auth-input textarea::placeholder {
   color: #94a3b8;
+}
+
+.dark .auth-file-selected {
+  color: #5eead4;
 }
 
 .dark .auth-input input:-webkit-autofill,

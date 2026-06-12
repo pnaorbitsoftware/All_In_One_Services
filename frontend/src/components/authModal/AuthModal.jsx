@@ -1,6 +1,6 @@
 import "./AuthModal.css";
 import { useEffect, useState } from "react";
-import { BriefcaseBusiness, Eye, EyeOff, IndianRupee, Lock, Mail, MapPin, Phone, User, X } from "lucide-react";
+import { BriefcaseBusiness, Eye, EyeOff, ImagePlus, IndianRupee, Lock, Mail, MapPin, Phone, User, X } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const AUTH_API_URLS = [...new Set([API_URL, "http://localhost:5000/api", "http://localhost:5001/api"])];
@@ -157,6 +157,8 @@ export default function AuthModal({
     category: "",
     location: "",
     preferredWorkLocation: "",
+    workImage: "",
+    workImageName: "",
     price: "",
     responseTime: "",
     otpChannel: "email",
@@ -221,6 +223,51 @@ export default function AuthModal({
 
   const handleChange = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const resizeWorkImage = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          const maxSize = 900;
+          const scale = Math.min(maxSize / image.width, maxSize / image.height, 1);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(Math.round(image.width * scale), 1);
+          canvas.height = Math.max(Math.round(image.height * scale), 1);
+          const context = canvas.getContext("2d");
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.84));
+        };
+        image.onerror = () => reject(new Error("Selected work photo could not be loaded."));
+        image.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error("Selected work photo could not be read."));
+      reader.readAsDataURL(file);
+    });
+
+  const handleWorkImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setForm((prev) => ({ ...prev, workImage: "", workImageName: "" }));
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose a PNG, JPG, JPEG, or WEBP work photo.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const workImage = await resizeWorkImage(file);
+      setError("");
+      setForm((prev) => ({ ...prev, workImage, workImageName: file.name }));
+    } catch (imageError) {
+      setError(imageError.message || "Work photo could not be prepared.");
+      event.target.value = "";
+    }
   };
 
   const togglePasswordVisibility = (field) => {
@@ -749,6 +796,19 @@ export default function AuthModal({
                     required
                   />
                 </div>
+              </label>
+
+              <label>
+                Work photo
+                <div className="auth-input">
+                  <ImagePlus size={18} />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={handleWorkImageChange}
+                  />
+                </div>
+                {form.workImageName && <span className="auth-file-selected">{form.workImageName}</span>}
               </label>
             </div>
           )}

@@ -518,7 +518,7 @@ const normalizeProvider = (provider) => ({
   description: provider.description || `${provider.name} provides ${provider.category} services in ${provider.location}.`,
   about: provider.about || provider.description,
   features: provider.features?.length ? provider.features : [provider.category],
-  image: categoryImages[provider.category] || categoryImages.Cleaning,
+  image: provider.profileImage || categoryImages[provider.category] || categoryImages.Cleaning,
 });
 
 const normalizeProviderDashboard = (data) => ({
@@ -573,6 +573,11 @@ const formatPrice = (value) =>
 
 const formatMoney = (value) =>
   Number.isFinite(Number(value)) ? `Rs. ${Number(value).toLocaleString("en-IN")}` : "Rs. 0";
+
+const formatServiceChargeLabel = (price = "") => {
+  const amount = String(price).replace(/^from\s+/i, "").trim();
+  return amount ? `Service charge ${amount}` : "Service charge not set";
+};
 
 const parseMoneyValue = (value = "") => {
   const amount = String(value).replace(/,/g, "").match(/\d+(\.\d+)?/)?.[0];
@@ -1175,10 +1180,7 @@ export default function Home() {
     }
 
     if (user?.role === "provider" && !providerClientMode) {
-      setSelectedService(null);
-      setBookingOpen(false);
-      setStatusMessage("Open Client Booking Dashboard first to book a service from your provider account.");
-      return;
+      setProviderClientMode(true);
     }
 
     setSelectedService(null);
@@ -1969,9 +1971,6 @@ export default function Home() {
                   providerVisibleCount={providerVisibleCount}
                   setProviderVisibleCount={setProviderVisibleCount}
                   setSelectedService={setSelectedService}
-                  openBooking={openBooking}
-                  userRole={user?.role || ""}
-                  canBookServices={user?.role !== "admin" && (user?.role !== "provider" || providerClientMode)}
                   ownProviderId={providerProfile?._id || ""}
                 />
               </div>
@@ -2103,7 +2102,14 @@ export default function Home() {
             service={selectedService}
             onBook={openBooking}
             onClose={() => setSelectedService(null)}
-            canBook={user?.role !== "admin" && (user?.role !== "provider" || providerClientMode) && String(selectedService.providerId || "") !== String(providerProfile?._id || "")}
+            canBook={
+              user?.role !== "admin" &&
+              !(
+                selectedService.providerId &&
+                providerProfile?._id &&
+                String(selectedService.providerId) === String(providerProfile._id)
+              )
+            }
           />
         )}
       </AnimatePresence>
@@ -2517,8 +2523,6 @@ function LanguageSwitcher({ language, setLanguage, t, fullWidth = false }) {
 }
 
 function PopularServicesGrid({ openPopularService }) {
-  const [popularStartIndex, setPopularStartIndex] = useState(0);
-  const popularScrollerRef = useRef(null);
   const popular = [
     {
       title: "Electrician",
@@ -2577,18 +2581,33 @@ function PopularServicesGrid({ openPopularService }) {
       border: "border-t-rose-500",
     },
   ];
-  const maxPopularStartIndex = Math.max(popular.length - 1, 0);
-  const movePopular = (direction) => {
-    setPopularStartIndex((current) => Math.min(Math.max(current + direction, 0), maxPopularStartIndex));
-  };
-  const isPopularAtStart = popularStartIndex === 0;
-  const isPopularAtEnd = popularStartIndex >= maxPopularStartIndex;
 
-  useEffect(() => {
-    const scroller = popularScrollerRef.current;
-    const target = scroller?.children?.[popularStartIndex];
-    target?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
-  }, [popularStartIndex]);
+  const renderPopularCard = (service, duplicate = false) => (
+    <div key={`${duplicate ? "loop" : "main"}-${service.title}`} className="popular-services-item">
+      <button
+        type="button"
+        onClick={() => openPopularService(service.title)}
+        data-popular-service={getServiceSlug(service.title)}
+        tabIndex={duplicate ? -1 : undefined}
+        className={`group h-full w-full overflow-hidden rounded-2xl border border-[#ded7ca] border-t-4 ${service.border} bg-[#fffefb] text-left shadow-sm transition hover:-translate-y-1 hover:shadow-2xl dark:border-white/10 dark:bg-white/5`}
+      >
+        <div className="relative overflow-hidden">
+          <img
+            src={service.image}
+            alt={`${service.title} home service provider on ServiceHub India`}
+            loading="lazy"
+            decoding="async"
+            className="h-36 w-full object-cover transition duration-500 group-hover:scale-105"
+          />
+        </div>
+        <div className="p-4">
+          <BriefcaseBusiness className={service.color} size={22} />
+          <h3 className="mt-3 text-lg font-black text-slate-950 dark:text-white">{service.title}</h3>
+          <p className="mt-2 text-base leading-6 text-slate-500 dark:text-slate-300">{service.note}</p>
+        </div>
+      </button>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-12 sm:px-6 lg:px-8">
@@ -2603,56 +2622,15 @@ function PopularServicesGrid({ openPopularService }) {
         </div>
       </div>
 
-      <div className="grid items-center gap-3 sm:grid-cols-[auto_1fr_auto]">
-        <button
-          type="button"
-          onClick={() => movePopular(-1)}
-          disabled={isPopularAtStart}
-          aria-label="Previous popular services"
-          className="mx-auto grid h-11 w-11 place-items-center rounded-full border border-slate-900 bg-slate-950 text-2xl font-black text-white shadow-xl transition hover:-translate-x-0.5 hover:bg-teal-700 active:bg-slate-950 focus:bg-slate-950 focus:outline-none disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:hover:translate-x-0"
-        >
-          &lt;
-        </button>
-
-        <div
-          ref={popularScrollerRef}
-              className="scrollbar-hidden flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth sm:overflow-x-hidden"
-        >
-          {popular.map((service) => (
-            <div key={service.title} className="min-w-full snap-start sm:min-w-[calc((100%-1rem)/2)] lg:min-w-[calc((100%-3rem)/4)]">
-              <button
-                type="button"
-                onClick={() => openPopularService(service.title)}
-                data-popular-service={getServiceSlug(service.title)}
-                className={`group h-full w-full overflow-hidden rounded-2xl border border-[#ded7ca] border-t-4 ${service.border} bg-[#fffefb] text-left shadow-sm transition hover:-translate-y-1 hover:shadow-2xl dark:border-white/10 dark:bg-white/5`}
-              >
-                <div className="relative overflow-hidden">
-                  <img
-                    src={service.image}
-                    alt={`${service.title} home service provider on ServiceHub India`}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-36 w-full object-cover transition duration-500 group-hover:scale-105"
-                  />
-                </div>
-                <div className="p-4">
-                  <BriefcaseBusiness className={service.color} size={22} />
-                  <h3 className="mt-3 text-lg font-black text-slate-950 dark:text-white">{service.title}</h3>
-                  <p className="mt-2 text-base leading-6 text-slate-500 dark:text-slate-300">{service.note}</p>
-                </div>
-              </button>
+      <div className="popular-services-viewport scrollbar-hidden overflow-hidden">
+          <div className="popular-services-marquee">
+            <div className="popular-services-set">
+              {popular.map((service) => renderPopularCard(service))}
             </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => movePopular(1)}
-          disabled={isPopularAtEnd}
-          aria-label="Next popular services"
-          className="mx-auto grid h-11 w-11 place-items-center rounded-full border border-slate-900 bg-slate-950 text-2xl font-black text-white shadow-xl transition hover:translate-x-0.5 hover:bg-teal-700 active:bg-slate-950 focus:bg-slate-950 focus:outline-none disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:hover:translate-x-0"
-        >
-          &gt;
-        </button>
+            <div className="popular-services-set" aria-hidden="true">
+              {popular.map((service) => renderPopularCard(service, true))}
+            </div>
+          </div>
       </div>
     </div>
   );
@@ -2684,14 +2662,13 @@ function Categories({ categories, selectedCategory, setSelectedCategory }) {
   );
 }
 
-function Providers({ services, providerVisibleCount, setProviderVisibleCount, setSelectedService, openBooking, userRole, canBookServices, ownProviderId = "" }) {
+function Providers({ services, providerVisibleCount, setProviderVisibleCount, setSelectedService, ownProviderId = "" }) {
   const providersGridRef = useRef(null);
   const providerBatchSize = 4;
   const visibleCount = Math.min(providerVisibleCount, services.length);
   const visibleServices = services.slice(0, visibleCount);
   const hasMoreProviders = visibleCount < services.length;
   const canShowLessProviders = visibleCount > providerBatchSize;
-  const showBookingAction = userRole !== "admin" && (userRole !== "provider" || canBookServices);
   const scrollToProvidersGrid = () => {
     window.setTimeout(() => {
       providersGridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2700,21 +2677,19 @@ function Providers({ services, providerVisibleCount, setProviderVisibleCount, se
 
   return (
     <div id="providers" className="bg-[#fbfaf6] px-4 py-10 dark:bg-slate-950 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-[1500px]">
         <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <span className="text-sm font-black uppercase tracking-[0.2em] text-teal-700">Providers</span>
-            <h2 className="mt-2 font-display text-4xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">Top service providers</h2>
+            <h2 className="font-display text-4xl font-black tracking-[-0.02em] text-slate-950 dark:text-white md:text-5xl">Most booked services</h2>
           </div>
           <div className="rounded-full border border-[#ded7ca] bg-white px-4 py-2 text-sm font-black text-slate-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
             {services.length} available
           </div>
         </div>
         {visibleServices.length ? (
-          <div ref={providersGridRef} className="scroll-mt-24 grid gap-6 md:grid-cols-2">
+          <div ref={providersGridRef} className="scroll-mt-24 grid gap-8 sm:grid-cols-2 xl:grid-cols-4">
             {visibleServices.map((service, index) => {
               const isOwnProviderCard = Boolean(service.providerId && ownProviderId && String(service.providerId) === String(ownProviderId));
-              const canBookProvider = showBookingAction && !isOwnProviderCard;
 
               return (
             <motion.article
@@ -2724,46 +2699,39 @@ function Providers({ services, providerVisibleCount, setProviderVisibleCount, se
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.04 }}
-              className="group rounded-[1.25rem] border border-[#ded7ca] bg-[#fffefb] p-5 shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.13)] dark:border-white/15 dark:bg-slate-900/85 dark:shadow-[0_18px_48px_rgba(0,0,0,0.25)]"
+              className="group min-w-0 overflow-hidden rounded-2xl border border-[#ded7ca] bg-[#fffefb] p-3 shadow-sm transition hover:-translate-y-1 hover:border-teal-200 hover:shadow-xl dark:border-white/10 dark:bg-white/5"
             >
-              <div className="flex gap-3">
-                <div className="grid h-13 w-13 flex-none place-items-center rounded-2xl border border-teal-200 bg-teal-50 text-teal-600 group:nth-[3n]:text-amber-600 dark:border-teal-300/25 dark:bg-teal-300/10 dark:text-teal-200">
-                  <BriefcaseBusiness size={25} />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xl font-black tracking-[-0.03em] text-slate-950 dark:text-white">{service.name}</h3>
-                  <p className="mt-0.5 text-base text-slate-500 dark:text-slate-300">{service.category}</p>
-                </div>
-              </div>
-              <p className="mt-5 min-h-14 text-base leading-7 text-slate-500 dark:text-slate-300">{service.description}</p>
-              <div className="mt-5 flex flex-wrap gap-x-3 gap-y-2 text-base text-slate-500 dark:text-slate-300">
-                <span className="flex items-center gap-1.5"><MapPin size={16} /> {service.location}</span>
-                <span className="flex items-center gap-1.5"><Star size={16} /> {service.rating || 4.8} ({service.reviews || 0})</span>
-                <span className="flex items-center gap-1.5"><IndianRupee size={16} /> {service.price}</span>
-              </div>
-              <div className={`mt-5 grid gap-3 ${canBookProvider ? "sm:grid-cols-2" : ""}`}>
-                <motion.button
+              <button
+                type="button"
+                onClick={() => setSelectedService(service)}
+                className="block w-full overflow-hidden rounded-xl bg-slate-100 text-left ring-1 ring-slate-100 transition focus:outline-none focus:ring-4 focus:ring-teal-200 dark:bg-white/10 dark:ring-white/10"
+                aria-label={`Open ${service.name} profile`}
+              >
+                <span className="relative block aspect-square overflow-hidden">
+                  <img
+                    src={service.image || categoryImages[service.category] || categoryImages.Cleaning}
+                    alt={`${service.name} ${service.category} provider`}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
+                </span>
+              </button>
+              <div className="px-1 pt-4">
+                <button
                   type="button"
                   onClick={() => setSelectedService(service)}
-                  whileTap={{ scale: 0.96 }}
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="rounded-xl bg-[#f0e7da] px-4 py-3 text-base font-black text-slate-950 transition hover:bg-[#eadfce] dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+                  className="text-left text-lg font-black leading-7 text-slate-950 transition hover:text-teal-700 dark:text-white dark:hover:text-amber-300"
                 >
-                  View profile
-                </motion.button>
-                {canBookProvider && (
-                  <motion.button
-                    type="button"
-                    onClick={() => openBooking(service)}
-                    whileTap={{ scale: 0.96 }}
-                    whileHover={{ y: -2 }}
-                    transition={{ duration: 0.22, ease: "easeOut" }}
-                    className="rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-4 py-3 text-base font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
-                  >
-                    Book now
-                  </motion.button>
-                )}
+                  {service.name}
+                </button>
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <span className="inline-flex items-center gap-1"><Star size={15} className="fill-slate-800 text-slate-800 dark:fill-amber-300 dark:text-amber-300" /> {service.rating || 4.8}</span>
+                  {service.responseTime && <><span aria-hidden="true">|</span><span className="inline-flex items-center gap-1"><Sparkles size={14} className="fill-teal-600 text-teal-600" /> {service.responseTime.includes("Instant") ? service.responseTime : "Instant"}</span></>}
+                  {service.location && <><span aria-hidden="true">|</span><span>{service.location}</span></>}
+                </div>
+                <p className="mt-2 text-base font-semibold text-slate-950 dark:text-white">{formatServiceChargeLabel(service.price)}</p>
+                {isOwnProviderCard && <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-300">Your provider profile</p>}
               </div>
             </motion.article>
               );
