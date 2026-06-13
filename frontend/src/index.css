@@ -121,6 +121,21 @@ h3 {
   display: none;
 }
 
+.home-section {
+  scroll-margin-top: 7.5rem;
+}
+
+.home-section-title {
+  opacity: 0.9;
+  text-wrap: balance;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.dark .home-section-title {
+  opacity: 0.86;
+  text-shadow: 0 1px 18px rgba(20, 184, 166, 0.14);
+}
+
 .popular-services-viewport {
   position: relative;
 }

@@ -6,7 +6,7 @@ export default function SEO({
   description = "ServiceHub India is a local service marketplace to book verified electricians, plumbers, AC repair, cleaners, painters, carpenters, and appliance repair providers.",
   keywords = targetKeywords,
   path = "/",
-  image = "/favicon.svg",
+  image = "/servicehub-icon.png",
   type = "website",
   schema = [],
   noIndex = false,

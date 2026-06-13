@@ -84,6 +84,7 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const AUTH_API_URLS = [...new Set([API_URL, "http://localhost:5000/api", "http://localhost:5001/api"])];
+const SERVICEHUB_ICON = "/servicehub-icon.png";
 
 const supportedLanguages = [
   { code: "en", label: "English", short: "EN" },
@@ -892,6 +893,7 @@ export default function Home() {
     { id: "top", label: t("home"), icon: House },
     { id: "services", label: t("services"), icon: BriefcaseBusiness },
     { id: "providers", label: t("providers"), icon: MapPin },
+    { id: "contact", label: t("contactUs"), icon: MessageCircle },
   ];
   const isNavActive = (id) => activeView === "home" ? activeSection === id : id === "top" && user?.role === "provider" && activeView === "provider";
 
@@ -1623,17 +1625,20 @@ export default function Home() {
         ]}
       />
       <div className="min-h-screen bg-[linear-gradient(135deg,#f8fafc_0%,#ecfeff_38%,#fff7ed_100%)] text-slate-950 transition-colors duration-500 dark:bg-[linear-gradient(135deg,#020617_0%,#07111f_48%,#111827_100%)] dark:text-white">
-        <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${navScrolled ? "border-b border-teal-100/80 bg-[linear-gradient(120deg,rgba(255,255,255,0.94),rgba(236,254,255,0.92),rgba(255,247,237,0.9))] shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur-2xl dark:border-white/10 dark:bg-[linear-gradient(120deg,rgba(2,6,23,0.92),rgba(8,47,73,0.84),rgba(15,23,42,0.9))]" : "border-b border-transparent bg-[linear-gradient(120deg,rgba(255,255,255,0.8),rgba(236,254,255,0.76),rgba(255,247,237,0.72))] backdrop-blur-xl dark:bg-[linear-gradient(120deg,rgba(2,6,23,0.72),rgba(8,47,73,0.64),rgba(15,23,42,0.68))]"}`}>
-          <nav className={`mx-auto flex max-w-[96rem] items-center justify-between gap-4 px-4 transition-all duration-300 sm:px-6 lg:px-8 ${navScrolled ? "h-16" : "h-20"}`}>
-            <button type="button" onClick={goMainHome} className="group flex min-w-0 flex-none items-center gap-3">
-                <span className={`grid place-items-center rounded-2xl bg-gradient-to-br from-teal-500 via-blue-600 to-slate-950 font-black text-white shadow-xl shadow-blue-600/20 ring-1 ring-white/40 transition-all duration-300 group-hover:-translate-y-0.5 ${navScrolled ? "h-10 w-10 text-base" : "h-12 w-12 text-lg"}`}>S</span>
+        <header className={`fixed inset-x-0 top-0 z-50 px-3 pt-3 transition-all duration-300 sm:px-5 ${navScrolled ? "pb-2" : "pb-3"}`}>
+          <nav className={`mx-auto flex max-w-[96rem] items-center justify-between gap-3 rounded-[1.35rem] border px-4 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-white/45 backdrop-blur-2xl transition-all duration-300 dark:ring-white/10 sm:px-5 lg:px-6 ${navScrolled ? "h-16 border-white/80 bg-white/88 dark:border-white/10 dark:bg-slate-950/82" : "h-20 border-white/70 bg-white/74 dark:border-white/10 dark:bg-slate-950/66"}`}>
+            <button type="button" onClick={goMainHome} className="group flex min-w-0 flex-none items-center gap-3 rounded-2xl pr-2 transition hover:bg-white/55 dark:hover:bg-white/5">
+                <span className={`grid place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xl shadow-blue-600/20 ring-1 ring-slate-200/80 transition-all duration-300 group-hover:-translate-y-0.5 dark:ring-white/15 ${navScrolled ? "h-10 w-10" : "h-12 w-12"}`}>
+                  <img src={SERVICEHUB_ICON} alt="ServiceHub symbol" className="h-full w-full rounded-xl object-contain" />
+                </span>
               <span className="leading-tight">
                 <span className="block text-xl font-black tracking-tight">ServiceHub</span>
                 <span className="hidden text-[11px] font-black uppercase tracking-[0.18em] text-slate-400 sm:block">{t("verifiedLocalServices")}</span>
               </span>
             </button>
 
-            <div className="hidden flex-none items-center gap-1 rounded-full border border-slate-200/80 bg-white/82 p-1.5 text-sm font-black text-slate-500 shadow-[0_10px_34px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-300 xl:flex">
+            <div className="hidden min-w-0 flex-1 items-center justify-center lg:flex">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-200/80 bg-white/82 p-1.5 text-sm font-black text-slate-500 shadow-[0_10px_34px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-300">
               {mainNavItems.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -1651,19 +1656,10 @@ export default function Home() {
               {user?.role === "user" && <button type="button" onClick={() => setActiveView("client")} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${activeView === "client" ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}><CalendarCheck className="flex-none" size={16} /><span className="whitespace-nowrap [overflow-wrap:normal]">{t("dashboard")}</span></button>}
               {user?.role === "provider" && <button type="button" onClick={loadProviderDashboard} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${["provider", "client"].includes(activeView) ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}><BriefcaseBusiness className="flex-none" size={16} /><span className="whitespace-nowrap [overflow-wrap:normal]">{providerDashboardNavLabel}</span></button>}
               {user?.role === "admin" && <button type="button" onClick={loadAdminDashboard} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${activeView === "admin" ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}><ShieldCheck className="flex-none" size={16} /><span className="whitespace-nowrap [overflow-wrap:normal]">{t("admin")}</span></button>}
-              {!user && activeView === "home" && (
-                <button
-                  type="button"
-                  onClick={() => navigateHome("#contact")}
-                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${isNavActive("contact") ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
-                >
-                  <MessageCircle className="flex-none" size={16} />
-                  <span className="whitespace-nowrap [overflow-wrap:normal]">{t("contactUs")}</span>
-                </button>
-              )}
+            </div>
             </div>
 
-            <div className="hidden flex-none items-center gap-3 xl:flex">
+            <div className="hidden flex-none items-center gap-2 lg:flex xl:gap-3">
               <button
                 type="button"
                 onClick={() => setTheme(isDark ? "light" : "dark")}
@@ -1866,12 +1862,12 @@ export default function Home() {
               )}
             </div>
 
-            <button type="button" onClick={() => setMobileNavOpen(true)} className="grid h-11 w-11 place-items-center rounded-full bg-slate-950 text-white shadow-lg shadow-slate-950/15 ring-1 ring-white/10 transition hover:-translate-y-0.5 dark:bg-white dark:text-slate-950 xl:hidden" aria-label="Open navigation menu">
+            <button type="button" onClick={() => setMobileNavOpen(true)} className="grid h-11 w-11 place-items-center rounded-full bg-slate-950 text-white shadow-lg shadow-slate-950/15 ring-1 ring-white/10 transition hover:-translate-y-0.5 dark:bg-white dark:text-slate-950 lg:hidden" aria-label="Open navigation menu">
               <Menu size={20} />
             </button>
           </nav>
-          <div className="h-0.5 bg-transparent">
-            <div className="h-full bg-gradient-to-r from-teal-500 via-blue-600 to-amber-300 transition-[width] duration-200" style={{ width: `${navProgress}%` }} />
+          <div className="mx-auto mt-2 h-0.5 max-w-[92rem] overflow-hidden rounded-full bg-transparent">
+            <div className="h-full rounded-full bg-gradient-to-r from-teal-500 via-blue-600 to-amber-300 transition-[width] duration-200" style={{ width: `${navProgress}%` }} />
           </div>
         </header>
 
@@ -1881,7 +1877,9 @@ export default function Home() {
               <motion.div initial={{ x: 90 }} animate={{ x: 0 }} exit={{ x: 90 }} transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }} className="ml-auto flex h-full max-h-[calc(100dvh-1.5rem)] w-full max-w-sm flex-col gap-4 overflow-y-auto rounded-[1.7rem] border border-white/70 bg-[linear-gradient(145deg,#ffffff_0%,#ecfeff_48%,#fff7ed_100%)] p-4 text-slate-950 shadow-2xl dark:border-white/10 dark:bg-[linear-gradient(145deg,#020617_0%,#082f49_52%,#111827_100%)] dark:text-white sm:max-h-[calc(100dvh-2rem)] sm:p-5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-teal-500 via-blue-600 to-slate-950 font-black text-white shadow-lg shadow-blue-600/20">S</span>
+                    <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg shadow-blue-600/20 ring-1 ring-slate-200/80 dark:ring-white/15">
+                      <img src={SERVICEHUB_ICON} alt="ServiceHub symbol" className="h-full w-full rounded-xl object-contain" />
+                    </span>
                     <div>
                       <p className="font-black">ServiceHub</p>
                       <p className="text-xs font-bold text-slate-400">{t("verifiedLocalServices")}</p>
@@ -1922,16 +1920,6 @@ export default function Home() {
                   {user?.role === "user" && <button type="button" onClick={() => { setActiveView("client"); setMobileNavOpen(false); }} className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${activeView === "client" ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}><span className="flex items-center gap-3"><CalendarCheck size={18} />{t("clientDashboard")}</span><ChevronRight size={17} /></button>}
                   {user?.role === "provider" && <button type="button" onClick={() => { loadProviderDashboard(); setMobileNavOpen(false); }} className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${["provider", "client"].includes(activeView) ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}><span className="flex items-center gap-3"><BriefcaseBusiness size={18} />{providerDashboardNavLabel}</span><ChevronRight size={17} /></button>}
                   {user?.role === "admin" && <button type="button" onClick={loadAdminDashboard} className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${activeView === "admin" ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}><span className="flex items-center gap-3"><ShieldCheck size={18} />{t("admin")}</span><ChevronRight size={17} /></button>}
-                  {!user && activeView === "home" && (
-                    <button
-                      type="button"
-                      onClick={() => navigateHome("#contact")}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${isNavActive("contact") ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
-                    >
-                      <span className="flex items-center gap-3"><MessageCircle size={18} />{t("contactUs")}</span>
-                      <ChevronRight size={17} />
-                    </button>
-                  )}
                 </div>
                 <div className="mt-auto grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 dark:border-white/10">
                   <div className="col-span-2">
@@ -1953,9 +1941,9 @@ export default function Home() {
         </AnimatePresence>
 
         {activeView === "home" && (
-          <main id="top" className="overflow-hidden pt-20">
+          <main id="top" className="overflow-hidden pt-24 lg:pt-28">
             <Hero searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSearch={searchServices} />
-            <section id="services" className="border-y border-[#ded7ca] bg-[#fbfaf6] dark:border-white/10 dark:bg-slate-950">
+            <section id="services" className="home-section border-y border-[#ded7ca] bg-[#fbfaf6] dark:border-white/10 dark:bg-slate-950">
               <PopularServicesGrid openPopularService={openPopularService} />
               <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[350px_1fr]">
                 <Categories
@@ -2153,7 +2141,7 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
   }, []);
 
   return (
-    <section className="relative overflow-hidden bg-[#fbfaf6] px-4 py-10 dark:bg-slate-950 sm:px-6 lg:px-8 lg:py-16">
+    <section className="home-section relative overflow-hidden bg-[#fbfaf6] px-4 py-16 dark:bg-slate-950 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-100"
@@ -2610,13 +2598,13 @@ function PopularServicesGrid({ openPopularService }) {
   );
 
   return (
-    <div className="mx-auto max-w-[1500px] px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-[1500px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
       <div className="mb-8 max-w-4xl">
         <div className="max-w-4xl">
           <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-black text-teal-700">
             Popular services
           </span>
-          <h2 className="mt-4 font-display text-4xl font-black leading-[1.08] tracking-[-0.045em] text-slate-950 dark:text-white md:text-5xl">
+          <h2 className="home-section-title mt-4 font-display text-4xl font-black leading-[1.08] tracking-[-0.045em] text-slate-950 dark:text-white md:text-5xl">
             Everything customers expect<br className="hidden md:block" /> in one platform.
           </h2>
         </div>
@@ -2639,7 +2627,7 @@ function PopularServicesGrid({ openPopularService }) {
 function Categories({ categories, selectedCategory, setSelectedCategory }) {
   return (
     <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
-      <h2 className="font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
+      <h2 className="home-section-title font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
         Providers category
       </h2>
       <div className="scrollbar-hidden mt-7 grid max-h-[calc(100vh-14rem)] gap-2.5 overflow-y-auto pr-1">
@@ -2676,11 +2664,11 @@ function Providers({ services, providerVisibleCount, setProviderVisibleCount, se
   };
 
   return (
-    <div id="providers" className="bg-[#fbfaf6] px-4 py-10 dark:bg-slate-950 sm:px-6 lg:px-8">
+    <div id="providers" className="home-section bg-[#fbfaf6] px-4 py-16 dark:bg-slate-950 sm:px-6 lg:px-8 lg:py-20">
       <div className="mx-auto max-w-[1500px]">
         <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h2 className="font-display text-4xl font-black tracking-[-0.02em] text-slate-950 dark:text-white md:text-5xl">Most booked services</h2>
+            <h2 className="home-section-title font-display text-4xl font-black tracking-[-0.02em] text-slate-950 dark:text-white md:text-5xl">Most booked services</h2>
           </div>
           <div className="rounded-full border border-[#ded7ca] bg-white px-4 py-2 text-sm font-black text-slate-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
             {services.length} available
@@ -2772,12 +2760,12 @@ function Providers({ services, providerVisibleCount, setProviderVisibleCount, se
 
 function FAQ() {
   return (
-    <section id="faq" className="bg-[#fbfaf6] px-4 py-14 dark:bg-slate-950 sm:px-6 lg:px-8">
+    <section id="faq" className="home-section bg-[#fbfaf6] px-4 py-16 dark:bg-slate-950 sm:px-6 lg:px-8 lg:py-24">
       <div className="mx-auto max-w-6xl">
         <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-black text-teal-700">
           FAQ
         </span>
-        <h2 className="mt-4 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
+        <h2 className="home-section-title mt-4 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
           Answers before customers book home services.
         </h2>
         <div className="mt-7 grid gap-0 border-y border-slate-200 dark:border-white/10">
@@ -6292,13 +6280,13 @@ function ClientSupportSection({ user, setStatusMessage }) {
   };
 
   return (
-    <section id="contact" className="bg-[#f6f1e8] px-4 py-16 dark:bg-slate-900 sm:px-6 lg:px-8">
+    <section id="contact" className="home-section bg-[#f6f1e8] px-4 py-16 dark:bg-slate-900 sm:px-6 lg:px-8 lg:py-24">
       <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-[1.7rem] border border-[#ded7ca] bg-[#fffefb] p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5 lg:p-10">
           <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-black text-teal-700">
             Contact page
           </span>
-          <h2 className="mt-7 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
+          <h2 className="home-section-title mt-7 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
             Talk to ServiceHub support
           </h2>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-500 dark:text-slate-300">
@@ -6346,7 +6334,12 @@ function ServiceHubFooter({ onServiceClick }) {
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.05fr_1fr]">
           <div>
-            <h2 className="font-display text-4xl font-black tracking-[-0.035em]">ServiceHub</h2>
+            <div className="flex items-center gap-3">
+              <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg shadow-black/20">
+                <img src={SERVICEHUB_ICON} alt="ServiceHub symbol" className="h-full w-full rounded-xl object-contain" />
+              </span>
+              <h2 className="font-display text-4xl font-black tracking-[-0.035em]">ServiceHub</h2>
+            </div>
             <p className="mt-4 max-w-md text-lg leading-8 text-slate-200">
               Trusted local professionals for home repairs, maintenance, installation, and emergency support.
             </p>
@@ -6407,7 +6400,7 @@ export function ModernFooter() {
   return (
     <footer className="bg-slate-950 px-4 py-12 text-white sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
-        <div><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-amber-300 font-black text-slate-950">S</span><span className="text-xl font-black">ServiceHub</span></div><p className="mt-4 max-w-sm text-slate-400">Premium local services for Indian homes, built with trust, status clarity, and real provider workflows.</p></div>
+        <div><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl bg-white p-1"><img src={SERVICEHUB_ICON} alt="ServiceHub symbol" className="h-full w-full rounded-xl object-contain" /></span><span className="text-xl font-black">ServiceHub</span></div><p className="mt-4 max-w-sm text-slate-400">Premium local services for Indian homes, built with trust, status clarity, and real provider workflows.</p></div>
         {["Company", "Services", "Support"].map((group) => <div key={group}><p className="font-black">{group}</p><div className="mt-4 grid gap-3 text-slate-400"><span>About</span><span>Providers</span><span>Careers</span></div></div>)}
       </div>
       <div className="mx-auto mt-10 flex max-w-7xl flex-wrap justify-between gap-4 border-t border-white/10 pt-6 text-sm text-slate-400"><span>© 2026 ServiceHub</span><span className="flex items-center gap-2">Made for modern service teams <ChevronRight size={14} /></span></div>
