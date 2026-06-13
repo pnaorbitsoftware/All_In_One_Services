@@ -706,13 +706,15 @@ export default function Home() {
   const isDark = theme === "dark";
   const t = useCallback((key) => translations[language]?.[key] || translations.en[key] || key, [language]);
 
-  const closeSessionUi = useCallback(() => {
+  const closeSessionUi = useCallback(({ closeAuth = true } = {}) => {
     setAccountMenuOpen(false);
     setLoginMenuOpen(false);
     setMoreMenuOpen(false);
     setMobileNavOpen(false);
-    setAuthMode(null);
-    setAuthLocked(false);
+    if (closeAuth) {
+      setAuthMode(null);
+      setAuthLocked(false);
+    }
     setBookingOpen(false);
     setProfileImageOpen(false);
     setProviderAccountOpen(false);
@@ -747,7 +749,7 @@ export default function Home() {
       setAdminData(null);
       setAdminPaymentData(null);
       setProviderClientMode(false);
-      closeSessionUi();
+      closeSessionUi({ closeAuth: false });
     };
 
     const handleVisibilityChange = () => {
@@ -2154,9 +2156,17 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
           <motion.span variants={fadeUp} className="inline-flex items-center gap-2 border-l-4 border-amber-300 bg-white px-3.5 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm">
             <Sparkles size={15} /> Home services, booked clearly
           </motion.span>
-          <motion.h1 variants={fadeUp} className="mt-6 max-w-2xl font-display text-4xl font-black leading-[1.08] tracking-[-0.035em] text-slate-950 dark:text-white sm:text-5xl">
-            Find a reliable local expert without the usual back-and-forth.
-          </motion.h1>
+          <motion.h1
+  variants={fadeUp}
+  className="mt-6 max-w-2xl font-display text-3xl font-black leading-[1.12] tracking-[-0.02em] text-slate-950 dark:text-white sm:text-4xl"
+>
+  Find a{" "}
+  <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+    reliable local expert
+  </span>{" "}
+  without the usual back-and-forth.
+</motion.h1>
+          
           <motion.p variants={fadeUp} className="mt-5 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-300">
             Compare providers, check pricing, choose a time, and track the request from one clean ServiceHub workspace.
           </motion.p>
@@ -2604,7 +2614,7 @@ function PopularServicesGrid({ openPopularService }) {
           <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-black text-teal-700">
             Popular services
           </span>
-          <h2 className="home-section-title mt-4 font-display text-4xl font-black leading-[1.08] tracking-[-0.045em] text-slate-950 dark:text-white md:text-5xl">
+          <h2 className="home-section-title mt-4 font-display text-3xl font-black leading-[1.12] tracking-[-0.02em] text-slate-950 dark:text-white md:text-4xl">
             Everything customers expect<br className="hidden md:block" /> in one platform.
           </h2>
         </div>
@@ -2664,11 +2674,11 @@ function Providers({ services, providerVisibleCount, setProviderVisibleCount, se
   };
 
   return (
-    <div id="providers" className="home-section bg-[#fbfaf6] px-4 py-16 dark:bg-slate-950 sm:px-6 lg:px-8 lg:py-20">
+    <div id="providers" className="home-section bg-[#fbfaf6] px-4 pb-16 pt-7 dark:bg-slate-950 sm:px-6 lg:px-8 lg:pb-20 lg:pt-7">
       <div className="mx-auto max-w-[1500px]">
-        <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+        <div className="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-start">
           <div>
-            <h2 className="home-section-title font-display text-4xl font-black tracking-[-0.02em] text-slate-950 dark:text-white md:text-5xl">Most booked services</h2>
+            <h2 className="home-section-title font-display text-3xl font-black tracking-[-0.02em] text-slate-950 dark:text-white md:text-4xl">Most booked services</h2>
           </div>
           <div className="rounded-full border border-[#ded7ca] bg-white px-4 py-2 text-sm font-black text-slate-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
             {services.length} available

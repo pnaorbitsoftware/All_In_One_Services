@@ -248,6 +248,9 @@ export default function AuthModal({
     });
 
   const handleWorkImageChange = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
     const file = event.target.files?.[0];
     if (!file) {
       setForm((prev) => ({ ...prev, workImage: "", workImageName: "" }));
