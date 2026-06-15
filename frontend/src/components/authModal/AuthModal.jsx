@@ -155,6 +155,7 @@ export default function AuthModal({
     role: initialRole,
     providerName: "",
     category: "",
+    customCategory: "",
     location: "",
     preferredWorkLocation: "",
     workImage: "",
@@ -222,7 +223,12 @@ export default function AuthModal({
     : t("clientAccessCopy");
 
   const handleChange = (field) => (event) => {
-    setForm((prev) => ({ ...prev, [field]: event.target.value }));
+    const value = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+      ...(field === "category" && value !== "Other" ? { customCategory: "" } : {}),
+    }));
   };
 
   const resizeWorkImage = (file) =>
@@ -752,9 +758,27 @@ export default function AuthModal({
                     {providerCategories.map((category) => (
                       <option key={category} value={category}>{category}</option>
                     ))}
+                    <option value="Other">Other</option>
                   </select>
                 </div>
+                <p className="auth-field-helper">Can't find your service? Select 'Other' and enter your service category.</p>
               </label>
+
+              {form.category === "Other" && (
+                <label>
+                  Enter Your Service Category
+                  <div className="auth-input">
+                    <BriefcaseBusiness size={18} />
+                    <input
+                      type="text"
+                      value={form.customCategory}
+                      onChange={handleChange("customCategory")}
+                      placeholder="Enter your service category"
+                      required
+                    />
+                  </div>
+                </label>
+              )}
 
               <label>
                 Location

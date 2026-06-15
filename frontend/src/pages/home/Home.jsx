@@ -85,6 +85,7 @@ import {
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const AUTH_API_URLS = [...new Set([API_URL, "http://localhost:5000/api", "http://localhost:5001/api"])];
 const SERVICEHUB_ICON = "/servicehub-icon.png";
+const HERO_BACKGROUND_IMAGE = "/hero-background.jpg";
 
 const supportedLanguages = [
   { code: "en", label: "English", short: "EN" },
@@ -574,6 +575,17 @@ const formatPrice = (value) =>
 
 const formatMoney = (value) =>
   Number.isFinite(Number(value)) ? `Rs. ${Number(value).toLocaleString("en-IN")}` : "Rs. 0";
+
+const formatEstimateTimestamp = (value) => {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+};
 
 const formatServiceChargeLabel = (price = "") => {
   const amount = String(price).replace(/^from\s+/i, "").trim();
@@ -1626,7 +1638,7 @@ export default function Home() {
           buildBreadcrumbSchema([{ name: "Home", path: "/" }]),
         ]}
       />
-      <div className="min-h-screen bg-[linear-gradient(135deg,#f8fafc_0%,#ecfeff_38%,#fff7ed_100%)] text-slate-950 transition-colors duration-500 dark:bg-[linear-gradient(135deg,#020617_0%,#07111f_48%,#111827_100%)] dark:text-white">
+      <div className="min-h-screen bg-slate-50 text-slate-950 transition-colors duration-500 dark:bg-slate-950 dark:text-white">
         <header className={`fixed inset-x-0 top-0 z-50 px-3 pt-3 transition-all duration-300 sm:px-5 ${navScrolled ? "pb-2" : "pb-3"}`}>
           <nav className={`mx-auto flex max-w-[96rem] items-center justify-between gap-3 rounded-[1.35rem] border px-4 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-white/45 backdrop-blur-2xl transition-all duration-300 dark:ring-white/10 sm:px-5 lg:px-6 ${navScrolled ? "h-16 border-white/80 bg-white/88 dark:border-white/10 dark:bg-slate-950/82" : "h-20 border-white/70 bg-white/74 dark:border-white/10 dark:bg-slate-950/66"}`}>
             <button type="button" onClick={goMainHome} className="group flex min-w-0 flex-none items-center gap-3 rounded-2xl pr-2 transition hover:bg-white/55 dark:hover:bg-white/5">
@@ -2143,17 +2155,20 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
   }, []);
 
   return (
-    <section className="home-section relative overflow-hidden bg-[#fbfaf6] px-4 py-16 dark:bg-slate-950 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+    <section className="home-section relative overflow-hidden bg-white px-4 py-16 shadow-lg shadow-slate-200/30 dark:bg-slate-950/95 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-100"
         style={{
-          backgroundImage: "linear-gradient(120deg, rgba(14,165,233,0.16) 0%, rgba(20,184,166,0.12) 42%, rgba(15,23,42,0.06) 100%)",
+          backgroundImage: `linear-gradient(120deg, rgba(14,165,233,0.16) 0%, rgba(20,184,166,0.12) 42%, rgba(15,23,42,0.06) 100%), url(${HERO_BACKGROUND_IMAGE})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
         }}
       />
       <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.92fr_1.08fr]">
         <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-3xl">
-          <motion.span variants={fadeUp} className="inline-flex items-center gap-2 border-l-4 border-amber-300 bg-white px-3.5 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm">
+          <motion.span variants={fadeUp} className="inline-flex items-center gap-2 border-l-4 border-slate-900 bg-slate-950 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white shadow-sm shadow-slate-900/10">
             <Sparkles size={15} /> Home services, booked clearly
           </motion.span>
           <motion.h1
@@ -2167,7 +2182,7 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
   without the usual back-and-forth.
 </motion.h1>
           
-          <motion.p variants={fadeUp} className="mt-5 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-300">
+          <motion.p variants={fadeUp} className="mt-5 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-300 sm:text-lg">
             Compare providers, check pricing, choose a time, and track the request from one clean ServiceHub workspace.
           </motion.p>
           <motion.form
@@ -2176,13 +2191,18 @@ function Hero({ searchTerm, setSearchTerm, onSearch }) {
               event.preventDefault();
               onSearch();
             }}
-            className="mt-7 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/10 sm:flex-row"
+            className="mt-7 flex flex-col gap-3 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-xl shadow-slate-200/15 dark:border-white/10 dark:bg-slate-900/95 sm:flex-row"
           >
-            <div className="flex flex-1 items-center gap-3 px-3">
-              <Search className="text-slate-400" size={22} />
-              <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search electrician, plumber, AC repair..." className="h-12 flex-1 bg-transparent outline-none placeholder:text-slate-400" />
+            <div className="flex flex-1 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 shadow-sm dark:border-white/10 dark:bg-slate-950 dark:text-white">
+              <Search className="text-slate-500" size={22} />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search electrician, plumber, AC repair..."
+                className="h-12 w-full bg-transparent text-slate-900 outline-none placeholder:text-slate-500 dark:text-white dark:placeholder:text-slate-400"
+              />
             </div>
-            <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-4 text-sm font-black text-white transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950">
+            <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-[1.35rem] bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition hover:bg-slate-800 hover:-translate-y-0.5 dark:bg-slate-200 dark:text-slate-950 dark:hover:bg-slate-100">
               Search services <ArrowRight size={17} />
             </button>
           </motion.form>
@@ -3267,6 +3287,9 @@ function ClientPaymentSection({ booking, providerStartingPrice, onAcceptEstimate
   const startingPriceAmount = parseMoneyValue(startingPrice);
   const providerEstimateAmount = Number(booking.finalEstimateAmount || 0);
   const finalEstimateTotal = providerEstimateAmount > 0 ? providerEstimateAmount + startingPriceAmount : 0;
+  const estimateHistory = Array.isArray(booking.estimateHistory) ? booking.estimateHistory : [];
+  const latestEstimateEntry = estimateHistory.length ? estimateHistory[estimateHistory.length - 1] : null;
+  const previousEstimateEntries = estimateHistory.length > 1 ? [...estimateHistory].slice(0, -1).reverse() : [];
   if (!hasEstimate) return null;
 
   return (
@@ -3274,7 +3297,7 @@ function ClientPaymentSection({ booking, providerStartingPrice, onAcceptEstimate
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.16em] text-teal-700 dark:text-teal-200">Payment & Estimate</p>
-          <p className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">Provider sends a final estimate before online payment.</p>
+          <p className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">Provider sends the latest final estimate before online payment.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <EstimateStatusBadge status={estimateStatus} />
@@ -3299,6 +3322,25 @@ function ClientPaymentSection({ booking, providerStartingPrice, onAcceptEstimate
           <div className="mt-1"><PaymentStatusBadge status={paymentStatus} /></div>
         </div>
       </div>
+      {latestEstimateEntry?.submittedAt && (
+        <div className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
+          <p className="font-black">Latest estimate sent</p>
+          <p className="mt-1">{formatEstimateTimestamp(latestEstimateEntry.submittedAt)} for {formatMoney(latestEstimateEntry.amount)}</p>
+        </div>
+      )}
+      {previousEstimateEntries.length > 0 && (
+        <div className="mt-4 rounded-xl bg-white p-3 shadow-sm dark:bg-white/10">
+          <p className="text-sm font-black text-slate-900 dark:text-white">Estimate history</p>
+          <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            {previousEstimateEntries.map((entry, index) => (
+              <div key={`${entry.submittedAt || index}-${entry.amount}`} className="rounded-2xl border border-slate-200 px-3 py-2 dark:border-white/10">
+                <p className="font-semibold">{formatMoney(entry.amount)}</p>
+                <p>{formatEstimateTimestamp(entry.submittedAt)} · {entry.status === "rejected" ? "Rejected" : "Revised"}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {estimateStatus === "submitted" && (
         <div className="mt-4 flex flex-wrap gap-3">
           <button type="button" onClick={() => onAcceptEstimate(booking._id)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-emerald-600/15 transition hover:-translate-y-0.5">
@@ -5774,6 +5816,9 @@ function JobCard({ booking, actionLabel, onAction, secondaryAction, disabled, on
             <span className="rounded-xl bg-white p-3 font-black shadow-sm dark:bg-white/10">Final Estimate: {booking.finalEstimateAmount ? formatMoney(booking.finalEstimateAmount) : "Not sent"}</span>
             {booking.providerShare ? <span className="rounded-xl bg-white p-3 font-black shadow-sm dark:bg-white/10">Your Share: {formatMoney(booking.providerShare)}</span> : null}
           </div>
+          {booking.estimateHistory?.length > 1 && (
+            <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Estimate revised {booking.estimateHistory.length - 1} time{booking.estimateHistory.length - 1 === 1 ? "" : "s"}.</p>
+          )}
           {booking.estimateStatus === "submitted" && <p className="mt-3 text-sm font-black text-amber-700 dark:text-amber-200">Estimate sent. Waiting for client response.</p>}
           {(canSubmitFinalEstimate || canUpdateFinalEstimate) && (
             <button type="button" onClick={onEstimateClick} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-teal-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-white/10 dark:text-teal-100">

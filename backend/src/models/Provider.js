@@ -29,6 +29,11 @@ const providerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    customCategory: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     location: {
       type: String,
       required: true,

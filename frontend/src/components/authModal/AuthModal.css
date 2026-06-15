@@ -371,6 +371,13 @@
   resize: vertical;
 }
 
+.auth-field-helper {
+  margin-top: 0.55rem;
+  color: #64748b;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .auth-input input::placeholder,
 .auth-input textarea::placeholder {
   color: #64748b;

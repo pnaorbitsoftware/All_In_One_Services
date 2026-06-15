@@ -118,6 +118,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     const {
       name,
       category,
+      customCategory = "",
       location,
       phone,
       email,
@@ -129,7 +130,11 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       bankDetails = {},
     } = req.body;
 
-    if (!name || !category || !location || !phone || !email || !price || !description) {
+    const normalizedCategory = String(category || "").trim();
+    const normalizedCustomCategory = String(customCategory || "").trim();
+    const providerCategory = normalizedCategory === "Other" ? normalizedCustomCategory : normalizedCategory;
+
+    if (!name || !providerCategory || !location || !phone || !email || !price || !description) {
       return res.status(400).json({ message: "Please fill all required provider profile fields." });
     }
 
@@ -147,7 +152,8 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     }
 
     provider.name = name.trim();
-    provider.category = category.trim();
+    provider.category = providerCategory;
+    provider.customCategory = normalizedCategory === "Other" ? providerCategory : "";
     provider.location = location.trim();
     provider.phone = phone.trim();
     provider.email = normalizedEmail;

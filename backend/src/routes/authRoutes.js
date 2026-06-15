@@ -212,6 +212,7 @@ router.post("/register", async (req, res) => {
       address = "",
       providerName,
       category,
+      customCategory = "",
       location,
       preferredWorkLocation,
       workImage = "",
@@ -220,6 +221,10 @@ router.post("/register", async (req, res) => {
       otpChannel = "email",
       otp,
     } = req.body;
+
+    const normalizedCategory = String(category || "").trim();
+    const normalizedCustomCategory = String(customCategory || "").trim();
+    const providerCategory = normalizedCategory === "Other" ? normalizedCustomCategory : normalizedCategory;
 
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ message: "Name, email, phone, and password are required." });
@@ -241,9 +246,12 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Password and confirm password must match." });
     }
 
-    if (role === "provider" && (!providerName || !category || !location || !preferredWorkLocation || !phone || !price)) {
+    if (
+      role === "provider" &&
+      (!providerName || !providerCategory || !location || !preferredWorkLocation || !phone || !price)
+    ) {
       return res.status(400).json({
-        message: "Provider name, phone, category, location, preferred work location, and price are required.",
+        message: "Provider name, phone, service category, location, preferred work location, and price are required.",
       });
     }
 
@@ -316,7 +324,8 @@ router.post("/register", async (req, res) => {
         providerCode: `${slugify(providerName)}-${Date.now()}`,
         name: providerName,
         email: normalizedEmail,
-        category,
+        category: providerCategory,
+        customCategory: normalizedCategory === "Other" ? providerCategory : "",
         location,
         preferredWorkLocation,
         phone,
@@ -324,9 +333,9 @@ router.post("/register", async (req, res) => {
         reviews: 0,
         responseTime: responseTime || "",
         price,
-        description: `${providerName} provides ${category} services in ${location}.`,
-        about: `${providerName} is registered on ServiceHub as a ${category} provider.`,
-        features: [category],
+        description: `${providerName} provides ${providerCategory} services in ${location}.`,
+        about: `${providerName} is registered on ServiceHub as a ${providerCategory} provider.`,
+        features: [providerCategory],
         profileImage: normalizedWorkImage,
         isActive: false,
         approvalStatus: "pending",

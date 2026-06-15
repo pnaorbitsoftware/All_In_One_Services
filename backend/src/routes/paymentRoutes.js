@@ -71,7 +71,9 @@ const getProviderStartingAmount = async (providerId) => {
 const getPayableEstimateAmount = async (booking) => {
   const providerId = getPaymentProviderId(booking);
   const startingAmount = await getProviderStartingAmount(providerId);
-  const providerEstimateAmount = Number(booking.finalEstimateAmount || 0);
+  const estimateHistory = Array.isArray(booking.estimateHistory) ? booking.estimateHistory : [];
+  const latestAcceptedEntry = estimateHistory.slice().reverse().find((entry) => entry.status === "accepted");
+  const providerEstimateAmount = Number(latestAcceptedEntry?.amount || booking.finalEstimateAmount || 0);
   const fallbackAmount = Number(booking.costEstimate || 0);
 
   if (Number.isFinite(providerEstimateAmount) && providerEstimateAmount > 0) {
@@ -118,6 +120,20 @@ const ensureRazorpayXConfigured = (res) => {
 const mapRazorpayPayoutStatus = (status = "") =>
   ["processed", "reversed"].includes(status) ? "completed" : status === "failed" ? "failed" : "pending";
 
+const appendEstimateHistory = (booking, amount, providerId, status, note = "") => {
+  booking.estimateHistory = booking.estimateHistory || [];
+  const entry = {
+    amount,
+    submittedBy: providerId,
+    submittedAt: new Date(),
+    status,
+    statusAt: status === "submitted" ? null : new Date(),
+    note,
+  };
+  booking.estimateHistory.push(entry);
+  return entry;
+};
+
 router.post("/bookings/:bookingId/estimate", requireAuth, requireProvider, async (req, res) => {
   try {
     const finalEstimateAmount = Number(req.body.finalEstimateAmount);
@@ -150,6 +166,10 @@ router.post("/bookings/:bookingId/estimate", requireAuth, requireProvider, async
       return sendError(res, 400, "Completed or cancelled bookings cannot update the final estimate.");
     }
 
+    if (booking.estimateStatus === "rejected" || booking.paymentStatus === "penalty_applied") {
+      return sendError(res, 400, "Cannot submit a new estimate after a rejected estimate has already been processed.");
+    }
+
     if (booking.paymentStatus === "paid") {
       return sendError(res, 400, "Final estimate cannot be updated after client payment.");
     }
@@ -163,6 +183,9 @@ router.post("/bookings/:bookingId/estimate", requireAuth, requireProvider, async
     booking.estimateSubmittedAt = new Date();
     booking.estimateStatus = "submitted";
     booking.paymentStatus = "unpaid";
+    booking.razorpayOrderId = "";
+    booking.razorpayPaymentId = "";
+    appendEstimateHistory(booking, finalEstimateAmount, provider._id, "submitted");
     await booking.save();
 
     res.json({
@@ -189,6 +212,15 @@ router.patch("/bookings/:bookingId/estimate/accept", requireAuth, requireClient,
 
     if (booking.estimateStatus !== "submitted") {
       return sendError(res, 400, "Only submitted estimates can be accepted.");
+    }
+
+    const latestEntry = Array.isArray(booking.estimateHistory) && booking.estimateHistory.length
+      ? booking.estimateHistory[booking.estimateHistory.length - 1]
+      : null;
+
+    if (latestEntry) {
+      latestEntry.status = "accepted";
+      latestEntry.statusAt = new Date();
     }
 
     booking.estimateStatus = "accepted";
@@ -223,6 +255,15 @@ router.patch("/bookings/:bookingId/estimate/reject", requireAuth, requireClient,
     }
 
     const providerId = getPaymentProviderId(booking);
+    const latestEntry = Array.isArray(booking.estimateHistory) && booking.estimateHistory.length
+      ? booking.estimateHistory[booking.estimateHistory.length - 1]
+      : null;
+
+    if (latestEntry) {
+      latestEntry.status = "rejected";
+      latestEntry.statusAt = new Date();
+      latestEntry.note = rejectionReason;
+    }
 
     booking.estimateStatus = "rejected";
     booking.paymentStatus = "penalty_applied";

@@ -244,6 +244,43 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    estimateHistory: {
+      type: [
+        {
+          amount: {
+            type: Number,
+            required: true,
+            min: 0,
+          },
+          submittedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Provider",
+            default: null,
+          },
+          submittedAt: {
+            type: Date,
+            required: true,
+            default: Date.now,
+          },
+          status: {
+            type: String,
+            enum: ["submitted", "accepted", "rejected"],
+            required: true,
+            default: "submitted",
+          },
+          statusAt: {
+            type: Date,
+            default: null,
+          },
+          note: {
+            type: String,
+            default: "",
+            trim: true,
+          },
+        },
+      ],
+      default: [],
+    },
     estimateStatus: {
       type: String,
       enum: ["not_submitted", "submitted", "accepted", "rejected"],

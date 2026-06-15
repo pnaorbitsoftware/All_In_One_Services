@@ -45,6 +45,7 @@ export default function ProviderEstimateModal({ booking, onSubmit, onClose }) {
             <input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="1" placeholder="1500" className="min-w-0 flex-1 bg-transparent outline-none" />
           </div>
         </label>
+        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">If you update the estimate before payment, the client will receive the latest value to accept.</p>
         {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-black text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
         <div className="mt-5 flex flex-wrap justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white">Cancel</button>
