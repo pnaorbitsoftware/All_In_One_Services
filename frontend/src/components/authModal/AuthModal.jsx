@@ -928,7 +928,7 @@ export default function AuthModal({
           {successMessage && <div className="auth-success">{successMessage}</div>}
           {(!isPasswordReset || resetStep === "password") && (
             <button className="auth-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Please wait..." : isPasswordReset ? "Update password" : isRegister && registrationOtpRequired ? "Verify OTP and register" : isRegister ? "Generate registered OTP on email" : t("login")}
+              {isSubmitting ? "Please wait..." : isPasswordReset ? "Update password" : isRegister && registrationOtpRequired ? "Verify OTP and register" : isRegister ? "Login" : t("login")}
             </button>
           )}
         </form>
