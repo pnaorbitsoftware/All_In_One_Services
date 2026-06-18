@@ -66,7 +66,7 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
       return res.status(404).json({ message: "Provider profile not found." });
     }
 
-    if (!provider.isActive || provider.approvalStatus !== "approved") {
+    if (provider.approvalStatus !== "approved") {
       return res.json({
         provider,
         bookings: [],
@@ -86,7 +86,9 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
           { requestedProvider: provider._id, status: "cancelled" },
         ],
       }).sort({ createdAt: -1 }),
-      Booking.find(buildAvailableBookingFilter(provider)).sort({ createdAt: -1 }),
+      provider.isActive
+        ? Booking.find(buildAvailableBookingFilter(provider)).sort({ createdAt: -1 })
+        : Promise.resolve([]),
     ]);
 
     res.json({
@@ -110,6 +112,50 @@ router.get("/profile", requireAuth, requireProvider, async (req, res) => {
     res.json({ provider });
   } catch (error) {
     res.status(500).json({ message: "Provider profile could not be loaded." });
+  }
+});
+
+router.get("/status", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    res.json({ isActive: provider.isActive, approvalStatus: provider.approvalStatus });
+  } catch (error) {
+    res.status(500).json({ message: "Provider status could not be loaded." });
+  }
+});
+
+router.patch("/status", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ message: "Availability status must be a boolean." });
+    }
+
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    if (provider.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Availability status can only be updated for approved profiles." });
+    }
+
+    provider.isActive = isActive;
+    await provider.save();
+
+    res.json({
+      message: `Availability status updated to ${isActive ? "Active" : "Inactive"}.`,
+      provider,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Provider status could not be updated." });
   }
 });
 
@@ -194,8 +240,12 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
       return res.status(404).json({ message: "Provider profile not found." });
     }
 
-    if (!provider.isActive || provider.approvalStatus !== "approved") {
+    if (provider.approvalStatus !== "approved") {
       return res.status(403).json({ message: "Provider profile is waiting for admin approval." });
+    }
+
+    if (!provider.isActive) {
+      return res.status(400).json({ message: "Provider must be active to accept booking requests." });
     }
 
     const booking = await Booking.findOneAndUpdate(

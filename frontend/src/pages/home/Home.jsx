@@ -13,6 +13,7 @@ import {
   Clock,
   CreditCard,
   Heart,
+  Headset,
   House,
   IndianRupee,
   Languages,
@@ -521,6 +522,8 @@ const normalizeProvider = (provider) => ({
   about: provider.about || provider.description,
   features: provider.features?.length ? provider.features : [provider.category],
   image: provider.profileImage || categoryImages[provider.category] || categoryImages.Cleaning,
+  isActive: provider.isActive !== undefined ? provider.isActive : true,
+  approvalStatus: provider.approvalStatus || "approved",
 });
 
 const normalizeProviderDashboard = (data) => ({
@@ -888,7 +891,9 @@ export default function Home() {
       image: categoryImages[service.category] || categoryImages.Cleaning,
     }));
     const map = new Map(fallback.map((service) => [`${service.name}-${service.category}`, service]));
-    catalogProviders.forEach((provider) => map.set(`${provider.name}-${provider.category}`, provider));
+    catalogProviders
+      .filter((provider) => provider.isActive && provider.approvalStatus === "approved")
+      .forEach((provider) => map.set(`${provider.name}-${provider.category}`, provider));
     return [...map.values()];
   }, [catalogProviders]);
 
@@ -1419,6 +1424,45 @@ export default function Home() {
     } catch (error) {
       setStatusMessage(error.message);
       return false;
+    }
+  };
+
+  const toggleProviderAvailability = async (newStatus) => {
+    try {
+      const response = await fetch(`${API_URL}/providers/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ isActive: newStatus })
+      });
+      const data = await parseApiResponse(response, "Could not update availability status.");
+      if (!response.ok) throw new Error(data.message || "Could not update availability status.");
+
+      setProviderData((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          provider: {
+            ...current.provider,
+            isActive: data.provider.isActive
+          }
+        };
+      });
+
+      setCatalogProviders((current) =>
+        current.map((provider) =>
+          provider.providerId === data.provider._id || provider.id === data.provider._id
+            ? { ...provider, isActive: data.provider.isActive }
+            : provider
+        )
+      );
+
+      setStatusMessage(`Availability updated: You are now ${data.provider.isActive ? "Available" : "Unavailable"} for work.`);
+      refreshAfterAction({ provider: true });
+    } catch (error) {
+      setStatusMessage(error.message);
     }
   };
 
@@ -2012,6 +2056,7 @@ export default function Home() {
             setStatusMessage={setStatusMessage}
             providerDashboardLocked={user?.role === "provider" && providerProfile?.approvalStatus !== "approved"}
             onBookAsClient={openProviderClientDashboard}
+            toggleProviderAvailability={toggleProviderAvailability}
           />
         )}
 
@@ -2033,8 +2078,23 @@ export default function Home() {
 
         {activeView === "home" && <ClientSupportSection user={user} setStatusMessage={setStatusMessage} />}
         {activeView !== "admin" && <ServiceHubFooter onServiceClick={openPopularService} />}
-        <button type="button" onClick={toggleChat} className="fixed bottom-5 right-5 z-[85] grid h-14 w-14 place-items-center rounded-2xl bg-amber-300 text-slate-950 shadow-2xl shadow-amber-300/40">
-          {chatOpen ? <X /> : <MessageCircle />}
+        <button
+          type="button"
+          onClick={toggleChat}
+          className="fixed bottom-5 right-5 z-[85] flex h-14 items-center gap-2.5 rounded-full bg-[#FACC15] px-6 text-slate-950 shadow-2xl shadow-amber-400/30 hover:scale-105 active:scale-95 transition-all duration-200 hover:shadow-amber-400/45"
+          aria-label={chatOpen ? "Close support chat" : "Open support chat"}
+        >
+          {chatOpen ? (
+            <>
+              <X size={18} />
+              <span className="text-sm font-black tracking-tight">Close</span>
+            </>
+          ) : (
+            <>
+              <Headset size={18} />
+              <span className="text-sm font-black tracking-tight">Help & Support</span>
+            </>
+          )}
         </button>
         <AnimatePresence>
           {chatOpen && (
@@ -3421,7 +3481,7 @@ function ClientReviewPanel({ booking, form, submitting, onChange, onSubmit }) {
   );
 }
 
-function ProviderDashboard({ providerProfile, providerRequests, providerBookings, providerEarnings, acceptProviderRequest, updateProviderBookingStatus, submitEstimate, refreshDashboard, setStatusMessage, providerDashboardLocked, onBookAsClient }) {
+function ProviderDashboard({ providerProfile, providerRequests, providerBookings, providerEarnings, acceptProviderRequest, updateProviderBookingStatus, submitEstimate, refreshDashboard, setStatusMessage, providerDashboardLocked, onBookAsClient, toggleProviderAvailability }) {
   const [cancelTargetBooking, setCancelTargetBooking] = useState(null);
   const [estimateTargetBooking, setEstimateTargetBooking] = useState(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -3506,7 +3566,38 @@ function ProviderDashboard({ providerProfile, providerRequests, providerBookings
     >
       <div className="relative">
         <div className={isDashboardLocked ? "pointer-events-none select-none blur-sm opacity-45" : ""} aria-hidden={isDashboardLocked}>
-      <div className="mb-5 flex flex-wrap justify-end gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-[#fffefb] px-4 py-2.5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+          <span className="text-sm font-black text-slate-700 dark:text-slate-300">
+            Available for Work
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={providerProfile?.isActive}
+            onClick={() => toggleProviderAvailability?.(!providerProfile?.isActive)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
+              providerProfile?.isActive ? "bg-teal-600" : "bg-slate-300 dark:bg-slate-700"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                providerProfile?.isActive ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black capitalize ${
+              providerProfile?.isActive
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+            }`}
+          >
+            {providerProfile?.isActive ? "Active" : "Inactive"}
+          </span>
+        </div>
+
         <button type="button" onClick={refreshDashboard} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950">
           Refresh dashboard
         </button>
@@ -4802,7 +4893,14 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
                   </button>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                  <StatusBadge status={provider.approvalStatus} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={provider.approvalStatus} />
+                    {provider.approvalStatus === "approved" && (
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black capitalize ${provider.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"}`}>
+                        {provider.isActive ? "Active" : "Inactive"}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
                     {provider.approvalStatus === "approved"
                       ? `Approved ${formatBookingDate(provider.approvedAt || provider.updatedAt)}`
@@ -5927,8 +6025,8 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
       id: "bot-welcome",
       role: "bot",
       text: user?.name
-        ? `Hi ${user.name.split(" ")[0]}, I'm Liza from ServiceHub support. Tell me what is stuck and I will point you to the right place.`
-        : "Hi, I'm Liza from ServiceHub support. I can help with booking status, payments, provider signup, or getting help from the team.",
+        ? `Hi ${user.name.split(" ")[0]}, I'm Liza from ServiceHub Support. Tell me what is stuck and I will point you to the right place.`
+        : "Hi, I'm Liza from ServiceHub Support. I can help with booking status, payments, provider signup, or getting help from the team.",
       suggestions: ["Book a service", "Booking status", "Payment issue", "Talk to support"],
       time: INITIAL_CHAT_TIME_LABEL,
     },
@@ -5958,9 +6056,55 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
     if (!voiceEnabled || !canSpeak || !text) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-IN";
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
+    
+    const voices = window.speechSynthesis.getVoices();
+    let selectedVoice = null;
+    
+    // Priority 1: Indian English Female
+    selectedVoice = voices.find(
+      (voice) =>
+        voice.lang === "en-IN" &&
+        (voice.name.toLowerCase().includes("female") ||
+          voice.name.toLowerCase().includes("heera") ||
+          voice.name.toLowerCase().includes("veena") ||
+          voice.name.toLowerCase().includes("neeraja"))
+    );
+    
+    // Priority 2: General English Female (e.g. Zira, Samantha, Google UK English Female, Google US English Female, Karen, Hazel, Tessa)
+    if (!selectedVoice) {
+      selectedVoice = voices.find(
+        (voice) =>
+          voice.lang.startsWith("en") &&
+          (voice.name.toLowerCase().includes("female") ||
+            voice.name.toLowerCase().includes("zira") ||
+            voice.name.toLowerCase().includes("samantha") ||
+            voice.name.toLowerCase().includes("karen") ||
+            voice.name.toLowerCase().includes("hazel") ||
+            voice.name.toLowerCase().includes("lisa") ||
+            voice.name.toLowerCase().includes("liza") ||
+            voice.name.toLowerCase().includes("tessa"))
+      );
+    }
+    
+    // Priority 3: General en-IN voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find((voice) => voice.lang === "en-IN");
+    }
+    
+    // Priority 4: General English voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find((voice) => voice.lang.startsWith("en"));
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice.lang;
+    } else {
+      utterance.lang = "en-IN";
+    }
+
+    utterance.rate = 0.88; // Slow enough for clear understanding
+    utterance.pitch = 1.05; // Pleasant, friendly tone
     window.speechSynthesis.speak(utterance);
   };
 
@@ -6148,15 +6292,30 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
 
   return (
     <motion.div initial={{ opacity: 0, y: 18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18, scale: 0.96 }} className="fixed bottom-24 right-5 z-[80] flex h-[min(34rem,calc(100vh-7rem))] w-[min(340px,calc(100vw-32px))] flex-col overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-slate-900">
-      <div className="z-10 flex shrink-0 items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-950 to-teal-800 px-3 py-3 text-white dark:border-white/10">
+      <div className="z-10 flex shrink-0 items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-950 to-teal-800 px-3 py-3.5 text-white dark:border-white/10">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-white/12 ring-1 ring-white/20">
-            <MessageCircle size={18} />
+          <div className="relative h-10 w-10 flex-none rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 p-0.5 shadow-md">
+            <svg viewBox="0 0 100 100" className="h-full w-full rounded-full fill-white">
+              {/* Head / Face */}
+              <circle cx="50" cy="45" r="22" fill="#FED7AA" />
+              {/* Hair */}
+              <path d="M28,45 C28,25 72,25 72,45 C72,50 68,40 65,35 C60,30 40,30 35,35 C32,40 28,50 28,45 Z" fill="#4B5563" />
+              <path d="M28,45 C28,55 32,60 35,55 C35,45 32,40 28,45 Z" fill="#4B5563" />
+              <path d="M72,45 C72,55 68,60 65,55 C65,45 68,40 72,45 Z" fill="#4B5563" />
+              {/* Shoulders / Clothes */}
+              <path d="M20,85 C20,70 30,65 50,65 C70,65 80,70 80,85 Z" fill="#0D9488" />
+              {/* Headset Mic */}
+              <path d="M68,48 C72,48 74,54 70,58 C66,62 58,62 55,60" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" fill="none" />
+              {/* Headset Ear Cup */}
+              <rect x="68" y="40" width="6" height="12" rx="3" fill="#1F2937" />
+              {/* Headset Band */}
+              <path d="M32,45 C32,25 68,25 68,45" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" fill="none" />
+            </svg>
+            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0F172A]" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-black">Liza, ServiceHub support</p>
+            <p className="truncate text-sm font-black leading-snug">Liza, ServiceHub support</p>
             <p className="mt-0.5 flex items-center gap-1.5 text-xs font-bold text-teal-100">
-              <span className="h-2 w-2 rounded-full bg-emerald-300" />
               Online now | {voiceEnabled ? "Voice replies on" : "Usually replies instantly"}
             </p>
           </div>
