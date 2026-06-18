@@ -1428,17 +1428,30 @@ export default function Home() {
   };
 
   const toggleProviderAvailability = async (newStatus) => {
+    const url = `${API_URL}/providers/availability`;
+    const payload = { isActive: newStatus };
     try {
-      const response = await fetch(`${API_URL}/providers/status`, {
+      console.log("Availability URL:", url);
+      console.log("Availability Payload:", payload);
+      const response = await fetch(url, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ isActive: newStatus })
+        body: JSON.stringify(payload)
       });
+      console.log("Availability Response:", response);
+
+      if (!response.ok) {
+        throw new Error(
+          `Unable to update provider availability.
+Endpoint: /api/providers/availability
+Status: ${response.status}`
+        );
+      }
+
       const data = await parseApiResponse(response, "Could not update availability status.");
-      if (!response.ok) throw new Error(data.message || "Could not update availability status.");
 
       setProviderData((current) => {
         if (!current) return current;
