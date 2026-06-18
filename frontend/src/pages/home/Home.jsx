@@ -1136,6 +1136,23 @@ export default function Home() {
     setStatusMessage(`${roleLabel} logged out successfully.`);
   };
 
+  const getPreferredVoice = useCallback(() => {
+    if (!("speechSynthesis" in window)) return null;
+
+    const voices = window.speechSynthesis.getVoices() || [];
+    if (!voices.length) return null;
+
+    const femaleVoice = voices.find((voice) => {
+      const metadata = `${voice.name} ${voice.voiceURI} ${voice.lang}`.toLowerCase();
+      return (
+        /female|woman|girl|zira|alloy|samantha|victoria|amanda|kendra|susan/.test(metadata) &&
+        voice.lang.startsWith("en")
+      );
+    });
+
+    return femaleVoice || voices.find((voice) => voice.lang.startsWith("en")) || voices[0];
+  }, []);
+
   const speakLizaIntro = () => {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
@@ -1143,6 +1160,8 @@ export default function Home() {
     utterance.lang = "en-IN";
     utterance.rate = 0.95;
     utterance.pitch = 1;
+    const preferredVoice = getPreferredVoice();
+    if (preferredVoice) utterance.voice = preferredVoice;
     window.speechSynthesis.speak(utterance);
   };
 
@@ -1957,7 +1976,7 @@ export default function Home() {
             <Hero searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSearch={searchServices} />
             <section id="services" className="border-y border-[#ded7ca] bg-[#fbfaf6] dark:border-white/10 dark:bg-slate-950">
               <PopularServicesGrid openPopularService={openPopularService} />
-              <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[350px_1fr]">
+              <div className="relative">
                 <Categories
                   categories={categories}
                   selectedCategory={selectedCategory}
@@ -2637,26 +2656,57 @@ function PopularServicesGrid({ openPopularService }) {
 }
 
 function Categories({ categories, selectedCategory, setSelectedCategory }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const categoryListRef = useRef(null);
+
+  const scrollCategoryList = (event) => {
+    const list = categoryListRef.current;
+    if (!isOpen || !list || list.scrollHeight <= list.clientHeight) return;
+
+    event.preventDefault();
+    list.scrollTop += event.deltaY;
+  };
+
   return (
-    <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
-      <h2 className="font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
-        Providers category
-      </h2>
-      <div className="scrollbar-hidden mt-7 grid max-h-[calc(100vh-14rem)] gap-2.5 overflow-y-auto pr-1">
-        {categories.map((category) => (
-          <button
-            key={category}
-            type="button"
-            onClick={() => setSelectedCategory(category)}
-            className={`border-b border-slate-200/70 px-1 py-3 text-left text-base font-black transition last:border-b-0 dark:border-white/10 ${
-              selectedCategory === category
-                ? "text-teal-700 dark:text-amber-300"
-                : "text-slate-950 hover:translate-x-1 hover:text-teal-700 dark:text-slate-200 dark:hover:text-amber-300"
-            }`}
-          >
-            {category}
-          </button>
-        ))}
+    <aside
+      aria-label="Provider categories"
+      aria-expanded={isOpen}
+      onWheel={scrollCategoryList}
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+      onFocus={() => setIsOpen(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false);
+      }}
+      className={`fixed left-0 top-24 z-[55] hidden h-[calc(100vh-7rem)] transition-[width] duration-300 ease-out lg:block ${
+        isOpen ? "w-[340px]" : "w-5"
+      }`}
+    >
+      <div
+        className={`flex h-full w-[340px] flex-col overflow-hidden rounded-r-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/95 px-6 py-7 shadow-2xl shadow-slate-900/10 backdrop-blur transition-transform duration-300 ease-out dark:border-white/10 dark:bg-slate-900/95 dark:shadow-black/30 ${
+          isOpen ? "translate-x-0" : "-translate-x-[calc(100%-0.85rem)]"
+        }`}
+      >
+        <span className="absolute right-0 top-1/2 h-28 w-2 -translate-y-1/2 rounded-r-full bg-teal-600 shadow-lg shadow-teal-700/25 dark:bg-amber-300" aria-hidden="true" />
+        <h2 className="font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
+          Providers category
+        </h2>
+        <div ref={categoryListRef} className="providers-category-list mt-7 grid min-h-0 flex-1 gap-2.5 overflow-y-auto overscroll-contain pr-2">
+          {categories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => setSelectedCategory(category)}
+              className={`border-b border-slate-200/70 px-1 py-3 text-left text-base font-black transition last:border-b-0 dark:border-white/10 ${
+                selectedCategory === category
+                  ? "text-teal-700 dark:text-amber-300"
+                  : "text-slate-950 hover:translate-x-1 hover:text-teal-700 dark:text-slate-200 dark:hover:text-amber-300"
+              }`}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
       </div>
     </aside>
   );
@@ -5918,6 +5968,8 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
     utterance.lang = "en-IN";
     utterance.rate = 0.95;
     utterance.pitch = 1;
+    const preferredVoice = getPreferredVoice();
+    if (preferredVoice) utterance.voice = preferredVoice;
     window.speechSynthesis.speak(utterance);
   };
 

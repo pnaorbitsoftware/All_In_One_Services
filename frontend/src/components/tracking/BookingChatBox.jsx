@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageCircle, Send, X } from "lucide-react";
+import { MessageCircle, Send, X, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const formatChatTime = (value) => {
@@ -21,13 +21,58 @@ export default function BookingChatBox({
   onClose,
   onSend,
 }) {
+  const [speechVoice, setSpeechVoice] = useState(null);
+  const [speechEnabled, setSpeechEnabled] = useState(true);
   const [draft, setDraft] = useState("");
   const listRef = useRef(null);
+  const lastSpokenMessageIdRef = useRef(null);
+
+  // Handler for Help & Support button
+  const handleHelpSupport = () => {
+    // Placeholder: you can implement actual help logic later
+    alert("Help & Support clicked");
+  };
 
   useEffect(() => {
     if (!open) return;
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, open]);
+
+  // Load female voice
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const female = voices.find(v => /female/i.test(v.name)) || voices[1] || null;
+      setSpeechVoice(female);
+    };
+    loadVoices();
+    if (typeof window !== "undefined") {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  // Toggle speech enable
+  const toggleSpeech = () => setSpeechEnabled(prev => !prev);
+
+  // Speak incoming messages from bot
+  useEffect(() => {
+    if (!open || !speechVoice || !speechEnabled) return;
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) return;
+    if (lastMessage.senderRole === role) return;
+    if (lastSpokenMessageIdRef.current === lastMessage.id) return;
+    const utter = new SpeechSynthesisUtterance(lastMessage.text);
+    utter.voice = speechVoice;
+    window.speechSynthesis.speak(utter);
+    lastSpokenMessageIdRef.current = lastMessage.id;
+  }, [messages, role, open, speechVoice, speechEnabled]);
 
   const submitMessage = (event) => {
     event.preventDefault();
@@ -48,11 +93,17 @@ export default function BookingChatBox({
           transition={{ duration: 0.22, ease: "easeOut" }}
         >
           <div className="booking-chat-header">
-            <div className="booking-chat-icon"><MessageCircle size={18} /></div>
+            <div className="booking-chat-icon">
+              <MessageCircle size={18} />
+              <button type="button" className="help-button" onClick={handleHelpSupport}>Help &amp; Support</button>
+            </div>
             <div>
               <h3>{title}</h3>
               <p>{subtitle || bookingId}</p>
             </div>
+          <button type="button" onClick={toggleSpeech} aria-label={speechEnabled ? "Mute voice" : "Unmute voice"} className="voice-toggle">
+            {speechEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </button>
             <button type="button" onClick={onClose} aria-label="Close chat">
               <X size={18} />
             </button>

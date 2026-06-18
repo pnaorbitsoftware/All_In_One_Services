@@ -121,6 +121,37 @@ h3 {
   display: none;
 }
 
+.providers-category-list {
+  scrollbar-color: rgba(15, 118, 110, 0.55) rgba(148, 163, 184, 0.18);
+  scrollbar-width: thin;
+}
+
+.providers-category-list::-webkit-scrollbar {
+  width: 0.45rem;
+}
+
+.providers-category-list::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+}
+
+.providers-category-list::-webkit-scrollbar-thumb {
+  background: rgba(15, 118, 110, 0.55);
+  border-radius: 999px;
+}
+
+.dark .providers-category-list {
+  scrollbar-color: rgba(252, 211, 77, 0.65) rgba(255, 255, 255, 0.12);
+}
+
+.dark .providers-category-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dark .providers-category-list::-webkit-scrollbar-thumb {
+  background: rgba(252, 211, 77, 0.65);
+}
+
 .popular-services-viewport {
   position: relative;
 }
