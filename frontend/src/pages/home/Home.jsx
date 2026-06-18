@@ -40,6 +40,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   acceptEstimate,
@@ -6612,9 +6613,9 @@ function ServiceHubFooter({ onServiceClick }) {
         <div className="mt-10 flex flex-wrap justify-between gap-4 border-t border-white/15 pt-6 text-base text-slate-200">
           <span>© 2026 ServiceHub. All Rights Reserved.</span>
           <div className="flex flex-wrap gap-4">
-            <a href="/contact" className="transition hover:text-amber-300">Contact</a>
-            <a href="/privacy-policy" className="transition hover:text-amber-300">Privacy Policy</a>
-            <a href="/terms-and-conditions" className="transition hover:text-amber-300">Terms</a>
+            <Link to="/contact" className="transition hover:text-amber-300">Contact</Link>
+            <Link to="/privacy-policy" className="transition hover:text-amber-300">Privacy Policy</Link>
+            <Link to="/terms-and-conditions" className="transition hover:text-amber-300">Terms</Link>
             <span>Serving homes across Pune and nearby cities.</span>
           </div>
         </div>
