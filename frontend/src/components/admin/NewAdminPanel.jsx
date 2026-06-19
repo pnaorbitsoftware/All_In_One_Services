@@ -1,0 +1,1294 @@
+import { useState } from "react";
+import {
+  LayoutDashboard,
+  CalendarDays,
+  Users,
+  CreditCard,
+  MessageSquare,
+  History,
+  BarChart3,
+  Menu,
+  X,
+  Briefcase,
+  Clock,
+  CheckCircle,
+  IndianRupee,
+  TrendingUp,
+  Award,
+  Eye,
+  Send,
+  LogOut,
+  FolderOpen,
+} from "lucide-react";
+
+export default function NewAdminPanel({
+  adminData,
+  paymentData,
+  updateProviderApproval,
+  updateBookingRequest,
+  setAdminData,
+  refreshAdminContactMessages,
+  setStatusMessage,
+  adminEmail,
+  refreshAdminPayments,
+  setIsAdminMode,
+}) {
+  // Step 1-A: Provider selection state added below props
+  const [selectedProviders, setSelectedProviders] = useState({});
+
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // CRM States
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [replyText, setReplyText] = useState("");
+
+  // Archive Filter
+  const [historyFilter, setHistoryFilter] = useState("all_bookings");
+
+  // Drawer State
+  const [activeDrawerProvider, setActiveDrawerProvider] = useState(null);
+
+  const stats = adminData?.stats || {};
+  const bookingCount = adminData?.bookings?.length || 0;
+  const providerCount = adminData?.providers?.length || 0;
+  const totalRevenue =
+    paymentData?.totalRevenue || stats.totalCostEstimate || 3588;
+
+  const avgTicketSize =
+    bookingCount > 0 ? (totalRevenue / bookingCount).toFixed(2) : 0;
+
+  const completedBookingsCount = (adminData?.bookings || []).filter(
+    (b) => b.status?.toLowerCase() === "completed",
+  ).length;
+  const fulfillmentRate =
+    bookingCount > 0
+      ? ((completedBookingsCount / bookingCount) * 100).toFixed(1)
+      : 0;
+
+  const approvedProvidersCount = (adminData?.providers || []).filter(
+    (p) => p.approvalStatus?.toLowerCase() === "approved",
+  ).length;
+  const providerConversion =
+    providerCount > 0
+      ? ((approvedProvidersCount / providerCount) * 100).toFixed(1)
+      : 0;
+
+  const calculateTopServices = () => {
+    const counts = {};
+    (adminData?.bookings || []).forEach((b) => {
+      if (b.service) counts[b.service] = (counts[b.service] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 4);
+  };
+  const realTopServices = calculateTopServices();
+
+  const leaderBoardProviders = [...(adminData?.providers || [])]
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+    .slice(0, 4);
+
+  const menuItems = [
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "bookings", label: "Bookings Queue", icon: CalendarDays },
+    { id: "providers", label: "Providers Network", icon: Users },
+    { id: "payments", label: "Settlements", icon: CreditCard },
+    { id: "messages", label: "CRM Inbox", icon: MessageSquare },
+    { id: "analytics", label: "Analytics Dashboard", icon: BarChart3 },
+    { id: "history", label: "Archive Vault", icon: History },
+  ];
+
+  const handleSendReply = async (messageId) => {
+    if (!replyText.trim()) return;
+    try {
+      if (setAdminData && adminData) {
+        const updatedMessages = (adminData.contactMessages || []).map((msg) => {
+          if (msg._id === messageId) {
+            return {
+              ...msg,
+              replyLog: replyText,
+              repliedAt: new Date().toISOString(),
+            };
+          }
+          return msg;
+        });
+        setAdminData({ ...adminData, contactMessages: updatedMessages });
+      }
+      if (setStatusMessage) setStatusMessage("Reply processed successfully!");
+      setReplyText("");
+      setSelectedMessage(null);
+    } catch (err) {
+      if (setStatusMessage) setStatusMessage("Error syncing response.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 w-screen h-screen bg-slate-100 flex overflow-hidden z-50 font-sans text-slate-800">
+      {/* SIDEBAR CONTAINER */}
+      <aside
+        className={`bg-slate-950 text-white transition-all duration-300 flex flex-col h-full flex-shrink-0 z-30 shadow-xl ${sidebarOpen ? "w-72" : "w-20"}`}
+      >
+        <div className="flex h-20 items-center justify-between border-b border-slate-800 px-5 flex-shrink-0">
+          {sidebarOpen && (
+            <div>
+              <h2 className="text-xl font-bold tracking-wide text-blue-500">
+                ServiceHub
+              </h2>
+              <p className="text-[10px] uppercase tracking-widest text-slate-400">
+                Admin Console
+              </p>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="hover:bg-slate-800 p-2 rounded-xl transition"
+          >
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-y-auto space-y-1.5">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left font-semibold text-sm transition-all duration-200 ${
+                  activeTab === item.id
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
+                    : "text-slate-400 hover:bg-slate-900 hover:text-white"
+                }`}
+              >
+                <Icon size={18} className="flex-shrink-0" />
+                {sidebarOpen && <span className="truncate">{item.label}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+        {/* TOP PANEL CONTROL BAR */}
+        <div className="h-20 border-b bg-white px-8 flex items-center justify-between flex-shrink-0 shadow-sm z-10">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight capitalize">
+              {activeTab} Control Hub
+            </h1>
+            <p className="text-xs text-slate-500">
+              Enterprise Operations Management
+            </p>
+          </div>
+          {setIsAdminMode && (
+            <button
+              onClick={() => setIsAdminMode(false)}
+              className="flex items-center gap-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all"
+            >
+              <LogOut size={14} />
+              Exit Admin Mode
+            </button>
+          )}
+        </div>
+
+        {/* INNER SCROLL CONTAINER */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+          {/* DASHBOARD TAB */}
+          {activeTab === "dashboard" && (
+            <>
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Total Users
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black text-slate-900">
+                      {stats.totalUsers || 7}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                    <Users size={24} />
+                  </div>
+                </div>
+                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Active Providers
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black text-slate-900">
+                      {stats.totalProviders || 41}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <Briefcase size={24} />
+                  </div>
+                </div>
+                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Total Bookings
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black text-slate-900">
+                      {stats.totalBookings || 12}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                    <CalendarDays size={24} />
+                  </div>
+                </div>
+                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Pending Work Queue
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black text-slate-900">
+                      {stats.pendingWork || 5}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
+                    <Clock size={24} />
+                  </div>
+                </div>
+                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Completed Deliveries
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black text-slate-900">
+                      {stats.completedWork || 8}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <CheckCircle size={24} />
+                  </div>
+                </div>
+                <div className="rounded-2xl p-6 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-md flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-blue-100 uppercase tracking-wider">
+                      Gross Pipeline Revenue
+                    </p>
+                    <h3 className="mt-2 text-3xl font-black">
+                      ₹{totalRevenue}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-white/10 text-white rounded-xl">
+                    <IndianRupee size={24} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Recent Providers */}
+                <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100">
+                  <h2 className="mb-4 text-lg font-bold text-slate-900">
+                    Recent Onboarded Providers
+                  </h2>
+                  <div className="divide-y divide-slate-100">
+                    {(adminData?.providers || [])
+                      .slice(0, 5)
+                      .map((provider) => (
+                        <div
+                          key={provider._id}
+                          className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900 text-sm">
+                              {provider.name}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {provider.category ||
+                                provider.customCategory ||
+                                "-"}
+                            </p>
+                          </div>
+                          <span
+                            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                              provider.approvalStatus?.toLowerCase() ===
+                              "approved"
+                                ? "bg-green-50 text-green-700"
+                                : "bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {provider.approvalStatus || "pending"}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Recent Bookings */}
+                <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100">
+                  <h2 className="mb-4 text-lg font-bold text-slate-900">
+                    Recent Service Requests
+                  </h2>
+                  <div className="divide-y divide-slate-100">
+                    {(adminData?.bookings || []).slice(0, 5).map((booking) => (
+                      <div
+                        key={booking._id}
+                        className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">
+                            {booking.name}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {booking.service}
+                          </p>
+                        </div>
+                        <span
+                          className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                            booking.status?.toLowerCase() === "completed"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {booking.status || "pending"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* BOOKINGS QUEUE TAB */}
+          {activeTab === "bookings" && (
+            <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b flex items-center justify-between bg-slate-50/50">
+                <h2 className="text-xl font-bold text-slate-900">
+                  Active Bookings Queue
+                </h2>
+                <span className="bg-slate-200/80 text-slate-700 px-3 py-1 rounded-lg text-xs font-bold">
+                  Live Items: {bookingCount}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                      <th className="p-4 pl-6 min-w-[100px] whitespace-nowrap">
+                        Booking ID
+                      </th>
+                      <th className="p-4 min-w-[150px] whitespace-nowrap">
+                        Customer
+                      </th>
+                      <th className="p-4 min-w-[130px] whitespace-nowrap">
+                        Phone Node
+                      </th>
+                      <th className="p-4 min-w-[150px] whitespace-nowrap">
+                        Service
+                      </th>
+                      <th className="p-4 min-w-[140px] whitespace-nowrap">
+                        Assigned Pro
+                      </th>
+                      <th className="p-4 min-w-[220px] whitespace-nowrap">
+                        Assign Provider
+                      </th>
+                      <th className="p-4 min-w-[100px] whitespace-nowrap">
+                        Amount
+                      </th>
+                      <th className="p-4 min-w-[120px] whitespace-nowrap">
+                        Live Status
+                      </th>
+                      <th className="p-4 min-w-[110px] whitespace-nowrap">
+                        Date
+                      </th>
+                      <th className="p-4 pr-6 text-center min-w-[180px] whitespace-nowrap">
+                        Operational Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm">
+                    {(adminData?.bookings || []).map((booking) => {
+                      const cleanStatus =
+                        booking.status?.toLowerCase() || "pending";
+                      return (
+                        <tr
+                          key={booking._id}
+                          className="hover:bg-slate-50/80 transition-colors"
+                        >
+                          <td className="p-4 pl-6 font-mono text-xs text-slate-400 whitespace-nowrap">
+                            {booking._id ? `...${booking._id.slice(-6)}` : "-"}
+                          </td>
+                          <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
+                            {booking.name || "-"}
+                          </td>
+                          <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
+                            {booking.phone || "-"}
+                          </td>
+                          <td className="p-4 whitespace-nowrap">
+                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-lg">
+                              {booking.service || "-"}
+                            </span>
+                          </td>
+                          <td className="p-4 text-slate-700 font-semibold whitespace-nowrap">
+                            {booking.assignedProviderName ||
+                              booking.requestedProviderName ||
+                              "Not Assigned"}
+                          </td>
+                          <td className="p-4">
+                            <select
+                              value={selectedProviders[booking._id] || ""}
+                              onChange={(e) =>
+                                setSelectedProviders((prev) => ({
+                                  ...prev,
+                                  [booking._id]: e.target.value,
+                                }))
+                              }
+                              disabled={
+                                booking.status?.toLowerCase() === "completed"
+                              }
+                              className="w-full rounded-lg border border-slate-300 px-2 py-2 text-xs bg-white disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-700"
+                            >
+                              <option value="">Select Provider</option>
+
+                              {(adminData?.providers || [])
+                                .filter(
+                                  (provider) =>
+                                    provider.approvalStatus?.toLowerCase() ===
+                                    "approved",
+                                )
+                                .map((provider) => (
+                                  <option
+                                    key={provider._id}
+                                    value={provider._id}
+                                  >
+                                    {provider.businessName || provider.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
+                          <td className="p-4 font-extrabold text-emerald-600 whitespace-nowrap">
+                            ₹
+                            {booking.finalEstimateAmount || booking.amount || 0}
+                          </td>
+                          <td className="p-4 whitespace-nowrap">
+                            <span
+                              className={`inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                                cleanStatus === "completed"
+                                  ? "bg-green-50 text-green-700 border border-green-200"
+                                  : cleanStatus === "accepted" ||
+                                      cleanStatus === "job_started"
+                                    ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                              }`}
+                            >
+                              {booking.status || "pending"}
+                            </span>
+                          </td>
+                          <td className="p-4 text-slate-500 text-xs font-medium whitespace-nowrap">
+                            {booking.preferredDate
+                              ? new Date(
+                                  booking.preferredDate,
+                                ).toLocaleDateString()
+                              : "-"}
+                          </td>
+                          <td className="p-4 pr-6 text-center whitespace-nowrap">
+                            <div className="flex justify-center items-center gap-2">
+                              {/* Newly Added Assign Button Block */}
+                              {selectedProviders[booking._id] &&
+                                cleanStatus !== "completed" && (
+                                  <button
+                                    onClick={() =>
+                                      updateBookingRequest(booking._id, {
+                                        providerId:
+                                          selectedProviders[booking._id],
+                                        status: "assigned",
+                                      })
+                                    }
+                                    className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 transition flex-shrink-0"
+                                  >
+                                    Assign
+                                  </button>
+                                )}
+
+                              {cleanStatus !== "accepted" &&
+                                cleanStatus !== "completed" &&
+                                cleanStatus !== "job_started" && (
+                                  <button
+                                    onClick={() =>
+                                      updateBookingRequest(booking._id, {
+                                        status: "accepted",
+                                      })
+                                    }
+                                    className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 transition flex-shrink-0"
+                                  >
+                                    Accept
+                                  </button>
+                                )}
+                              {cleanStatus !== "completed" && (
+                                <button
+                                  onClick={() =>
+                                    updateBookingRequest(booking._id, {
+                                      status: "completed",
+                                    })
+                                  }
+                                  className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition flex-shrink-0"
+                                >
+                                  Complete
+                                </button>
+                              )}
+                              {cleanStatus === "completed" && (
+                                <span className="text-xs text-slate-400 font-medium italic">
+                                  Archived Stack
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* PROVIDERS NETWORK TAB */}
+          {activeTab === "providers" && (
+            <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b flex items-center justify-between bg-slate-50/50">
+                <h2 className="text-xl font-bold text-slate-900">
+                  Provider Control Matrix
+                </h2>
+                <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">
+                  Total Network: {providerCount}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                      <th className="p-4 pl-6 min-w-[90px] whitespace-nowrap">
+                        Photo
+                      </th>
+                      <th className="p-4 min-w-[150px] whitespace-nowrap">
+                        Operator Name
+                      </th>
+                      <th className="p-4 min-w-[160px] whitespace-nowrap">
+                        Core Category
+                      </th>
+                      <th className="p-4 min-w-[145px] whitespace-nowrap">
+                        Phone
+                      </th>
+                      <th className="p-4 min-w-[120px] whitespace-nowrap">
+                        Location Hub
+                      </th>
+                      <th className="p-4 min-w-[110px] whitespace-nowrap">
+                        Trust Metric
+                      </th>
+                      <th className="p-4 min-w-[120px] whitespace-nowrap">
+                        Verification
+                      </th>
+                      <th className="p-4 pr-6 text-center min-w-[160px] whitespace-nowrap">
+                        System Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm">
+                    {(adminData?.providers || []).map((provider) => {
+                      const cleanAppStatus =
+                        provider.approvalStatus?.toLowerCase() || "pending";
+                      return (
+                        <tr
+                          key={provider._id}
+                          className="hover:bg-slate-50/80 transition-colors"
+                        >
+                          <td className="p-4 pl-6 whitespace-nowrap">
+                            <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 flex items-center justify-center bg-slate-50 flex-shrink-0">
+                              <img
+                                src={
+                                  provider.profileImage ||
+                                  `https://ui-avatars.com/api/?name=${encodeURIComponent(provider.name || "Pro")}&background=random`
+                                }
+                                className="h-full w-full object-cover"
+                                alt="Pro"
+                                onError={(e) => {
+                                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(provider.name || "Pro")}&background=random`;
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
+                            {provider.name}
+                          </td>
+                          <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
+                            {provider.category ||
+                              provider.customCategory ||
+                              "-"}
+                          </td>
+                          <td className="p-4 text-slate-600 font-mono text-xs whitespace-nowrap">
+                            {provider.phone}
+                          </td>
+                          <td className="p-4 text-slate-500 whitespace-nowrap capitalize">
+                            {provider.preferredWorkLocation || "MIDC"}
+                          </td>
+                          <td className="p-4 font-bold text-amber-500 whitespace-nowrap">
+                            ⭐ {provider.rating || 0}
+                          </td>
+                          <td className="p-4 whitespace-nowrap">
+                            <span
+                              className={`inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                                cleanAppStatus === "approved"
+                                  ? "bg-green-50 text-green-700 border border-green-200"
+                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}
+                            >
+                              {provider.approvalStatus || "pending"}
+                            </span>
+                          </td>
+                          <td className="p-4 pr-6 text-center whitespace-nowrap">
+                            <div className="flex justify-center items-center gap-2">
+                              <button
+                                onClick={() =>
+                                  setActiveDrawerProvider(provider)
+                                }
+                                className="bg-slate-100 p-2 rounded-xl text-slate-600 hover:bg-slate-200 transition flex-shrink-0"
+                              >
+                                <Eye size={14} />
+                              </button>
+                              {cleanAppStatus === "pending" && (
+                                <button
+                                  onClick={() =>
+                                    updateProviderApproval(
+                                      provider._id,
+                                      "approved",
+                                    )
+                                  }
+                                  className="bg-blue-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition flex-shrink-0"
+                                >
+                                  Approve
+                                </button>
+                              )}
+                              {cleanAppStatus === "approved" && (
+                                <button
+                                  onClick={() =>
+                                    updateProviderApproval(
+                                      provider._id,
+                                      "rejected",
+                                    )
+                                  }
+                                  className="whitespace-nowrap bg-slate-100 text-slate-600 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-rose-50 hover:text-rose-600 transition border border-slate-200 flex-shrink-0"
+                                >
+                                  Suspend
+                                </button>
+                              )}
+                              {cleanAppStatus === "rejected" && (
+                                <button
+                                  onClick={() =>
+                                    updateProviderApproval(
+                                      provider._id,
+                                      "approved",
+                                    )
+                                  }
+                                  className="whitespace-nowrap bg-blue-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition flex-shrink-0"
+                                >
+                                  Re-Approve
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* PAYMENTS TAB */}
+          {activeTab === "payments" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-slate-900">
+                  Settlements Ledger
+                </h2>
+                <button
+                  onClick={refreshAdminPayments}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-700 transition shadow-xs"
+                >
+                  Force Sync Logs
+                </button>
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    Gross Capital Pipeline
+                  </p>
+                  <h3 className="text-2xl font-black mt-2 text-slate-950">
+                    ₹{totalRevenue}
+                  </h3>
+                </div>
+                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    Provider Share (80%)
+                  </p>
+                  <h3 className="text-2xl font-black mt-2 text-emerald-600">
+                    ₹{(totalRevenue * 0.8).toFixed(0)}
+                  </h3>
+                </div>
+                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    Platform overhead (20%)
+                  </p>
+                  <h3 className="text-2xl font-black mt-2 text-blue-600">
+                    ₹{(totalRevenue * 0.2).toFixed(0)}
+                  </h3>
+                </div>
+                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    Escrow Clearing
+                  </p>
+                  <h3 className="text-2xl font-black mt-2 text-amber-500">
+                    ₹0
+                  </h3>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
+                <div className="p-5 border-b bg-slate-50/50">
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Audit Trail Ledger
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b bg-slate-50 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-4 pl-6 whitespace-nowrap">
+                          Transaction Hash
+                        </th>
+                        <th className="p-4 whitespace-nowrap">
+                          Customer Entity
+                        </th>
+                        <th className="p-4 whitespace-nowrap">
+                          Captured Capital
+                        </th>
+                        <th className="p-4 whitespace-nowrap">
+                          Retained Overhead
+                        </th>
+                        <th className="p-4 whitespace-nowrap">Channel Mode</th>
+                        <th className="p-4 pr-6 whitespace-nowrap">
+                          Gateway Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(paymentData?.transactions || []).length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan="6"
+                            className="p-8 text-center text-slate-400 font-medium"
+                          >
+                            No Ledger Audit Logs Syncing
+                          </td>
+                        </tr>
+                      ) : (
+                        (paymentData?.transactions || []).map((txn, idx) => (
+                          <tr
+                            key={txn._id || idx}
+                            className="hover:bg-slate-50/50"
+                          >
+                            <td className="p-4 pl-6 font-mono text-xs text-slate-400 whitespace-nowrap">
+                              {txn._id || "TXN-9021"}
+                            </td>
+                            <td className="p-4 font-semibold text-slate-800 whitespace-nowrap">
+                              {txn.customerName || "-"}
+                            </td>
+                            <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
+                              ₹{txn.amount}
+                            </td>
+                            <td className="p-4 text-blue-600 font-semibold whitespace-nowrap">
+                              ₹{(txn.amount * 0.2).toFixed(0)}
+                            </td>
+                            <td className="p-4 whitespace-nowrap">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-600 uppercase">
+                                Gateway
+                              </span>
+                            </td>
+                            <td className="p-4 pr-6 whitespace-nowrap">
+                              <span className="bg-green-50 text-green-700 text-xs px-2.5 py-1 rounded-md font-bold">
+                                SUCCESS
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MESSAGES CRM INBOX */}
+          {activeTab === "messages" && (
+            <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden flex h-[580px]">
+              <div className="w-1/3 border-r flex flex-col bg-slate-50/40 flex-shrink-0">
+                <div className="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    CRM Inbound Feed
+                  </h3>
+                  <button
+                    onClick={refreshAdminContactMessages}
+                    className="text-xs text-blue-600 font-bold hover:underline"
+                  >
+                    Sync
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                  {(adminData?.contactMessages || []).length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 text-xs font-medium">
+                      No Live Feedback Feed
+                    </div>
+                  ) : (
+                    (adminData?.contactMessages || []).map((msg) => (
+                      <div
+                        key={msg._id}
+                        onClick={() => setSelectedMessage(msg)}
+                        className={`p-4 cursor-pointer transition-all ${selectedMessage?._id === msg._id ? "bg-blue-50/60 border-l-4 border-blue-600" : "bg-white hover:bg-slate-50/50"}`}
+                      >
+                        <h4 className="font-bold text-sm text-slate-900 truncate">
+                          {msg.name}
+                        </h4>
+                        <p className="text-xs text-slate-500 truncate mt-1">
+                          {msg.message}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 flex flex-col bg-slate-50/30">
+                {selectedMessage ? (
+                  <div className="flex flex-col h-full bg-white">
+                    <div className="p-4 border-b bg-slate-50/40 flex-shrink-0">
+                      <h3 className="font-bold text-slate-900">
+                        {selectedMessage.name}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {selectedMessage.email}
+                      </p>
+                    </div>
+                    <div className="flex-1 p-6 overflow-y-auto space-y-4">
+                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 max-w-xl">
+                        <p className="text-slate-800 text-sm whitespace-pre-line leading-relaxed">
+                          {selectedMessage.message}
+                        </p>
+                      </div>
+                      {selectedMessage.replyLog && (
+                        <div className="bg-emerald-50/60 p-5 rounded-2xl border border-emerald-100 max-w-xl ml-auto">
+                          <p className="text-slate-900 text-sm font-medium whitespace-pre-line">
+                            {selectedMessage.replyLog}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 border-t flex gap-3 items-end flex-shrink-0 bg-white">
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder="Type official response here..."
+                        className="flex-1 border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 h-20 resize-none"
+                      />
+                      <button
+                        onClick={() => handleSendReply(selectedMessage._id)}
+                        disabled={!replyText.trim()}
+                        className="bg-blue-600 text-white p-3 rounded-xl disabled:opacity-40 transition-all shadow-md"
+                      >
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                    <MessageSquare size={36} className="mb-2 stroke-1" />
+                    <p className="text-xs font-bold uppercase tracking-wider">
+                      CRM Terminal Empty
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ANALYTICS TAB */}
+          {activeTab === "analytics" && (
+            <div className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-3">
+                <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
+                    <TrendingUp size={22} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Avg Basket Scale
+                    </p>
+                    <h4 className="text-xl font-black text-slate-900">
+                      ₹{avgTicketSize}
+                    </h4>
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600">
+                    <Award size={22} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Job Fulfillment
+                    </p>
+                    <h4 className="text-xl font-black text-slate-900">
+                      {fulfillmentRate}%
+                    </h4>
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-amber-50 text-amber-600">
+                    <Users size={22} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Operator Conversion
+                    </p>
+                    <h4 className="text-xl font-black text-slate-900">
+                      {providerConversion}%
+                    </h4>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
+                  <h3 className="text-base font-bold text-slate-900 mb-5">
+                    Top Volume Service Sectors
+                  </h3>
+                  <div className="space-y-4.5">
+                    {realTopServices.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">
+                        No historical nodes to render graphs.
+                      </p>
+                    ) : (
+                      realTopServices.map((svc) => {
+                        const percentage =
+                          bookingCount > 0
+                            ? ((svc.value / bookingCount) * 100).toFixed(0)
+                            : 0;
+                        return (
+                          <div key={svc.name}>
+                            <div className="flex justify-between text-xs mb-1.5 font-bold">
+                              <span className="text-slate-700">{svc.name}</span>
+                              <span className="text-slate-900">
+                                {svc.value} Capture Requests ({percentage}%)
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                              <div
+                                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                                style={{ width: `${percentage}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
+                  <h3 className="text-base font-bold text-slate-900 mb-5">
+                    Network Operator Leaderboards
+                  </h3>
+                  <div className="divide-y divide-slate-100">
+                    {leaderBoardProviders.map((p, index) => (
+                      <div
+                        key={p._id || index}
+                        className="py-3 flex justify-between items-center last:pb-0 first:pt-0"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-bold text-slate-400">
+                            #0{index + 1}
+                          </span>
+                          <p className="font-bold text-xs text-slate-900 whitespace-nowrap">
+                            {p.name}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-amber-500 whitespace-nowrap">
+                            ⭐ {p.rating || "5.0"}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                            {p.category || "Operator"}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* HISTORY ARCHIVE TAB */}
+          {activeTab === "history" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                    Encrypted Data Archive
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Historical immutable audit logs
+                  </p>
+                </div>
+                <div className="flex gap-1 bg-slate-200 p-1 rounded-xl text-xs font-bold shadow-xs">
+                  <button
+                    onClick={() => setHistoryFilter("all_bookings")}
+                    className={`px-4 py-2 rounded-lg transition-all duration-200 ${historyFilter === "all_bookings" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                  >
+                    Completed
+                  </button>
+                  <button
+                    onClick={() => setHistoryFilter("cancelled_bookings")}
+                    className={`px-4 py-2 rounded-lg transition-all duration-200 ${historyFilter === "cancelled_bookings" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                  >
+                    Cancelled
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100 min-h-[300px]">
+                {historyFilter === "all_bookings" && (
+                  <div className="overflow-x-auto">
+                    <h3 className="font-bold text-sm mb-5 text-emerald-700 flex items-center gap-2 tracking-wide uppercase">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                      Archive Stack: Settled Deliveries
+                    </h3>
+
+                    {!adminData?.bookings ||
+                    adminData.bookings.filter(
+                      (b) => b.status?.toLowerCase() === "completed",
+                    ).length === 0 ? (
+                      <div className="text-center py-16 text-slate-400 flex flex-col items-center justify-center gap-3">
+                        <FolderOpen
+                          size={36}
+                          className="stroke-1 text-slate-300"
+                        />
+                        <p className="text-xs font-bold uppercase tracking-wider">
+                          No Settled Records in Vault
+                        </p>
+                      </div>
+                    ) : (
+                      <table className="w-full text-left border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                            <th className="p-4 pl-5 min-w-[200px] whitespace-nowrap">
+                              Customer
+                            </th>
+                            <th className="p-4 min-w-[25px] whitespace-nowrap">
+                              Service Sector
+                            </th>
+                            <th className="p-4 pr-5 text-right min-w-[150px] whitespace-nowrap">
+                              Pipeline Amount
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {adminData.bookings
+                            .filter(
+                              (b) => b.status?.toLowerCase() === "completed",
+                            )
+                            .map((b) => (
+                              <tr
+                                key={b._id}
+                                className="hover:bg-slate-50/60 transition-colors"
+                              >
+                                <td className="p-4 pl-5 font-bold text-slate-900 whitespace-nowrap">
+                                  {b.name || "Anonymous User"}
+                                </td>
+                                <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
+                                  <span className="bg-slate-100 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700">
+                                    {b.service || "General Service"}
+                                  </span>
+                                </td>
+                                <td className="p-4 pr-5 font-extrabold text-slate-900 text-right whitespace-nowrap">
+                                  ₹{b.finalEstimateAmount || b.amount || 0}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+
+                {historyFilter === "cancelled_bookings" && (
+                  <div className="overflow-x-auto">
+                    <h3 className="font-bold text-sm mb-5 text-rose-700 flex items-center gap-2 tracking-wide uppercase">
+                      <span className="h-2.5 w-2.5 rounded-full bg-rose-500 inline-block"></span>
+                      Archive Stack: Terminated Requests
+                    </h3>
+
+                    {!adminData?.bookings ||
+                    adminData.bookings.filter(
+                      (b) =>
+                        b.status?.toLowerCase() === "cancelled" ||
+                        b.status?.toLowerCase() === "rejected",
+                    ).length === 0 ? (
+                      <div className="text-center py-16 text-slate-400 flex flex-col items-center justify-center gap-3">
+                        <FolderOpen
+                          size={36}
+                          className="stroke-1 text-slate-300"
+                        />
+                        <p className="text-xs font-bold uppercase tracking-wider">
+                          No Terminated Logs in Vault
+                        </p>
+                      </div>
+                    ) : (
+                      <table className="w-full text-left border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                            <th className="p-4 pl-5 min-w-[200px] whitespace-nowrap">
+                              Customer
+                            </th>
+                            <th className="p-4 min-w-[25px] whitespace-nowrap">
+                              Service Sector
+                            </th>
+                            <th className="p-4 pr-5 text-right min-w-[150px] whitespace-nowrap">
+                              Pipeline Amount
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {adminData.bookings
+                            .filter(
+                              (b) =>
+                                b.status?.toLowerCase() === "cancelled" ||
+                                b.status?.toLowerCase() === "rejected",
+                            )
+                            .map((b) => (
+                              <tr
+                                key={b._id}
+                                className="hover:bg-slate-50/60 transition-colors"
+                              >
+                                <td className="p-4 pl-5 font-bold text-slate-400 line-through whitespace-nowrap">
+                                  {b.name || "Anonymous User"}
+                                </td>
+                                <td className="p-4 text-slate-500 font-medium whitespace-nowrap">
+                                  {b.service || "General Service"}
+                                </td>
+                                <td className="p-4 pr-5 font-bold text-rose-600 text-right whitespace-nowrap">
+                                  ₹{b.finalEstimateAmount || b.amount || 0}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* DRAWER BACKDROP OVERLAY */}
+      {activeDrawerProvider && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity duration-300"
+          onClick={() => setActiveDrawerProvider(null)}
+        />
+      )}
+
+      {/* OPERATOR SPECIFICATION SLIDE DRAWER */}
+      <div
+        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col transform transition-transform duration-300 ease-in-out ${activeDrawerProvider ? "translate-x-0" : "translate-x-full"}`}
+      >
+        {activeDrawerProvider && (
+          <>
+            <div className="flex items-center justify-between border-b pb-4 mb-6">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                Operator Profile Card
+              </h3>
+              <button
+                onClick={() => setActiveDrawerProvider(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex flex-col items-center text-center space-y-3 border-b pb-6 mb-6">
+              <img
+                src={
+                  activeDrawerProvider.profileImage ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(activeDrawerProvider.name || "Pro")}&background=random`
+                }
+                className="w-20 h-20 rounded-full object-cover border-2 border-blue-500 p-0.5 shadow-md"
+              />
+              <h4 className="text-base font-bold text-slate-900">
+                {activeDrawerProvider.name}
+              </h4>
+              <p className="text-xs text-blue-600 font-bold uppercase">
+                {activeDrawerProvider.category || "Verified Node"}
+              </p>
+            </div>
+            <div className="space-y-4 flex-1 text-sm">
+              <p className="font-semibold text-slate-800">
+                📞 {activeDrawerProvider.phone || "No Records"}
+              </p>
+              <p className="font-semibold text-slate-800">
+                📧 {activeDrawerProvider.email || "No Email Attached"}
+              </p>
+              <p className="font-medium text-slate-700 capitalize">
+                📍 Hub:{" "}
+                {activeDrawerProvider.preferredWorkLocation || "MIDC Region"}
+              </p>
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">
+                    Trust Rating
+                  </p>
+                  <p className="text-base font-black text-slate-800">
+                    ⭐ {activeDrawerProvider.rating || "5.0"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">
+                    Network Status
+                  </p>
+                  <span className="text-[10px] font-black text-green-700 uppercase bg-green-100 px-2 py-0.5 rounded">
+                    {activeDrawerProvider.approvalStatus || "pending"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="pt-6 border-t flex gap-3">
+              <button
+                onClick={() => {
+                  updateProviderApproval(activeDrawerProvider._id, "approved");
+                  setActiveDrawerProvider(null);
+                }}
+                className="flex-1 rounded-xl bg-green-600 py-3 text-xs font-bold text-white uppercase tracking-wider hover:bg-green-700 transition"
+              >
+                Whitelist
+              </button>
+              <button
+                onClick={() => {
+                  updateProviderApproval(activeDrawerProvider._id, "rejected");
+                  setActiveDrawerProvider(null);
+                }}
+                className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold text-white uppercase tracking-wider hover:bg-red-700 transition"
+              >
+                Blacklist
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
