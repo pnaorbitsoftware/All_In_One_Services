@@ -2812,12 +2812,7 @@ Status: ${response.status}`
         {activeView !== "admin" && (
           <ServiceHubFooter onServiceClick={openPopularService} />
         )}
-        <button
-          type="button"
-          onClick={toggleChat}
-          className="fixed bottom-5 right-5 z-[85] grid h-14 w-14 place-items-center rounded-2xl bg-amber-300 text-slate-950 shadow-2xl shadow-amber-300/40"
-        >
-          {chatOpen ? <X /> : <MessageCircle />}
+       
         {activeView === "home" && <ClientSupportSection user={user} setStatusMessage={setStatusMessage} />}
         {activeView !== "admin" && <ServiceHubFooter onServiceClick={openPopularService} />}
         <button
