@@ -970,28 +970,35 @@ export default function Home() {
     };
   }, [activeView, user, token]);
 
-  const marketplaceServices = useMemo(() => {
-    const fallback = services.map((service) => ({
-      ...service,
-      providerId: "",
-      image: categoryImages[service.category] || categoryImages.Cleaning,
-    }));
-    const map = new Map(
-      fallback.map((service) => [
-        `${service.name}-${service.category}`,
-        service,
-      ]),
-    );
-    catalogProviders.forEach((provider) =>
-      map.set(`${provider.name}-${provider.category}`, provider),
-    );
-    const map = new Map(fallback.map((service) => [`${service.name}-${service.category}`, service]));
-    catalogProviders
-      .filter((provider) => provider.isActive && provider.approvalStatus === "approved")
-      .forEach((provider) => map.set(`${provider.name}-${provider.category}`, provider));
-    return [...map.values()];
-  }, [catalogProviders]);
+ const marketplaceServices = useMemo(() => {
+  const fallback = services.map((service) => ({
+    ...service,
+    providerId: "",
+    image: categoryImages[service.category] || categoryImages.Cleaning,
+  }));
 
+  const map = new Map(
+    fallback.map((service) => [
+      `${service.name}-${service.category}`,
+      service,
+    ]),
+  );
+
+  catalogProviders
+    .filter(
+      (provider) =>
+        provider.isActive &&
+        provider.approvalStatus === "approved"
+    )
+    .forEach((provider) =>
+      map.set(
+        `${provider.name}-${provider.category}`,
+        provider,
+      ),
+    );
+
+  return [...map.values()];
+}, [catalogProviders]);
   const categories = useMemo(
     () => [
       "All",
