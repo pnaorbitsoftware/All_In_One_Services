@@ -38,6 +38,8 @@ import {
   XCircle,
   Phone,
   RefreshCw,
+  FileText,
+  Filter,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -2901,6 +2903,36 @@ function ClientDashboard({ bookings, setActiveView, cancelClientBooking, onAccep
   const [refreshingClient, setRefreshingClient] = useState(false);
   const bookingHistoryRef = useRef(null);
   const sectionRefs = useRef({});
+
+  // Support Tickets states & fetch
+  const [activeTab, setActiveTab] = useState("bookings"); // 'bookings' | 'tickets'
+  const [tickets, setTickets] = useState([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [viewingTicket, setViewingTicket] = useState(null);
+
+  const fetchTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setTickets(data.tickets || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch tickets:", error);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "tickets") {
+      fetchTickets();
+    }
+  }, [activeTab]);
   const savedProviderCount = new Set(
     bookings
       .map((booking) => booking.assignedProvider?._id || booking.requestedProvider?._id || booking.assignedProvider || booking.requestedProvider)
@@ -3213,27 +3245,109 @@ function ClientDashboard({ bookings, setActiveView, cancelClientBooking, onAccep
         ))}
       </div>
       <div className="mt-8">
-        <Panel title="Booking history">
-          <div ref={bookingHistoryRef} className="grid gap-5">
-            {bookings.length ? bookingSections.filter((section) => !["Completed services", "Cancelled services"].includes(section.title)).map((section) => (
-              <section key={section.title} ref={(node) => { sectionRefs.current[section.title] = node; }} className="scroll-mt-28 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-base font-black text-slate-950 dark:text-white">{section.title}</h3>
-                    <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">{section.copy}</p>
-                  </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm dark:bg-white/10 dark:text-slate-200">{section.bookings.length}</span>
-                </div>
-                <div className="grid gap-3 xl:grid-cols-2">
-                  {section.bookings.length ? section.bookings.map(renderBookingCard) : <EmptyState title={`No ${section.title.toLowerCase()}`} copy={section.copy} />}
-                </div>
-              </section>
-            )) : <EmptyState title="No bookings yet" copy="Booked services will show here with provider, date, time, and price details." />}
-          </div>
-        </Panel>
-        <div className="mt-5 flex justify-center">
-          <button type="button" onClick={() => setActiveView("home")} className="rounded-2xl bg-slate-950 px-6 py-4 font-black text-white dark:bg-amber-300 dark:text-slate-950">{t("bookAnotherService")}</button>
+        <div className="flex border-b border-slate-200 dark:border-white/10 mb-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab("bookings")}
+            className={`px-6 py-3 font-black text-sm transition ${activeTab === "bookings" ? "border-b-2 border-teal-600 text-teal-600 dark:text-amber-300 dark:border-amber-300" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"}`}
+          >
+            My Bookings
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("tickets");
+              fetchTickets();
+            }}
+            className={`px-6 py-3 font-black text-sm transition ${activeTab === "tickets" ? "border-b-2 border-teal-600 text-teal-600 dark:text-amber-300 dark:border-amber-300" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"}`}
+          >
+            Support Tickets
+          </button>
         </div>
+
+        {activeTab === "bookings" ? (
+          <>
+            <Panel title="Booking history">
+              <div ref={bookingHistoryRef} className="grid gap-5">
+                {bookings.length ? bookingSections.filter((section) => !["Completed services", "Cancelled services"].includes(section.title)).map((section) => (
+                  <section key={section.title} ref={(node) => { sectionRefs.current[section.title] = node; }} className="scroll-mt-28 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/5">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-base font-black text-slate-950 dark:text-white">{section.title}</h3>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">{section.copy}</p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm dark:bg-white/10 dark:text-slate-200">{section.bookings.length}</span>
+                    </div>
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {section.bookings.length ? section.bookings.map(renderBookingCard) : <EmptyState title={`No ${section.title.toLowerCase()}`} copy={section.copy} />}
+                    </div>
+                  </section>
+                )) : <EmptyState title="No bookings yet" copy="Booked services will show here with provider, date, time, and price details." />}
+              </div>
+            </Panel>
+            <div className="mt-5 flex justify-center">
+              <button type="button" onClick={() => setActiveView("home")} className="rounded-2xl bg-slate-950 px-6 py-4 font-black text-white dark:bg-amber-300 dark:text-slate-950">{t("bookAnotherService")}</button>
+            </div>
+          </>
+        ) : (
+          <Panel title="My Support Tickets">
+            {loadingTickets ? (
+              <div className="flex justify-center py-12">
+                <RefreshCw size={24} className="animate-spin text-slate-400" />
+              </div>
+            ) : tickets.length ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {tickets.map((ticket) => (
+                  <div key={ticket._id} className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5 shadow-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-500 uppercase tracking-wider">{ticket.ticketId}</p>
+                        <h4 className="mt-1 text-base font-black text-slate-900 dark:text-white leading-snug">{ticket.subject}</h4>
+                      </div>
+                      <span className={`px-2.5 py-1 text-xs font-black rounded-full border ${
+                        ticket.status === "Open" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                        ticket.status === "In Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                        ticket.status === "Resolved" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-100 text-slate-600"
+                      }`}>{ticket.status}</span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
+                      <div>
+                        <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Category</span>
+                        <span className="mt-0.5 block font-bold text-slate-700 dark:text-slate-300">{ticket.category}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</span>
+                        <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-black rounded-full ${
+                          ticket.priority === "Urgent" ? "bg-rose-100 text-rose-700" :
+                          ticket.priority === "High" ? "bg-amber-100 text-amber-700" :
+                          ticket.priority === "Medium" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-700"
+                        }`}>{ticket.priority}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4 dark:border-white/5">
+                      <span className="text-xs text-slate-400 font-semibold">
+                        Submitted: {new Date(ticket.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric", month: "short", year: "numeric"
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setViewingTicket(ticket)}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        View Details
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No support tickets" copy="Your submitted support tickets will show here." />
+            )}
+          </Panel>
+        )}
       </div>
       <AnimatePresence>
         {rejectTargetBooking && (
@@ -3245,6 +3359,95 @@ function ClientDashboard({ bookings, setActiveView, cancelClientBooking, onAccep
               setRejectTargetBooking(null);
             }}
           />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {viewingTicket && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingTicket(null)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950 dark:text-white">Ticket Details</h3>
+                  <p className="mt-1 text-xs text-slate-400 font-bold">{viewingTicket.ticketId}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-sm font-semibold">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Category</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</p>
+                    <span className={`inline-block mt-1 px-2.5 py-1 text-xs font-black rounded-full ${
+                      viewingTicket.priority === "Urgent" ? "bg-rose-100 text-rose-700" :
+                      viewingTicket.priority === "High" ? "bg-amber-100 text-amber-700" :
+                      viewingTicket.priority === "Medium" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-700"
+                    }`}>{viewingTicket.priority}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Status</p>
+                    <span className={`inline-block mt-1 px-2.5 py-1 text-xs font-black rounded-full ${
+                      viewingTicket.status === "Open" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                      viewingTicket.status === "In Review" ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                      viewingTicket.status === "Resolved" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-100 text-slate-600"
+                    }`}>{viewingTicket.status}</span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Submitted On</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200">{new Date(viewingTicket.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric"
+                    })}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Subject</p>
+                  <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.subject}</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Description</p>
+                  <p className="mt-1 rounded-xl bg-slate-50 p-3 text-slate-600 dark:bg-white/5 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
+                    {viewingTicket.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white hover:bg-slate-800 dark:bg-amber-300 dark:text-slate-950"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </DashboardShell>
@@ -3894,11 +4097,44 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
   const [rejectReasons, setRejectReasons] = useState({});
   const [contactReplyDrafts, setContactReplyDrafts] = useState({});
 
+  // Admin Support Tickets State & Fetch
+  const [adminSupportTicketsOpen, setAdminSupportTicketsOpen] = useState(false);
+  const [adminTickets, setAdminTickets] = useState([]);
+  const [loadingAdminTickets, setLoadingAdminTickets] = useState(false);
+
+  const fetchAdminTickets = async (filters = {}) => {
+    setLoadingAdminTickets(true);
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const queryParams = new URLSearchParams();
+      if (filters.status && filters.status !== "All") queryParams.append("status", filters.status);
+      if (filters.category && filters.category !== "All") queryParams.append("category", filters.category);
+      if (filters.priority && filters.priority !== "All") queryParams.append("priority", filters.priority);
+      if (filters.search) queryParams.append("search", filters.search);
+
+      const response = await fetch(`${API_URL}/support/tickets?${queryParams.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setAdminTickets(data.tickets || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch admin tickets:", error);
+    } finally {
+      setLoadingAdminTickets(false);
+    }
+  };
+
   useEffect(() => {
-    if (clientRequestsOpen || completedHistoryOpen || clientMessagesOpen || acceptedRequestsOpen || adminPaymentPageOpen) {
+    fetchAdminTickets();
+  }, []);
+
+  useEffect(() => {
+    if (clientRequestsOpen || completedHistoryOpen || clientMessagesOpen || acceptedRequestsOpen || adminPaymentPageOpen || adminSupportTicketsOpen) {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [clientRequestsOpen, completedHistoryOpen, clientMessagesOpen, acceptedRequestsOpen, adminPaymentPageOpen]);
+  }, [clientRequestsOpen, completedHistoryOpen, clientMessagesOpen, acceptedRequestsOpen, adminPaymentPageOpen, adminSupportTicketsOpen]);
 
   if (!adminData) {
     return <DashboardShell title="Admin Panel" subtitle="Load the admin panel from the navigation after signing in as admin."><EmptyState title="No admin data loaded" copy="Sign in as admin and open the admin panel." /></DashboardShell>;
@@ -3948,6 +4184,18 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
       <AdminPaymentPage
         paymentData={paymentData}
         onBack={() => setAdminPaymentPageOpen(false)}
+      />
+    );
+  }
+
+  if (adminSupportTicketsOpen) {
+    return (
+      <AdminTicketsPanel
+        tickets={adminTickets}
+        loading={loadingAdminTickets}
+        refreshTickets={fetchAdminTickets}
+        onBack={() => setAdminSupportTicketsOpen(false)}
+        setStatusMessage={setStatusMessage}
       />
     );
   }
@@ -4828,6 +5076,26 @@ function AdminPanel({ adminData, selectedProviders, setSelectedProviders, update
             </div>
           </div>
         </Panel>
+        <Panel title="Support tickets">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-slate-950 dark:text-white">{adminTickets.length} support tickets</p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">Inspect, filter, update priorities, and resolve customer tickets.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  fetchAdminTickets();
+                  setAdminSupportTicketsOpen(true);
+                }}
+                className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+              >
+                Open support tickets
+              </button>
+            </div>
+          </div>
+        </Panel>
         <AdminAcceptedProviderRequests bookings={acceptedProviderRequests} totalCount={acceptedProviderRequests.length} compact />
         </div>
         <div className="grid content-start gap-5">
@@ -5233,6 +5501,374 @@ function AdminPaymentPage({ paymentData, onBack }) {
           </div>
         </Panel>
       </div>
+    </DashboardShell>
+  );
+}
+
+function AdminTicketsPanel({ tickets = [], loading = false, refreshTickets, onBack, setStatusMessage }) {
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [priorityFilter, setPriorityFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewingTicket, setViewingTicket] = useState(null);
+  const [updatingTicketId, setUpdatingTicketId] = useState("");
+
+  useEffect(() => {
+    refreshTickets({
+      status: statusFilter,
+      category: categoryFilter,
+      priority: priorityFilter,
+      search: searchTerm,
+    });
+  }, [statusFilter, categoryFilter, priorityFilter, searchTerm]);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setSearchTerm(searchQuery);
+  };
+
+  const handleResetFilters = () => {
+    setStatusFilter("All");
+    setCategoryFilter("All");
+    setPriorityFilter("All");
+    setSearchQuery("");
+    setSearchTerm("");
+  };
+
+  const handleStatusChange = async (ticketId, newStatus) => {
+    setUpdatingTicketId(ticketId);
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets/${ticketId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        if (viewingTicket && viewingTicket.ticketId === ticketId) {
+          setViewingTicket({ ...viewingTicket, status: newStatus });
+        }
+        refreshTickets({
+          status: statusFilter,
+          category: categoryFilter,
+          priority: priorityFilter,
+          search: searchTerm,
+        });
+        if (setStatusMessage) {
+          setStatusMessage(`Ticket ${ticketId} status updated to ${newStatus}.`);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      if (setStatusMessage) {
+        setStatusMessage("Failed to update ticket status.");
+      }
+    } finally {
+      setUpdatingTicketId("");
+    }
+  };
+
+  const categories = [
+    "Booking Issue",
+    "Payment Issue",
+    "Provider Issue",
+    "Account Issue",
+    "Technical Problem",
+    "Refund Request",
+    "Other"
+  ];
+
+  return (
+    <DashboardShell
+      title="Support Tickets"
+      subtitle="Manage, track, prioritize, and resolve help and support requests."
+      headerActions={(
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+        >
+          <ArrowLeft size={17} />
+          Back to Admin
+        </button>
+      )}
+    >
+      <div className="grid gap-5">
+        {/* Filters Toolbar */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-slate-900 shadow-xs">
+          <form onSubmit={handleSearchSubmit} className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr_auto]">
+            {/* Search Input */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search ticket ID, subject, client..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              />
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="All">All Statuses</option>
+                <option value="Open">Open</option>
+                <option value="In Review">In Review</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Closed">Closed</option>
+              </select>
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="All">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="All">All Priorities</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end sm:col-span-2 md:col-span-3 lg:col-span-1">
+              <button
+                type="submit"
+                className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-black text-white hover:bg-teal-700 transition"
+              >
+                Search
+              </button>
+              {(statusFilter !== "All" || categoryFilter !== "All" || priorityFilter !== "All" || searchTerm !== "") && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+
+        {/* Tickets List */}
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <RefreshCw className="animate-spin text-slate-400" size={32} />
+          </div>
+        ) : tickets.length ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {tickets.map((ticket) => (
+              <div
+                key={ticket._id}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-slate-900"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-black tracking-wider text-slate-400 uppercase">{ticket.ticketId}</span>
+                    <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white leading-tight">{ticket.subject}</h3>
+                  </div>
+                  <span className={`px-2.5 py-1 text-xs font-black rounded-full border ${
+                    ticket.status === "Open" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/35" :
+                    ticket.status === "In Review" ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/35" :
+                    ticket.status === "Resolved" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/35" :
+                    "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                  }`}>
+                    {ticket.status}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
+                  <div>
+                    <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Category</span>
+                    <span className="mt-0.5 block font-bold text-slate-700 dark:text-slate-300">{ticket.category}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</span>
+                    <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-black rounded-full ${
+                      ticket.priority === "Urgent" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400" :
+                      ticket.priority === "High" ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" :
+                      ticket.priority === "Medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" :
+                      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-350"
+                    }`}>{ticket.priority}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-slate-100 pt-4 dark:border-white/5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400 font-semibold">Client:</span>{" "}
+                      <span className="font-extrabold text-slate-800 dark:text-slate-200">{ticket.userName}</span>{" "}
+                      <span className="text-slate-400">({ticket.userEmail})</span>
+                    </div>
+                    <span className="text-slate-400 font-semibold">
+                      {new Date(ticket.createdAt).toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric"
+                      })}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-400 uppercase">Update Status:</span>
+                      <select
+                        value={ticket.status}
+                        disabled={updatingTicketId === ticket.ticketId}
+                        onChange={(e) => handleStatusChange(ticket.ticketId, e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+                      >
+                        <option value="Open">Open</option>
+                        <option value="In Review">In Review</option>
+                        <option value="Resolved">Resolved</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setViewingTicket(ticket)}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      View details
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No tickets found" copy="No support tickets match the current filter criteria." />
+        )}
+      </div>
+
+      {/* Ticket Details Modal */}
+      <AnimatePresence>
+        {viewingTicket && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingTicket(null)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950 dark:text-white">Ticket Details</h3>
+                  <p className="mt-1 text-xs text-slate-400 font-bold">{viewingTicket.ticketId}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-sm font-semibold">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Client</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.userName}</p>
+                    <p className="text-xs text-slate-400">{viewingTicket.userEmail}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Submitted On</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200">{new Date(viewingTicket.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+                    })}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Category</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</p>
+                    <span className={`inline-block mt-1 px-2.5 py-1 text-xs font-black rounded-full ${
+                      viewingTicket.priority === "Urgent" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400" :
+                      viewingTicket.priority === "High" ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" :
+                      viewingTicket.priority === "Medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" :
+                      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-350"
+                    }`}>{viewingTicket.priority}</span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Status</p>
+                    <select
+                      value={viewingTicket.status}
+                      onChange={(e) => handleStatusChange(viewingTicket.ticketId, e.target.value)}
+                      className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+                    >
+                      <option value="Open">Open</option>
+                      <option value="In Review">In Review</option>
+                      <option value="Resolved">Resolved</option>
+                      <option value="Closed">Closed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Subject</p>
+                  <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.subject}</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Description</p>
+                  <p className="mt-1 max-h-48 overflow-y-auto rounded-xl bg-slate-50 p-3 text-slate-600 dark:bg-white/5 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
+                    {viewingTicket.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white hover:bg-slate-800 dark:bg-amber-300 dark:text-slate-950"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </DashboardShell>
   );
 }
@@ -6034,14 +6670,21 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
     suggestions,
     time: getTimeLabel(),
   });
+
+  // Guided Conversation State Machine
+  const [flowState, setFlowState] = useState("idle"); // 'idle' | 'awaiting_ticket_category' | 'awaiting_ticket_description' | 'awaiting_ticket_priority' | 'awaiting_track_ticket_id'
+  const [ticketDraft, setTicketDraft] = useState({});
+
+  const welcomeText = user?.name
+    ? `Hi ${user.name.split(" ")[0]}, I'm Liza from ServiceHub Support.\n\nI can help with:\n• Booking services\n• Booking status\n• Payments\n• Provider registration\n• Support requests`
+    : `Hi, I'm Liza from ServiceHub Support.\n\nI can help with:\n• Booking services\n• Booking status\n• Payments\n• Provider registration\n• Support requests`;
+
   const [messages, setMessages] = useState([
     {
       id: "bot-welcome",
       role: "bot",
-      text: user?.name
-        ? `Hi ${user.name.split(" ")[0]}, I'm Liza from ServiceHub Support. Tell me what is stuck and I will point you to the right place.`
-        : "Hi, I'm Liza from ServiceHub Support. I can help with booking status, payments, provider signup, or getting help from the team.",
-      suggestions: ["Book a service", "Booking status", "Payment issue", "Talk to support"],
+      text: welcomeText,
+      suggestions: ["Book a service", "Booking status", "Payment issue", "🎫 Create Ticket", "📋 Track Ticket", "👨💼 Talk to Human Support"],
       time: INITIAL_CHAT_TIME_LABEL,
     },
   ]);
@@ -6055,7 +6698,9 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
     { label: "Book", value: "I want to book a service" },
     { label: "Status", value: "Check my booking status" },
     { label: "Payment", value: "I need help with payment" },
-    { label: "Provider", value: "I want provider help" },
+    { label: "🎫 Create Ticket", value: "Create Ticket" },
+    { label: "📋 Track Ticket", value: "Track Ticket" },
+    { label: "👨💼 Talk to Human", value: "Talk to Human Support" },
   ];
 
   useEffect(() => {
@@ -6255,12 +6900,36 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
       };
     }
 
+    if (/create ticket|🎫 create ticket/i.test(query)) {
+      return {
+        intent: "create_ticket",
+        text: "I'll help you create a support ticket. What type of issue are you facing?",
+        suggestions: ["Booking", "Payment", "Provider", "Account", "Technical", "Other"],
+      };
+    }
+
+    if (/track ticket|📋 track ticket/i.test(query)) {
+      return {
+        intent: "track_ticket",
+        text: "Please enter your ticket number. (Example: SH-2026-000001)",
+        suggestions: [],
+      };
+    }
+
+    if (/talk to human|talk to support|👨💼 talk to human support/i.test(query)) {
+      return {
+        intent: "talk_to_support",
+        text: "You can send an email to support@servicehub.aparaitech.org or call us directly at +91 9158852129. Alternatively, you can submit a support ticket for faster resolution.",
+        suggestions: ["Create Ticket", "Track Ticket"],
+      };
+    }
+
     if (/contact|support|help|call|email|human|agent|complaint|stuck|issue|problem/.test(query)) {
       return {
         intent: "support",
         text: "I can take you to the support form. Add your booking ID, phone number, and a short note about the issue so the team can respond with context.",
         action: { label: "Contact support", run: onContact },
-        suggestions: ["Booking status", "Payment issue", "Provider issue"],
+        suggestions: ["Booking status", "Payment issue", "Provider issue", "Create Ticket"],
       };
     }
 
@@ -6274,34 +6943,183 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
 
     return {
       intent: "fallback",
-      text: "I want to make sure I guide you correctly. Is this about booking a service, booking status, payment, provider signup, or support?",
-      suggestions: ["Book a service", "Booking status", "Payment help", "Contact support"],
+      text: "I couldn't fully resolve that issue. Would you like me to create a support ticket?",
+      suggestions: ["Create Ticket", "Talk to Human"],
     };
   };
 
-  const sendMessage = (value = input) => {
+  const handleTicketCategoryInput = async (text) => {
+    const categoriesMap = {
+      booking: "Booking Issue",
+      payment: "Payment Issue",
+      provider: "Provider Issue",
+      account: "Account Issue",
+      technical: "Technical Problem",
+      other: "Other"
+    };
+    const key = text.toLowerCase().trim();
+    const mapped = categoriesMap[key] || "Other";
+    setTicketDraft(prev => ({ ...prev, category: mapped }));
+    setFlowState("awaiting_ticket_description");
+    return {
+      text: "Please briefly describe your issue.",
+      suggestions: []
+    };
+  };
+
+  const handleTicketDescriptionInput = async (text) => {
+    setTicketDraft(prev => ({ ...prev, description: text }));
+    setFlowState("awaiting_ticket_priority");
+    return {
+      text: "What priority should we assign?",
+      suggestions: ["Low", "Medium", "High", "Urgent"]
+    };
+  };
+
+  const handleTicketPriorityInput = async (text) => {
+    const validPriorities = ["Low", "Medium", "High", "Urgent"];
+    const found = validPriorities.find(p => p.toLowerCase() === text.toLowerCase().trim()) || "Medium";
+    
+    if (!user) {
+      setFlowState("idle");
+      return {
+        text: "You need to log in to submit a ticket. Please log in and try again.",
+        action: { label: "Login", run: onLogin },
+        suggestions: ["Login", "Create Ticket"]
+      };
+    }
+
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          subject: `Chat Ticket - ${ticketDraft.category}`,
+          description: ticketDraft.description,
+          category: ticketDraft.category,
+          priority: found,
+        }),
+      });
+      const data = await response.json();
+      setFlowState("idle");
+      if (response.ok && data.success) {
+        return {
+          text: `✅ Ticket Created Successfully\n\nTicket ID:\n${data.ticketId}\n\nOur support team will review your issue.\n\nExpected response time:\n4–8 business hours.`,
+          suggestions: ["Track Ticket", "Book a service"]
+        };
+      } else {
+        return {
+          text: `Failed to create ticket: ${data.message || "Unknown error."}`,
+          suggestions: ["Create Ticket"]
+        };
+      }
+    } catch (err) {
+      setFlowState("idle");
+      return {
+        text: `An error occurred: ${err.message}`,
+        suggestions: ["Create Ticket"]
+      };
+    }
+  };
+
+  const handleTrackTicketIdInput = async (text) => {
+    const ticketId = text.trim().toUpperCase();
+    if (!user) {
+      setFlowState("idle");
+      return {
+        text: "You need to log in to track support tickets. Please log in and try again.",
+        action: { label: "Login", run: onLogin },
+        suggestions: ["Login", "Track Ticket"]
+      };
+    }
+
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets/${ticketId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      setFlowState("idle");
+      if (response.ok && data.success && data.ticket) {
+        const ticket = data.ticket;
+        const formattedDate = new Date(ticket.createdAt).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "long",
+          year: "numeric"
+        });
+        return {
+          text: `Status: ${ticket.status}\nPriority: ${ticket.priority}\nCreated: ${formattedDate}`,
+          suggestions: ["Track Ticket", "Create Ticket"]
+        };
+      } else {
+        return {
+          text: `I couldn't find a support ticket with ID ${ticketId} associated with your account.`,
+          suggestions: ["Track Ticket", "Create Ticket"]
+        };
+      }
+    } catch (err) {
+      setFlowState("idle");
+      return {
+        text: `An error occurred while tracking: ${err.message}`,
+        suggestions: ["Track Ticket"]
+      };
+    }
+  };
+
+  const sendMessage = async (value = input) => {
     const text = value.trim();
     if (!text || isTyping) return;
 
-    const reply = getBotReply(text);
-    setLastIntent(reply.intent || lastIntent);
     setMessages((current) => [...current, buildMessage({ role: "user", text })]);
     setInput("");
     setIsTyping(true);
 
-    window.setTimeout(() => {
-      setMessages((current) => [
-        ...current,
-        buildMessage({
-          role: "bot",
-          text: reply.text,
-          action: reply.action,
-          suggestions: reply.suggestions || [],
-        }),
-      ]);
-      speakText(reply.text);
+    try {
+      let reply;
+      if (flowState === "awaiting_ticket_category") {
+        reply = await handleTicketCategoryInput(text);
+      } else if (flowState === "awaiting_ticket_description") {
+        reply = await handleTicketDescriptionInput(text);
+      } else if (flowState === "awaiting_ticket_priority") {
+        reply = await handleTicketPriorityInput(text);
+      } else if (flowState === "awaiting_track_ticket_id") {
+        reply = await handleTrackTicketIdInput(text);
+      } else {
+        reply = getBotReply(text);
+        if (reply.intent === "create_ticket") {
+          setFlowState("awaiting_ticket_category");
+          setTicketDraft({});
+        } else if (reply.intent === "track_ticket") {
+          setFlowState("awaiting_track_ticket_id");
+        }
+      }
+
+      setLastIntent(reply.intent || lastIntent);
+
+      window.setTimeout(() => {
+        setMessages((current) => [
+          ...current,
+          buildMessage({
+            role: "bot",
+            text: reply.text,
+            action: reply.action,
+            suggestions: reply.suggestions || [],
+          }),
+        ]);
+        speakText(reply.text);
+        setIsTyping(false);
+      }, Math.min(1200, Math.max(520, reply.text.length * 8)));
+    } catch (err) {
+      console.error(err);
       setIsTyping(false);
-    }, Math.min(1200, Math.max(520, reply.text.length * 8)));
+    }
   };
 
   return (
@@ -6361,7 +7179,7 @@ function ChatBox({ user, onClose, onServiceClick, onDashboardClick, onProviderSi
           {messages.map((message, index) => (
             <div key={`${message.role}-${index}`} className={`grid gap-2 ${message.role === "user" ? "justify-items-end" : "justify-items-start"}`}>
               <div className={`max-w-[88%] ${message.role === "user" ? "text-right" : "text-left"}`}>
-                <p className={`rounded-2xl px-3 py-2.5 text-sm font-semibold leading-6 shadow-sm ${message.role === "user" ? "rounded-br-md bg-amber-300 text-slate-950" : "rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200 dark:bg-white/10 dark:text-white dark:ring-white/10"}`}>
+                <p className={`rounded-2xl px-3 py-2.5 text-sm font-semibold leading-6 shadow-sm whitespace-pre-wrap ${message.role === "user" ? "rounded-br-md bg-amber-300 text-slate-950" : "rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200 dark:bg-white/10 dark:text-white dark:ring-white/10"}`}>
                   {message.text}
                 </p>
                 <p className="mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{message.time}</p>
