@@ -2,6 +2,7 @@ import Booking from "../models/Booking.js";
 import Category from "../models/Category.js";
 import ChatMessage from "../models/ChatMessage.js";
 import ContactMessage from "../models/ContactMessage.js";
+import SupportTicket from "../models/SupportTicket.js";
 import GpsHistory from "../models/GpsHistory.js";
 import Ledger from "../models/Ledger.js";
 import Payment from "../models/Payment.js";
@@ -30,6 +31,7 @@ const models = [
   Service,
   Session,
   SiteContent,
+  SupportTicket,
 ];
 
 export default async function setupDatabase() {
