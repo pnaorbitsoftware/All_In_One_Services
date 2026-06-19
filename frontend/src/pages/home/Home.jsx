@@ -16,6 +16,7 @@ import {
   Clock,
   CreditCard,
   Heart,
+  Headset,
   House,
   IndianRupee,
   Languages,
@@ -40,8 +41,11 @@ import {
   XCircle,
   Phone,
   RefreshCw,
+  FileText,
+  Filter,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   acceptEstimate,
@@ -625,6 +629,9 @@ const normalizeProvider = (provider) => ({
     provider.profileImage ||
     categoryImages[provider.category] ||
     categoryImages.Cleaning,
+  image: provider.profileImage || categoryImages[provider.category] || categoryImages.Cleaning,
+  isActive: provider.isActive !== undefined ? provider.isActive : true,
+  approvalStatus: provider.approvalStatus || "approved",
 });
 
 const normalizeProviderDashboard = (data) => ({
@@ -1072,6 +1079,10 @@ export default function Home() {
     catalogProviders.forEach((provider) =>
       map.set(`${provider.name}-${provider.category}`, provider),
     );
+    const map = new Map(fallback.map((service) => [`${service.name}-${service.category}`, service]));
+    catalogProviders
+      .filter((provider) => provider.isActive && provider.approvalStatus === "approved")
+      .forEach((provider) => map.set(`${provider.name}-${provider.category}`, provider));
     return [...map.values()];
   }, [catalogProviders]);
 
@@ -1833,6 +1844,58 @@ export default function Home() {
     } catch (error) {
       setStatusMessage(error.message);
       return false;
+    }
+  };
+
+  const toggleProviderAvailability = async (newStatus) => {
+    const url = `${API_URL}/providers/availability`;
+    const payload = { isActive: newStatus };
+    try {
+      console.log("Availability URL:", url);
+      console.log("Availability Payload:", payload);
+      const response = await fetch(url, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      console.log("Availability Response:", response);
+
+      if (!response.ok) {
+        throw new Error(
+          `Unable to update provider availability.
+Endpoint: /api/providers/availability
+Status: ${response.status}`
+        );
+      }
+
+      const data = await parseApiResponse(response, "Could not update availability status.");
+
+      setProviderData((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          provider: {
+            ...current.provider,
+            isActive: data.provider.isActive
+          }
+        };
+      });
+
+      setCatalogProviders((current) =>
+        current.map((provider) =>
+          provider.providerId === data.provider._id || provider.id === data.provider._id
+            ? { ...provider, isActive: data.provider.isActive }
+            : provider
+        )
+      );
+
+      setStatusMessage(`Availability updated: You are now ${data.provider.isActive ? "Available" : "Unavailable"} for work.`);
+      refreshAfterAction({ provider: true });
+    } catch (error) {
+      setStatusMessage(error.message);
     }
   };
 
@@ -2807,6 +2870,7 @@ export default function Home() {
               providerProfile?.approvalStatus !== "approved"
             }
             onBookAsClient={openProviderClientDashboard}
+            toggleProviderAvailability={toggleProviderAvailability}
           />
         )}
 
@@ -2841,6 +2905,25 @@ export default function Home() {
           className="fixed bottom-5 right-5 z-[85] grid h-14 w-14 place-items-center rounded-2xl bg-amber-300 text-slate-950 shadow-2xl shadow-amber-300/40"
         >
           {chatOpen ? <X /> : <MessageCircle />}
+        {activeView === "home" && <ClientSupportSection user={user} setStatusMessage={setStatusMessage} />}
+        {activeView !== "admin" && <ServiceHubFooter onServiceClick={openPopularService} />}
+        <button
+          type="button"
+          onClick={toggleChat}
+          className="fixed bottom-5 right-5 z-[85] flex h-14 items-center gap-2.5 rounded-full bg-[#FACC15] px-6 text-slate-950 shadow-2xl shadow-amber-400/30 hover:scale-105 active:scale-95 transition-all duration-200 hover:shadow-amber-400/45"
+          aria-label={chatOpen ? "Close support chat" : "Open support chat"}
+        >
+          {chatOpen ? (
+            <>
+              <X size={18} />
+              <span className="text-sm font-black tracking-tight">Close</span>
+            </>
+          ) : (
+            <>
+              <Headset size={18} />
+              <span className="text-sm font-black tracking-tight">Help & Support</span>
+            </>
+          )}
         </button>
         <AnimatePresence>
           {chatOpen && (
@@ -3932,6 +4015,36 @@ function ClientDashboard({
   const [refreshingClient, setRefreshingClient] = useState(false);
   const bookingHistoryRef = useRef(null);
   const sectionRefs = useRef({});
+
+  // Support Tickets states & fetch
+  const [activeTab, setActiveTab] = useState("bookings"); // 'bookings' | 'tickets'
+  const [tickets, setTickets] = useState([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [viewingTicket, setViewingTicket] = useState(null);
+
+  const fetchTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setTickets(data.tickets || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch tickets:", error);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "tickets") {
+      fetchTickets();
+    }
+  }, [activeTab]);
   const savedProviderCount = new Set(
     bookings
       .map(
@@ -4471,8 +4584,109 @@ function ClientDashboard({
             className="rounded-2xl bg-slate-950 px-6 py-4 font-black text-white dark:bg-amber-300 dark:text-slate-950"
           >
             {t("bookAnotherService")}
+        <div className="flex border-b border-slate-200 dark:border-white/10 mb-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab("bookings")}
+            className={`px-6 py-3 font-black text-sm transition ${activeTab === "bookings" ? "border-b-2 border-teal-600 text-teal-600 dark:text-amber-300 dark:border-amber-300" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"}`}
+          >
+            My Bookings
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("tickets");
+              fetchTickets();
+            }}
+            className={`px-6 py-3 font-black text-sm transition ${activeTab === "tickets" ? "border-b-2 border-teal-600 text-teal-600 dark:text-amber-300 dark:border-amber-300" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"}`}
+          >
+            Support Tickets
           </button>
         </div>
+
+        {activeTab === "bookings" ? (
+          <>
+            <Panel title="Booking history">
+              <div ref={bookingHistoryRef} className="grid gap-5">
+                {bookings.length ? bookingSections.filter((section) => !["Completed services", "Cancelled services"].includes(section.title)).map((section) => (
+                  <section key={section.title} ref={(node) => { sectionRefs.current[section.title] = node; }} className="scroll-mt-28 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/5">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-base font-black text-slate-950 dark:text-white">{section.title}</h3>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">{section.copy}</p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm dark:bg-white/10 dark:text-slate-200">{section.bookings.length}</span>
+                    </div>
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {section.bookings.length ? section.bookings.map(renderBookingCard) : <EmptyState title={`No ${section.title.toLowerCase()}`} copy={section.copy} />}
+                    </div>
+                  </section>
+                )) : <EmptyState title="No bookings yet" copy="Booked services will show here with provider, date, time, and price details." />}
+              </div>
+            </Panel>
+            <div className="mt-5 flex justify-center">
+              <button type="button" onClick={() => setActiveView("home")} className="rounded-2xl bg-slate-950 px-6 py-4 font-black text-white dark:bg-amber-300 dark:text-slate-950">{t("bookAnotherService")}</button>
+            </div>
+          </>
+        ) : (
+          <Panel title="My Support Tickets">
+            {loadingTickets ? (
+              <div className="flex justify-center py-12">
+                <RefreshCw size={24} className="animate-spin text-slate-400" />
+              </div>
+            ) : tickets.length ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {tickets.map((ticket) => (
+                  <div key={ticket._id} className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5 shadow-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-500 uppercase tracking-wider">{ticket.ticketId}</p>
+                        <h4 className="mt-1 text-base font-black text-slate-900 dark:text-white leading-snug">{ticket.subject}</h4>
+                      </div>
+                      <span className={`px-2.5 py-1 text-xs font-black rounded-full border ${
+                        ticket.status === "Open" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                        ticket.status === "In Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                        ticket.status === "Resolved" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-100 text-slate-600"
+                      }`}>{ticket.status}</span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
+                      <div>
+                        <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Category</span>
+                        <span className="mt-0.5 block font-bold text-slate-700 dark:text-slate-300">{ticket.category}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</span>
+                        <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-black rounded-full ${
+                          ticket.priority === "Urgent" ? "bg-rose-100 text-rose-700" :
+                          ticket.priority === "High" ? "bg-amber-100 text-amber-700" :
+                          ticket.priority === "Medium" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-700"
+                        }`}>{ticket.priority}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4 dark:border-white/5">
+                      <span className="text-xs text-slate-400 font-semibold">
+                        Submitted: {new Date(ticket.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric", month: "short", year: "numeric"
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setViewingTicket(ticket)}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        View Details
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No support tickets" copy="Your submitted support tickets will show here." />
+            )}
+          </Panel>
+        )}
       </div>
       <AnimatePresence>
         {rejectTargetBooking && (
@@ -4484,6 +4698,95 @@ function ClientDashboard({
               setRejectTargetBooking(null);
             }}
           />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {viewingTicket && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingTicket(null)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950 dark:text-white">Ticket Details</h3>
+                  <p className="mt-1 text-xs text-slate-400 font-bold">{viewingTicket.ticketId}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-sm font-semibold">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Category</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</p>
+                    <span className={`inline-block mt-1 px-2.5 py-1 text-xs font-black rounded-full ${
+                      viewingTicket.priority === "Urgent" ? "bg-rose-100 text-rose-700" :
+                      viewingTicket.priority === "High" ? "bg-amber-100 text-amber-700" :
+                      viewingTicket.priority === "Medium" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-700"
+                    }`}>{viewingTicket.priority}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Status</p>
+                    <span className={`inline-block mt-1 px-2.5 py-1 text-xs font-black rounded-full ${
+                      viewingTicket.status === "Open" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                      viewingTicket.status === "In Review" ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                      viewingTicket.status === "Resolved" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-100 text-slate-600"
+                    }`}>{viewingTicket.status}</span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Submitted On</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200">{new Date(viewingTicket.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric"
+                    })}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Subject</p>
+                  <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.subject}</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Description</p>
+                  <p className="mt-1 rounded-xl bg-slate-50 p-3 text-slate-600 dark:bg-white/5 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
+                    {viewingTicket.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white hover:bg-slate-800 dark:bg-amber-300 dark:text-slate-950"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </DashboardShell>
@@ -4898,6 +5201,7 @@ function ProviderDashboard({
   providerDashboardLocked,
   onBookAsClient,
 }) {
+function ProviderDashboard({ providerProfile, providerRequests, providerBookings, providerEarnings, acceptProviderRequest, updateProviderBookingStatus, submitEstimate, refreshDashboard, setStatusMessage, providerDashboardLocked, onBookAsClient, toggleProviderAvailability }) {
   const [cancelTargetBooking, setCancelTargetBooking] = useState(null);
   const [estimateTargetBooking, setEstimateTargetBooking] = useState(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -5027,6 +5331,90 @@ function ProviderDashboard({
           aria-hidden={isDashboardLocked}
         >
           <div className="mb-5 flex flex-wrap justify-end gap-3">
+        <div className={isDashboardLocked ? "pointer-events-none select-none blur-sm opacity-45" : ""} aria-hidden={isDashboardLocked}>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-[#fffefb] px-4 py-2.5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+          <span className="text-sm font-black text-slate-700 dark:text-slate-300">
+            Available for Work
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={providerProfile?.isActive}
+            onClick={() => toggleProviderAvailability?.(!providerProfile?.isActive)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
+              providerProfile?.isActive ? "bg-teal-600" : "bg-slate-300 dark:bg-slate-700"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                providerProfile?.isActive ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black capitalize ${
+              providerProfile?.isActive
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+            }`}
+          >
+            {providerProfile?.isActive ? "Active" : "Inactive"}
+          </span>
+        </div>
+
+        <button type="button" onClick={refreshDashboard} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950">
+          Refresh dashboard
+        </button>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-4">
+        <StatCard icon={IndianRupee} label="Projected earnings" value={`Rs. ${providerBookings.reduce((sum, booking) => sum + (booking.costEstimate || 0), 0).toLocaleString("en-IN")}`} />
+        <StatCard icon={Bell} label="New requests" value={providerRequests.length} />
+        <StatCard icon={BriefcaseBusiness} label="Accepted jobs" value={providerBookings.length} />
+        <StatCard icon={Star} label="Rating" value={providerProfile?.rating || "0.0"} />
+      </div>
+      <div className="mt-5 grid gap-5 lg:grid-cols-4">
+        <ProviderWithdrawCard earningsSummary={earningsSummary} providerProfile={providerProfile} onWithdrawClick={() => setWithdrawOpen(true)} />
+        <PaymentSummaryCard icon={Clock} title="Pending Earnings" amount={formatMoney(earningsSummary.pendingEarnings || 0)} description="Expected 80% share from pending payments." />
+        <PaymentSummaryCard icon={CheckCircle} title="Completed Paid Bookings" amount={earningsSummary.totalBookingsPaid || 0} description="Bookings with verified Razorpay payments." />
+        <PaymentSummaryCard icon={CreditCard} title="Awaiting Client Payment" amount={awaitingClientPayment} description="Accepted estimates waiting for checkout." />
+      </div>
+      <div className="mt-8">
+        <Panel title="New client requests">
+          <div className="grid gap-4">
+            {providerRequests.length ? providerRequests.map((booking) => (
+              <JobCard key={booking._id} booking={booking} actionLabel="Accept request" onAction={() => acceptProviderRequest(booking._id)} alertMode />
+            )) : <EmptyState title="No new requests" copy={`New ${providerProfile?.category || "service"} bookings will appear here.`} />}
+          </div>
+        </Panel>
+      </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <Panel title="Confirmed service jobs">
+          <div className="grid gap-4">
+            {confirmedJobs.length ? confirmedJobs.map((booking) => (
+              <div key={booking._id} className="grid gap-3">
+                <JobCard
+                  booking={booking}
+                  secondaryAction={() => setCancelTargetBooking(booking)}
+                  onEstimateClick={(booking.status === "arrived" || (booking.status === "job_started" && booking.paymentStatus !== "paid")) ? () => setEstimateTargetBooking(booking) : null}
+                />
+                <ProviderRoutePanel
+                  booking={booking}
+                  updateProviderBookingStatus={updateProviderBookingStatus}
+                  setStatusMessage={setStatusMessage}
+                  apiUrl={API_URL}
+                />
+              </div>
+            )) : <EmptyState title="No confirmed jobs yet" copy="Accepted client jobs will appear here until they are completed or cancelled." />}
+          </div>
+        </Panel>
+        <Panel title="Client history" className="scroll-mt-28" sectionRef={historySectionRef}>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4 dark:bg-white/5">
+            <div>
+              <p className="text-sm font-black text-slate-950 dark:text-white">{historyJobs.length} history record{historyJobs.length === 1 ? "" : "s"}</p>
+              <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-300">Open the full page to review every completed and cancelled client job.</p>
+            </div>
             <button
               type="button"
               onClick={refreshDashboard}
@@ -5530,6 +5918,39 @@ function AdminPanel({
   const [rejectReasons, setRejectReasons] = useState({});
   const [contactReplyDrafts, setContactReplyDrafts] = useState({});
 
+  // Admin Support Tickets State & Fetch
+  const [adminSupportTicketsOpen, setAdminSupportTicketsOpen] = useState(false);
+  const [adminTickets, setAdminTickets] = useState([]);
+  const [loadingAdminTickets, setLoadingAdminTickets] = useState(false);
+
+  const fetchAdminTickets = async (filters = {}) => {
+    setLoadingAdminTickets(true);
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const queryParams = new URLSearchParams();
+      if (filters.status && filters.status !== "All") queryParams.append("status", filters.status);
+      if (filters.category && filters.category !== "All") queryParams.append("category", filters.category);
+      if (filters.priority && filters.priority !== "All") queryParams.append("priority", filters.priority);
+      if (filters.search) queryParams.append("search", filters.search);
+
+      const response = await fetch(`${API_URL}/support/tickets?${queryParams.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setAdminTickets(data.tickets || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch admin tickets:", error);
+    } finally {
+      setLoadingAdminTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdminTickets();
+  }, []);
+
   useEffect(() => {
     if (
       clientRequestsOpen ||
@@ -5547,6 +5968,10 @@ function AdminPanel({
     acceptedRequestsOpen,
     adminPaymentPageOpen,
   ]);
+    if (clientRequestsOpen || completedHistoryOpen || clientMessagesOpen || acceptedRequestsOpen || adminPaymentPageOpen || adminSupportTicketsOpen) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [clientRequestsOpen, completedHistoryOpen, clientMessagesOpen, acceptedRequestsOpen, adminPaymentPageOpen, adminSupportTicketsOpen]);
 
   if (!adminData) {
     return (
@@ -5708,6 +6133,18 @@ function AdminPanel({
       <AdminPaymentPage
         paymentData={paymentData}
         onBack={() => setAdminPaymentPageOpen(false)}
+      />
+    );
+  }
+
+  if (adminSupportTicketsOpen) {
+    return (
+      <AdminTicketsPanel
+        tickets={adminTickets}
+        loading={loadingAdminTickets}
+        refreshTickets={fetchAdminTickets}
+        onBack={() => setAdminSupportTicketsOpen(false)}
+        setStatusMessage={setStatusMessage}
       />
     );
   }
@@ -7373,6 +7810,155 @@ function AdminPanel({
                       </button>
                     </div>
                   )}
+              );
+            })}
+            {!completedHistory.length && <EmptyState title="No completed services yet" copy="Completed, client-cancelled, and admin-rejected services will appear here as history." />}
+            {(hasMoreCompletedHistory || canShowLessCompletedHistory) && (
+              <div className="mt-2 flex flex-wrap justify-center gap-3">
+                {hasMoreCompletedHistory && (
+                  <button type="button" onClick={() => setVisibleCompletedHistoryCount((count) => Math.min(count + adminBatchSize, completedHistory.length))} className="rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-3 text-sm font-black text-white shadow-lg shadow-emerald-900/15 transition hover:-translate-y-0.5">
+                    View more history
+                  </button>
+                )}
+                {canShowLessCompletedHistory && (
+                  <button type="button" onClick={() => setVisibleCompletedHistoryCount(adminBatchSize)} className="rounded-full border border-emerald-200 bg-white px-6 py-3 text-sm font-black text-emerald-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-50 dark:border-emerald-400/30 dark:bg-white/10 dark:text-emerald-100">
+                    View less history
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          )}
+        </Panel>
+        <Panel title="Client messages">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-slate-950 dark:text-white">{contactMessages.length} client messages</p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">View and reply to every contact form message.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setClientMessagesOpen(true)}
+                className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+              >
+                Open client messages
+              </button>
+            </div>
+          </div>
+        </Panel>
+        <Panel title="Support tickets">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-slate-950 dark:text-white">{adminTickets.length} support tickets</p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">Inspect, filter, update priorities, and resolve customer tickets.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  fetchAdminTickets();
+                  setAdminSupportTicketsOpen(true);
+                }}
+                className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+              >
+                Open support tickets
+              </button>
+            </div>
+          </div>
+        </Panel>
+        <AdminAcceptedProviderRequests bookings={acceptedProviderRequests} totalCount={acceptedProviderRequests.length} compact />
+        </div>
+        <div className="grid content-start gap-5">
+        <Panel title="Provider permissions">
+          <div className="grid gap-4">
+            {visibleProviderPermissions.map((provider) => (
+              <div key={provider._id} className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleAdminProviderDetails(provider._id)}
+                    className="text-left transition hover:translate-x-1"
+                  >
+                    <p className="font-black text-slate-950 underline-offset-4 hover:text-teal-700 hover:underline dark:text-white">{provider.name}</p>
+                    <p className="text-sm text-slate-500">{provider.category} | {provider.location}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleAdminProviderDetails(provider._id)}
+                    className="rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-black text-teal-800 transition hover:-translate-y-0.5 hover:bg-teal-100 dark:border-teal-400/30 dark:bg-teal-400/10 dark:text-teal-100"
+                  >
+                    {expandedAdminProviderId === provider._id ? "Hide profile" : "View profile"}
+                  </button>
+                </div>
+                <StatusBadge status={provider.approvalStatus} />
+                {expandedAdminProviderId === provider._id && <AdminProviderDetails provider={provider} />}
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => updateProviderApproval(provider._id, "approved")} className="rounded-xl bg-slate-100 px-4 py-3 font-black text-slate-950 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/15">Allow</button>
+                  <button type="button" onClick={() => updateProviderApproval(provider._id, "rejected")} className="rounded-xl bg-slate-950 px-4 py-3 font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-teal-600">Reject</button>
+                </div>
+              </div>
+            ))}
+            {!providerPermissions.length && <EmptyState title="No pending provider permissions" copy="Approved and rejected provider requests move into history automatically." />}
+            {(hasMoreProviderPermissions || canShowLessProviderPermissions) && (
+              <div className="mt-2 flex flex-wrap justify-center gap-3">
+                {hasMoreProviderPermissions && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleProviderPermissionCount((count) => Math.min(count + adminBatchSize, providerPermissions.length))}
+                    className="rounded-full bg-gradient-to-r from-teal-700 to-slate-950 px-6 py-3 text-sm font-black text-white shadow-lg shadow-teal-900/15 transition hover:-translate-y-0.5 hover:shadow-xl dark:from-teal-500 dark:to-cyan-600 dark:text-white"
+                  >
+                    View more
+                  </button>
+                )}
+                {canShowLessProviderPermissions && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleProviderPermissionCount(adminBatchSize)}
+                    className="rounded-full border border-teal-200 bg-white px-6 py-3 text-sm font-black text-teal-800 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50 dark:border-teal-400/30 dark:bg-white/10 dark:text-teal-100"
+                  >
+                    View less
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </Panel>
+        <Panel title="Provider permission history">
+          <div className="grid gap-4">
+            {visibleProviderHistory.map((provider) => (
+              <div key={provider._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-white/10 dark:bg-white/5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleAdminProviderDetails(provider._id)}
+                    className="text-left transition hover:translate-x-1"
+                  >
+                    <p className="font-black text-slate-950 underline-offset-4 hover:text-teal-700 hover:underline dark:text-white">{provider.name}</p>
+                    <p className="text-sm text-slate-500">{provider.category} | {provider.location}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleAdminProviderDetails(provider._id)}
+                    className="rounded-full border border-teal-200 bg-white px-4 py-2 text-xs font-black text-teal-800 transition hover:-translate-y-0.5 hover:bg-teal-50 dark:border-teal-400/30 dark:bg-white/10 dark:text-teal-100"
+                  >
+                    {expandedAdminProviderId === provider._id ? "Hide profile" : "View profile"}
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={provider.approvalStatus} />
+                    {provider.approvalStatus === "approved" && (
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black capitalize ${provider.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"}`}>
+                        {provider.isActive ? "Active" : "Inactive"}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                    {provider.approvalStatus === "approved"
+                      ? `Approved ${formatBookingDate(provider.approvedAt || provider.updatedAt)}`
+                    : `Rejected ${formatBookingDate(provider.updatedAt)}`}
+                  </span>
                 </div>
               ))}
               {!providerPermissionHistory.length && (
@@ -7882,6 +8468,375 @@ function AdminPaymentOverview({
   refreshAdminPayments,
   onOpenPaymentPage,
 }) {
+function AdminTicketsPanel({ tickets = [], loading = false, refreshTickets, onBack, setStatusMessage }) {
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [priorityFilter, setPriorityFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewingTicket, setViewingTicket] = useState(null);
+  const [updatingTicketId, setUpdatingTicketId] = useState("");
+
+  useEffect(() => {
+    refreshTickets({
+      status: statusFilter,
+      category: categoryFilter,
+      priority: priorityFilter,
+      search: searchTerm,
+    });
+  }, [statusFilter, categoryFilter, priorityFilter, searchTerm]);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setSearchTerm(searchQuery);
+  };
+
+  const handleResetFilters = () => {
+    setStatusFilter("All");
+    setCategoryFilter("All");
+    setPriorityFilter("All");
+    setSearchQuery("");
+    setSearchTerm("");
+  };
+
+  const handleStatusChange = async (ticketId, newStatus) => {
+    setUpdatingTicketId(ticketId);
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets/${ticketId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        if (viewingTicket && viewingTicket.ticketId === ticketId) {
+          setViewingTicket({ ...viewingTicket, status: newStatus });
+        }
+        refreshTickets({
+          status: statusFilter,
+          category: categoryFilter,
+          priority: priorityFilter,
+          search: searchTerm,
+        });
+        if (setStatusMessage) {
+          setStatusMessage(`Ticket ${ticketId} status updated to ${newStatus}.`);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      if (setStatusMessage) {
+        setStatusMessage("Failed to update ticket status.");
+      }
+    } finally {
+      setUpdatingTicketId("");
+    }
+  };
+
+  const categories = [
+    "Booking Issue",
+    "Payment Issue",
+    "Provider Issue",
+    "Account Issue",
+    "Technical Problem",
+    "Refund Request",
+    "Other"
+  ];
+
+  return (
+    <DashboardShell
+      title="Support Tickets"
+      subtitle="Manage, track, prioritize, and resolve help and support requests."
+      headerActions={(
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+        >
+          <ArrowLeft size={17} />
+          Back to Admin
+        </button>
+      )}
+    >
+      <div className="grid gap-5">
+        {/* Filters Toolbar */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-slate-900 shadow-xs">
+          <form onSubmit={handleSearchSubmit} className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr_auto]">
+            {/* Search Input */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search ticket ID, subject, client..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              />
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="All">All Statuses</option>
+                <option value="Open">Open</option>
+                <option value="In Review">In Review</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Closed">Closed</option>
+              </select>
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="All">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="All">All Priorities</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end sm:col-span-2 md:col-span-3 lg:col-span-1">
+              <button
+                type="submit"
+                className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-black text-white hover:bg-teal-700 transition"
+              >
+                Search
+              </button>
+              {(statusFilter !== "All" || categoryFilter !== "All" || priorityFilter !== "All" || searchTerm !== "") && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+
+        {/* Tickets List */}
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <RefreshCw className="animate-spin text-slate-400" size={32} />
+          </div>
+        ) : tickets.length ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {tickets.map((ticket) => (
+              <div
+                key={ticket._id}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-slate-900"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-black tracking-wider text-slate-400 uppercase">{ticket.ticketId}</span>
+                    <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white leading-tight">{ticket.subject}</h3>
+                  </div>
+                  <span className={`px-2.5 py-1 text-xs font-black rounded-full border ${
+                    ticket.status === "Open" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/35" :
+                    ticket.status === "In Review" ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/35" :
+                    ticket.status === "Resolved" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/35" :
+                    "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                  }`}>
+                    {ticket.status}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
+                  <div>
+                    <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Category</span>
+                    <span className="mt-0.5 block font-bold text-slate-700 dark:text-slate-300">{ticket.category}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</span>
+                    <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-black rounded-full ${
+                      ticket.priority === "Urgent" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400" :
+                      ticket.priority === "High" ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" :
+                      ticket.priority === "Medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" :
+                      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-350"
+                    }`}>{ticket.priority}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-slate-100 pt-4 dark:border-white/5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400 font-semibold">Client:</span>{" "}
+                      <span className="font-extrabold text-slate-800 dark:text-slate-200">{ticket.userName}</span>{" "}
+                      <span className="text-slate-400">({ticket.userEmail})</span>
+                    </div>
+                    <span className="text-slate-400 font-semibold">
+                      {new Date(ticket.createdAt).toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric"
+                      })}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-400 uppercase">Update Status:</span>
+                      <select
+                        value={ticket.status}
+                        disabled={updatingTicketId === ticket.ticketId}
+                        onChange={(e) => handleStatusChange(ticket.ticketId, e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+                      >
+                        <option value="Open">Open</option>
+                        <option value="In Review">In Review</option>
+                        <option value="Resolved">Resolved</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setViewingTicket(ticket)}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      View details
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No tickets found" copy="No support tickets match the current filter criteria." />
+        )}
+      </div>
+
+      {/* Ticket Details Modal */}
+      <AnimatePresence>
+        {viewingTicket && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingTicket(null)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950 dark:text-white">Ticket Details</h3>
+                  <p className="mt-1 text-xs text-slate-400 font-bold">{viewingTicket.ticketId}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-sm font-semibold">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Client</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.userName}</p>
+                    <p className="text-xs text-slate-400">{viewingTicket.userEmail}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Submitted On</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200">{new Date(viewingTicket.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+                    })}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Category</p>
+                    <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Priority</p>
+                    <span className={`inline-block mt-1 px-2.5 py-1 text-xs font-black rounded-full ${
+                      viewingTicket.priority === "Urgent" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400" :
+                      viewingTicket.priority === "High" ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" :
+                      viewingTicket.priority === "Medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" :
+                      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-350"
+                    }`}>{viewingTicket.priority}</span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Status</p>
+                    <select
+                      value={viewingTicket.status}
+                      onChange={(e) => handleStatusChange(viewingTicket.ticketId, e.target.value)}
+                      className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold outline-none transition focus:border-teal-500 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+                    >
+                      <option value="Open">Open</option>
+                      <option value="In Review">In Review</option>
+                      <option value="Resolved">Resolved</option>
+                      <option value="Closed">Closed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Subject</p>
+                  <p className="mt-0.5 text-slate-800 dark:text-slate-200 font-bold">{viewingTicket.subject}</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Description</p>
+                  <p className="mt-1 max-h-48 overflow-y-auto rounded-xl bg-slate-50 p-3 text-slate-600 dark:bg-white/5 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
+                    {viewingTicket.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setViewingTicket(null)}
+                  className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white hover:bg-slate-800 dark:bg-amber-300 dark:text-slate-950"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </DashboardShell>
+  );
+}
+
+function AdminPaymentOverview({ paymentData, setStatusMessage, refreshAdminPayments, onOpenPaymentPage }) {
   const [providerPaymentsOpen, setProviderPaymentsOpen] = useState(false);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
   const [payingProviderId, setPayingProviderId] = useState("");
@@ -9306,6 +10261,15 @@ function ChatBox({
     suggestions,
     time: getTimeLabel(),
   });
+
+  // Guided Conversation State Machine
+  const [flowState, setFlowState] = useState("idle"); // 'idle' | 'awaiting_ticket_category' | 'awaiting_ticket_description' | 'awaiting_ticket_priority' | 'awaiting_track_ticket_id'
+  const [ticketDraft, setTicketDraft] = useState({});
+
+  const welcomeText = user?.name
+    ? `Hi ${user.name.split(" ")[0]}, I'm Liza from ServiceHub Support.\n\nI can help with:\n• Booking services\n• Booking status\n• Payments\n• Provider registration\n• Support requests`
+    : `Hi, I'm Liza from ServiceHub Support.\n\nI can help with:\n• Booking services\n• Booking status\n• Payments\n• Provider registration\n• Support requests`;
+
   const [messages, setMessages] = useState([
     {
       id: "bot-welcome",
@@ -9319,6 +10283,8 @@ function ChatBox({
         "Payment issue",
         "Talk to support",
       ],
+      text: welcomeText,
+      suggestions: ["Book a service", "Booking status", "Payment issue", "🎫 Create Ticket", "📋 Track Ticket", "👨💼 Talk to Human Support"],
       time: INITIAL_CHAT_TIME_LABEL,
     },
   ]);
@@ -9334,7 +10300,9 @@ function ChatBox({
     { label: "Book", value: "I want to book a service" },
     { label: "Status", value: "Check my booking status" },
     { label: "Payment", value: "I need help with payment" },
-    { label: "Provider", value: "I want provider help" },
+    { label: "🎫 Create Ticket", value: "Create Ticket" },
+    { label: "📋 Track Ticket", value: "Track Ticket" },
+    { label: "👨💼 Talk to Human", value: "Talk to Human Support" },
   ];
 
   useEffect(() => {
@@ -9355,9 +10323,55 @@ function ChatBox({
     if (!voiceEnabled || !canSpeak || !text) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-IN";
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
+    
+    const voices = window.speechSynthesis.getVoices();
+    let selectedVoice = null;
+    
+    // Priority 1: Indian English Female
+    selectedVoice = voices.find(
+      (voice) =>
+        voice.lang === "en-IN" &&
+        (voice.name.toLowerCase().includes("female") ||
+          voice.name.toLowerCase().includes("heera") ||
+          voice.name.toLowerCase().includes("veena") ||
+          voice.name.toLowerCase().includes("neeraja"))
+    );
+    
+    // Priority 2: General English Female (e.g. Zira, Samantha, Google UK English Female, Google US English Female, Karen, Hazel, Tessa)
+    if (!selectedVoice) {
+      selectedVoice = voices.find(
+        (voice) =>
+          voice.lang.startsWith("en") &&
+          (voice.name.toLowerCase().includes("female") ||
+            voice.name.toLowerCase().includes("zira") ||
+            voice.name.toLowerCase().includes("samantha") ||
+            voice.name.toLowerCase().includes("karen") ||
+            voice.name.toLowerCase().includes("hazel") ||
+            voice.name.toLowerCase().includes("lisa") ||
+            voice.name.toLowerCase().includes("liza") ||
+            voice.name.toLowerCase().includes("tessa"))
+      );
+    }
+    
+    // Priority 3: General en-IN voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find((voice) => voice.lang === "en-IN");
+    }
+    
+    // Priority 4: General English voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find((voice) => voice.lang.startsWith("en"));
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice.lang;
+    } else {
+      utterance.lang = "en-IN";
+    }
+
+    utterance.rate = 0.88; // Slow enough for clear understanding
+    utterance.pitch = 1.05; // Pleasant, friendly tone
     window.speechSynthesis.speak(utterance);
   };
 
@@ -9532,11 +10546,36 @@ function ChatBox({
         query,
       )
     ) {
+    if (/create ticket|🎫 create ticket/i.test(query)) {
+      return {
+        intent: "create_ticket",
+        text: "I'll help you create a support ticket. What type of issue are you facing?",
+        suggestions: ["Booking", "Payment", "Provider", "Account", "Technical", "Other"],
+      };
+    }
+
+    if (/track ticket|📋 track ticket/i.test(query)) {
+      return {
+        intent: "track_ticket",
+        text: "Please enter your ticket number. (Example: SH-2026-000001)",
+        suggestions: [],
+      };
+    }
+
+    if (/talk to human|talk to support|👨💼 talk to human support/i.test(query)) {
+      return {
+        intent: "talk_to_support",
+        text: "You can send an email to support@servicehub.aparaitech.org or call us directly at +91 9158852129. Alternatively, you can submit a support ticket for faster resolution.",
+        suggestions: ["Create Ticket", "Track Ticket"],
+      };
+    }
+
+    if (/contact|support|help|call|email|human|agent|complaint|stuck|issue|problem/.test(query)) {
       return {
         intent: "support",
         text: "I can take you to the support form. Add your booking ID, phone number, and a short note about the issue so the team can respond with context.",
         action: { label: "Contact support", run: onContact },
-        suggestions: ["Booking status", "Payment issue", "Provider issue"],
+        suggestions: ["Booking status", "Payment issue", "Provider issue", "Create Ticket"],
       };
     }
 
@@ -9557,10 +10596,137 @@ function ChatBox({
         "Payment help",
         "Contact support",
       ],
+      text: "I couldn't fully resolve that issue. Would you like me to create a support ticket?",
+      suggestions: ["Create Ticket", "Talk to Human"],
     };
   };
 
-  const sendMessage = (value = input) => {
+  const handleTicketCategoryInput = async (text) => {
+    const categoriesMap = {
+      booking: "Booking Issue",
+      payment: "Payment Issue",
+      provider: "Provider Issue",
+      account: "Account Issue",
+      technical: "Technical Problem",
+      other: "Other"
+    };
+    const key = text.toLowerCase().trim();
+    const mapped = categoriesMap[key] || "Other";
+    setTicketDraft(prev => ({ ...prev, category: mapped }));
+    setFlowState("awaiting_ticket_description");
+    return {
+      text: "Please briefly describe your issue.",
+      suggestions: []
+    };
+  };
+
+  const handleTicketDescriptionInput = async (text) => {
+    setTicketDraft(prev => ({ ...prev, description: text }));
+    setFlowState("awaiting_ticket_priority");
+    return {
+      text: "What priority should we assign?",
+      suggestions: ["Low", "Medium", "High", "Urgent"]
+    };
+  };
+
+  const handleTicketPriorityInput = async (text) => {
+    const validPriorities = ["Low", "Medium", "High", "Urgent"];
+    const found = validPriorities.find(p => p.toLowerCase() === text.toLowerCase().trim()) || "Medium";
+    
+    if (!user) {
+      setFlowState("idle");
+      return {
+        text: "You need to log in to submit a ticket. Please log in and try again.",
+        action: { label: "Login", run: onLogin },
+        suggestions: ["Login", "Create Ticket"]
+      };
+    }
+
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          subject: `Chat Ticket - ${ticketDraft.category}`,
+          description: ticketDraft.description,
+          category: ticketDraft.category,
+          priority: found,
+        }),
+      });
+      const data = await response.json();
+      setFlowState("idle");
+      if (response.ok && data.success) {
+        return {
+          text: `✅ Ticket Created Successfully\n\nTicket ID:\n${data.ticketId}\n\nOur support team will review your issue.\n\nExpected response time:\n4–8 business hours.`,
+          suggestions: ["Track Ticket", "Book a service"]
+        };
+      } else {
+        return {
+          text: `Failed to create ticket: ${data.message || "Unknown error."}`,
+          suggestions: ["Create Ticket"]
+        };
+      }
+    } catch (err) {
+      setFlowState("idle");
+      return {
+        text: `An error occurred: ${err.message}`,
+        suggestions: ["Create Ticket"]
+      };
+    }
+  };
+
+  const handleTrackTicketIdInput = async (text) => {
+    const ticketId = text.trim().toUpperCase();
+    if (!user) {
+      setFlowState("idle");
+      return {
+        text: "You need to log in to track support tickets. Please log in and try again.",
+        action: { label: "Login", run: onLogin },
+        suggestions: ["Login", "Track Ticket"]
+      };
+    }
+
+    try {
+      const token = localStorage.getItem("servicehub_token") || "";
+      const response = await fetch(`${API_URL}/support/tickets/${ticketId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      setFlowState("idle");
+      if (response.ok && data.success && data.ticket) {
+        const ticket = data.ticket;
+        const formattedDate = new Date(ticket.createdAt).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "long",
+          year: "numeric"
+        });
+        return {
+          text: `Status: ${ticket.status}\nPriority: ${ticket.priority}\nCreated: ${formattedDate}`,
+          suggestions: ["Track Ticket", "Create Ticket"]
+        };
+      } else {
+        return {
+          text: `I couldn't find a support ticket with ID ${ticketId} associated with your account.`,
+          suggestions: ["Track Ticket", "Create Ticket"]
+        };
+      }
+    } catch (err) {
+      setFlowState("idle");
+      return {
+        text: `An error occurred while tracking: ${err.message}`,
+        suggestions: ["Track Ticket"]
+      };
+    }
+  };
+
+  const sendMessage = async (value = input) => {
     const text = value.trim();
     if (!text || isTyping) return;
 
@@ -9575,6 +10741,33 @@ function ChatBox({
 
     window.setTimeout(
       () => {
+    setMessages((current) => [...current, buildMessage({ role: "user", text })]);
+    setInput("");
+    setIsTyping(true);
+
+    try {
+      let reply;
+      if (flowState === "awaiting_ticket_category") {
+        reply = await handleTicketCategoryInput(text);
+      } else if (flowState === "awaiting_ticket_description") {
+        reply = await handleTicketDescriptionInput(text);
+      } else if (flowState === "awaiting_ticket_priority") {
+        reply = await handleTicketPriorityInput(text);
+      } else if (flowState === "awaiting_track_ticket_id") {
+        reply = await handleTrackTicketIdInput(text);
+      } else {
+        reply = getBotReply(text);
+        if (reply.intent === "create_ticket") {
+          setFlowState("awaiting_ticket_category");
+          setTicketDraft({});
+        } else if (reply.intent === "track_ticket") {
+          setFlowState("awaiting_track_ticket_id");
+        }
+      }
+
+      setLastIntent(reply.intent || lastIntent);
+
+      window.setTimeout(() => {
         setMessages((current) => [
           ...current,
           buildMessage({
@@ -9599,9 +10792,35 @@ function ChatBox({
       className="fixed bottom-24 right-5 z-[80] flex h-[min(34rem,calc(100vh-7rem))] w-[min(340px,calc(100vw-32px))] flex-col overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-slate-900"
     >
       <div className="z-10 flex shrink-0 items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-950 to-teal-800 px-3 py-3 text-white dark:border-white/10">
+      }, Math.min(1200, Math.max(520, reply.text.length * 8)));
+    } catch (err) {
+      console.error(err);
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18, scale: 0.96 }} className="fixed bottom-24 right-5 z-[80] flex h-[min(34rem,calc(100vh-7rem))] w-[min(340px,calc(100vw-32px))] flex-col overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-slate-900">
+      <div className="z-10 flex shrink-0 items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-950 to-teal-800 px-3 py-3.5 text-white dark:border-white/10">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-white/12 ring-1 ring-white/20">
-            <MessageCircle size={18} />
+          <div className="relative h-10 w-10 flex-none rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 p-0.5 shadow-md">
+            <svg viewBox="0 0 100 100" className="h-full w-full rounded-full fill-white">
+              {/* Head / Face */}
+              <circle cx="50" cy="45" r="22" fill="#FED7AA" />
+              {/* Hair */}
+              <path d="M28,45 C28,25 72,25 72,45 C72,50 68,40 65,35 C60,30 40,30 35,35 C32,40 28,50 28,45 Z" fill="#4B5563" />
+              <path d="M28,45 C28,55 32,60 35,55 C35,45 32,40 28,45 Z" fill="#4B5563" />
+              <path d="M72,45 C72,55 68,60 65,55 C65,45 68,40 72,45 Z" fill="#4B5563" />
+              {/* Shoulders / Clothes */}
+              <path d="M20,85 C20,70 30,65 50,65 C70,65 80,70 80,85 Z" fill="#0D9488" />
+              {/* Headset Mic */}
+              <path d="M68,48 C72,48 74,54 70,58 C66,62 58,62 55,60" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" fill="none" />
+              {/* Headset Ear Cup */}
+              <rect x="68" y="40" width="6" height="12" rx="3" fill="#1F2937" />
+              {/* Headset Band */}
+              <path d="M32,45 C32,25 68,25 68,45" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" fill="none" />
+            </svg>
+            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0F172A]" />
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-black">
@@ -9611,6 +10830,9 @@ function ChatBox({
               <span className="h-2 w-2 rounded-full bg-emerald-300" />
               Online now |{" "}
               {voiceEnabled ? "Voice replies on" : "Usually replies instantly"}
+            <p className="truncate text-sm font-black leading-snug">Liza, ServiceHub support</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs font-bold text-teal-100">
+              Online now | {voiceEnabled ? "Voice replies on" : "Usually replies instantly"}
             </p>
           </div>
         </div>
@@ -9656,6 +10878,9 @@ function ChatBox({
                 <p
                   className={`rounded-2xl px-3 py-2.5 text-sm font-semibold leading-6 shadow-sm ${message.role === "user" ? "rounded-br-md bg-amber-300 text-slate-950" : "rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200 dark:bg-white/10 dark:text-white dark:ring-white/10"}`}
                 >
+            <div key={`${message.role}-${index}`} className={`grid gap-2 ${message.role === "user" ? "justify-items-end" : "justify-items-start"}`}>
+              <div className={`max-w-[88%] ${message.role === "user" ? "text-right" : "text-left"}`}>
+                <p className={`rounded-2xl px-3 py-2.5 text-sm font-semibold leading-6 shadow-sm whitespace-pre-wrap ${message.role === "user" ? "rounded-br-md bg-amber-300 text-slate-950" : "rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200 dark:bg-white/10 dark:text-white dark:ring-white/10"}`}>
                   {message.text}
                 </p>
                 <p className="mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
@@ -10020,6 +11245,9 @@ function ServiceHubFooter({ onServiceClick }) {
             >
               Terms
             </a>
+            <Link to="/contact" className="transition hover:text-amber-300">Contact</Link>
+            <Link to="/privacy-policy" className="transition hover:text-amber-300">Privacy Policy</Link>
+            <Link to="/terms-and-conditions" className="transition hover:text-amber-300">Terms</Link>
             <span>Serving homes across Pune and nearby cities.</span>
           </div>
         </div>

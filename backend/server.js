@@ -13,6 +13,7 @@ import contactRoutes from "./src/routes/contactRoutes.js";
 import locationRoutes from "./src/routes/locationRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
 import providerRoutes from "./src/routes/providerRoutes.js";
+import supportRoutes from "./src/routes/supportRoutes.js";
 import { connectToDatabase, getDatabaseStatus, mongoDbName, mongoUri } from "./src/database/mongo.js";
 import setupDatabase from "./src/database/setupDatabase.js";
 import { responseTimeLogger } from "./src/middleware/performance.js";
@@ -176,6 +177,7 @@ app.use("/api/catalog", requireDatabase, catalogRoutes);
 app.use("/api/location", requireDatabase, locationRoutes);
 app.use("/api/payments", requireDatabase, paymentRoutes);
 app.use("/api/providers", requireDatabase, providerRoutes);
+app.use("/api/support", requireDatabase, supportRoutes);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ message: "API route not found." });
