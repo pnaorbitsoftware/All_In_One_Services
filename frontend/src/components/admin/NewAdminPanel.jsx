@@ -29,7 +29,6 @@ export default function NewAdminPanel({
   setAdminData,
   refreshAdminContactMessages,
   setStatusMessage,
-  adminEmail,
   refreshAdminPayments,
   setIsAdminMode,
 }) {
@@ -119,8 +118,10 @@ export default function NewAdminPanel({
       if (setStatusMessage) setStatusMessage("Reply processed successfully!");
       setReplyText("");
       setSelectedMessage(null);
-    } catch (err) {
-      if (setStatusMessage) setStatusMessage("Error syncing response.");
+    } catch {
+      if (setStatusMessage) {
+        setStatusMessage("Error syncing response.");
+      }
     }
   };
 

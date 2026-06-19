@@ -3,7 +3,6 @@ import ModernHero from "../../components/redesign/ModernHero";
 import ModernPopularServices from "../../components/redesign/ModernPopularServices";
 import NewAdminPanel from "../../components/admin/NewAdminPanel";
 import {
-  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Bell,
@@ -25,7 +24,6 @@ import {
   Menu,
   MessageCircle,
   Moon,
-  Search,
   Send,
   ShieldCheck,
   Sparkles,
@@ -54,7 +52,6 @@ import {
   getProviderEarnings,
   loadRazorpayScript,
   rejectEstimate,
-  sendProviderPayout,
   submitProviderEstimate,
   verifyRazorpayPayment,
   withdrawProviderEarnings,
@@ -98,7 +95,6 @@ const AUTH_API_URLS = [
   ]),
 ];
 const SERVICEHUB_ICON = "/servicehub-icon.png";
-const HERO_BACKGROUND_IMAGE = "/hero-background.jpg";
 
 const supportedLanguages = [
   { code: "en", label: "English", short: "EN" },
@@ -452,16 +448,6 @@ const applyPageLanguage = (language) => {
   });
 };
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.65, ease: "easeOut" } },
-};
-
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08 } },
-};
-
 const categoryImages = {
   Plumber:
     "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=520&q=80",
@@ -482,49 +468,6 @@ const categoryImages = {
   "Washing Machine Repair":
     "https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=520&q=80",
 };
-
-const heroStages = [
-  {
-    title: "Electrician",
-    note: "Wiring and urgent safety checks",
-    image: categoryImages.Electrician,
-  },
-  {
-    title: "Plumber",
-    note: "Leak repairs and bathroom fittings",
-    image: categoryImages.Plumber,
-  },
-  {
-    title: "AC Repair",
-    note: "Cooling service and installation",
-    image: categoryImages["AC Repair"],
-  },
-  {
-    title: "Cleaning",
-    note: "Deep home and sofa cleaning",
-    image: categoryImages.Cleaning,
-  },
-  {
-    title: "Painter",
-    note: "Interior and exterior painting",
-    image: categoryImages.Painter,
-  },
-  {
-    title: "Carpenter",
-    note: "Furniture and door repairs",
-    image: categoryImages.Carpenter,
-  },
-  {
-    title: "TV Repair",
-    note: "Display and wall mounting help",
-    image: categoryImages["TV Repair"],
-  },
-  {
-    title: "Appliance Repair",
-    note: "Fridge and washing machine support",
-    image: categoryImages["Refrigerator Repair"],
-  },
-];
 
 const getTodayInputDate = () => new Date().toLocaleDateString("en-CA");
 
@@ -572,38 +515,12 @@ const getSavedContactReplies = () => {
   }
 };
 
-const saveContactReply = (messageId, reply) => {
-  const replies = getSavedContactReplies();
-  replies[messageId] = {
-    adminReply: reply,
-    repliedAt: new Date().toISOString(),
-    status: "replied",
-  };
-  localStorage.setItem(contactReplyStorageKey, JSON.stringify(replies));
-};
-
 const mergeContactMessagesWithReplies = (messages = []) => {
   const replies = getSavedContactReplies();
   return messages.map((message) =>
     replies[message._id] ? { ...message, ...replies[message._id] } : message,
   );
 };
-
-const getWhatsAppNumber = (phone = "") => {
-  const digits = String(phone).replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 10) return `91${digits}`;
-  return digits;
-};
-
-const sortContactMessages = (messages = []) =>
-  [...messages].sort((a, b) => {
-    const aReplied = a.status === "replied" || a.adminReply;
-    const bReplied = b.status === "replied" || b.adminReply;
-
-    if (aReplied !== bReplied) return aReplied ? 1 : -1;
-    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-  });
 
 const normalizeProvider = (provider) => ({
   id:
@@ -754,17 +671,6 @@ const buildDurationValue = (amount, unit) => {
     return `${cleanAmount} ${cleanAmount === "1" ? "day" : "days"}`;
   return `${cleanAmount} ${cleanAmount === "1" ? "hour" : "hours"}`;
 };
-
-const formatDateTime = (value) => {
-  if (!value) return "";
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-};
-
 const blankProviderAccountForm = {
   name: "",
   category: "",
@@ -3044,174 +2950,6 @@ Status: ${response.status}`
   );
 }
 
-function Hero({ searchTerm, setSearchTerm, onSearch }) {
-  const [heroStageIndex, setHeroStageIndex] = useState(0);
-  const heroStage = heroStages[heroStageIndex];
-  const nextHeroStage = heroStages[(heroStageIndex + 1) % heroStages.length];
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setHeroStageIndex((current) => (current + 1) % heroStages.length);
-    }, 3800);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  return (
-    <section className="home-section relative overflow-hidden bg-white px-4 py-16 shadow-lg shadow-slate-200/30 dark:bg-slate-950/95 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-100"
-        style={{
-          backgroundImage: `linear-gradient(120deg, rgba(14,165,233,0.16) 0%, rgba(20,184,166,0.12) 42%, rgba(15,23,42,0.06) 100%), url(${HERO_BACKGROUND_IMAGE})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }}
-      />
-      <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.92fr_1.08fr]">
-        <motion.div
-          variants={stagger}
-          initial="hidden"
-          animate="show"
-          className="max-w-3xl"
-        >
-          <motion.span
-            variants={fadeUp}
-            className="inline-flex items-center gap-2 border-l-4 border-slate-900 bg-slate-950 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white shadow-sm shadow-slate-900/10"
-          >
-            <Sparkles size={15} /> Home services, booked clearly
-          </motion.span>
-          <motion.h1
-            variants={fadeUp}
-            className="mt-6 max-w-2xl font-display text-3xl font-black leading-[1.12] tracking-[-0.02em] text-slate-950 dark:text-white sm:text-4xl"
-          >
-            Find a{" "}
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              reliable local expert
-            </span>{" "}
-            without the usual back-and-forth.
-          </motion.h1>
-
-          <motion.p
-            variants={fadeUp}
-            className="mt-5 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-300 sm:text-lg"
-          >
-            Compare providers, check pricing, choose a time, and track the
-            request from one clean ServiceHub workspace.
-          </motion.p>
-          <motion.form
-            variants={fadeUp}
-            onSubmit={(event) => {
-              event.preventDefault();
-              onSearch();
-            }}
-            className="mt-7 flex flex-col gap-3 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-xl shadow-slate-200/15 dark:border-white/10 dark:bg-slate-900/95 sm:flex-row"
-          >
-            <div className="flex flex-1 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 shadow-sm dark:border-white/10 dark:bg-slate-950 dark:text-white">
-              <Search className="text-slate-500" size={22} />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search electrician, plumber, AC repair..."
-                className="h-12 w-full bg-transparent text-slate-900 outline-none placeholder:text-slate-500 dark:text-white dark:placeholder:text-slate-400"
-              />
-            </div>
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-[1.35rem] bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition hover:bg-slate-800 hover:-translate-y-0.5 dark:bg-slate-200 dark:text-slate-950 dark:hover:bg-slate-100"
-            >
-              Search services <ArrowRight size={17} />
-            </button>
-          </motion.form>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.75 }}
-          className="grid min-w-0 gap-4 lg:grid-cols-[1fr_0.72fr]"
-        >
-          <div className="overflow-hidden rounded-[1.7rem] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-white/5">
-            <div className="relative h-64 overflow-hidden sm:h-80">
-              <AnimatePresence mode="wait">
-                <motion.img
-                  key={heroStage.title}
-                  src={heroStage.image}
-                  alt={`${heroStage.title} service`}
-                  fetchPriority="high"
-                  initial={{ opacity: 0, scale: 1.06, x: 18 }}
-                  animate={{ opacity: 1, scale: 1, x: 0 }}
-                  exit={{ opacity: 0, scale: 0.98, x: -18 }}
-                  transition={{ duration: 0.65, ease: "easeOut" }}
-                  className="h-full w-full object-cover"
-                />
-              </AnimatePresence>
-              <div className="absolute bottom-3 left-3 right-3 rounded-2xl bg-white/90 px-4 py-3 shadow-xl backdrop-blur sm:bottom-4 sm:left-4 sm:right-auto">
-                <p className="text-sm font-black text-slate-950">
-                  {heroStage.title}
-                </p>
-                <p className="text-xs font-bold text-slate-500">
-                  {heroStage.note}
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-4 p-5 sm:grid-cols-3">
-              <div>
-                <p className="text-2xl font-black">10k+</p>
-                <p className="text-sm font-bold text-slate-500">local users</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black">4.8</p>
-                <p className="text-sm font-bold text-slate-500">avg rating</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black">24/7</p>
-                <p className="text-sm font-bold text-slate-500">support</p>
-              </div>
-            </div>
-          </div>
-          <div className="grid gap-4">
-            <div className="overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-lg dark:border-white/10 dark:bg-white/5">
-              <div className="relative h-40 overflow-hidden">
-                <AnimatePresence mode="wait">
-                  <motion.img
-                    key={nextHeroStage.title}
-                    src={nextHeroStage.image}
-                    alt={`${nextHeroStage.title} service preview`}
-                    loading="lazy"
-                    decoding="async"
-                    initial={{ opacity: 0, scale: 1.05 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.97 }}
-                    transition={{ duration: 0.55, ease: "easeOut" }}
-                    className="h-full w-full object-cover"
-                  />
-                </AnimatePresence>
-              </div>
-              <div className="p-4">
-                <p className="font-black">Live request status</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  Pending, confirmed, completed, or cancelled.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-[1.4rem] border border-slate-200 bg-white p-5 shadow-lg dark:border-white/10 dark:bg-white/5">
-              <p className="flex items-center gap-2 font-black">
-                <ShieldCheck className="text-teal-700" size={18} /> Verified
-                providers
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Admins can approve profiles before they appear to clients.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
 function ProfileAvatar({ user, onClick, size = "md" }) {
   const imageUrl =
     user?.profileImage || user?.avatarUrl || user?.photoUrl || "";
@@ -3628,137 +3366,6 @@ function LanguageSwitcher({ language, setLanguage, t, fullWidth = false }) {
     </div>
   );
 }
-
-function PopularServicesGrid({ openPopularService }) {
-  const popular = [
-    {
-      title: "Electrician",
-      note: "Wiring, fixtures, safety checks",
-      image:
-        "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=640&q=80",
-      color: "text-teal-600",
-      border: "border-t-teal-500",
-    },
-    {
-      title: "Plumber",
-      note: "Leaks, fittings, emergency repairs",
-      image:
-        "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=640&q=80",
-      color: "text-blue-600",
-      border: "border-t-blue-500",
-    },
-    {
-      title: "AC Repair",
-      note: "Cleaning, gas refill, installation",
-      image:
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Wall_mount_air_conditioner.jpg/960px-Wall_mount_air_conditioner.jpg",
-      color: "text-amber-600",
-      border: "border-t-amber-500",
-    },
-    {
-      title: "Cleaning",
-      note: "Deep home and sofa cleaning",
-      image:
-        "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=640&q=80",
-      color: "text-rose-600",
-      border: "border-t-rose-500",
-    },
-    {
-      title: "Painter",
-      note: "Interior, exterior, waterproofing",
-      image:
-        "https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=640&q=80",
-      color: "text-teal-600",
-      border: "border-t-teal-500",
-    },
-    {
-      title: "Carpenter",
-      note: "Furniture, doors, modular fittings",
-      image:
-        "https://images.unsplash.com/photo-1601058268499-e52658b8bb88?auto=format&fit=crop&w=640&q=80",
-      color: "text-blue-600",
-      border: "border-t-blue-500",
-    },
-    {
-      title: "TV Repair",
-      note: "Display, sound, wall mounting",
-      image:
-        "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=640&q=80",
-      color: "text-amber-600",
-      border: "border-t-amber-500",
-    },
-    {
-      title: "Appliance Repair",
-      note: "Fridge, TV, washing machine",
-      image:
-        "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=640&q=80",
-      color: "text-rose-600",
-      border: "border-t-rose-500",
-    },
-  ];
-
-  const renderPopularCard = (service, duplicate = false) => (
-    <div
-      key={`${duplicate ? "loop" : "main"}-${service.title}`}
-      className="popular-services-item"
-    >
-      <button
-        type="button"
-        onClick={() => openPopularService(service.title)}
-        data-popular-service={getServiceSlug(service.title)}
-        tabIndex={duplicate ? -1 : undefined}
-        className={`group h-full w-full overflow-hidden rounded-2xl border border-[#ded7ca] border-t-4 ${service.border} bg-[#fffefb] text-left shadow-sm transition hover:-translate-y-1 hover:shadow-2xl dark:border-white/10 dark:bg-white/5`}
-      >
-        <div className="relative overflow-hidden">
-          <img
-            src={service.image}
-            alt={`${service.title} home service provider on ServiceHub India`}
-            loading="lazy"
-            decoding="async"
-            className="h-36 w-full object-cover transition duration-500 group-hover:scale-105"
-          />
-        </div>
-        <div className="p-4">
-          <BriefcaseBusiness className={service.color} size={22} />
-          <h3 className="mt-3 text-lg font-black text-slate-950 dark:text-white">
-            {service.title}
-          </h3>
-          <p className="mt-2 text-base leading-6 text-slate-500 dark:text-slate-300">
-            {service.note}
-          </p>
-        </div>
-      </button>
-    </div>
-  );
-
-  return (
-    <div className="mx-auto max-w-[1500px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-      <div className="mb-8 max-w-4xl">
-        <div className="max-w-4xl">
-          <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-black text-teal-700">
-            Popular services
-          </span>
-          <h2 className="home-section-title mt-4 font-display text-3xl font-black leading-[1.12] tracking-[-0.02em] text-slate-950 dark:text-white md:text-4xl">
-            Everything customers expect
-            <br className="hidden md:block" /> in one platform.
-          </h2>
-        </div>
-      </div>
-
-      <div className="popular-services-viewport scrollbar-hidden overflow-hidden">
-        <div className="popular-services-marquee">
-          <div className="popular-services-set">
-            {popular.map((service) => renderPopularCard(service))}
-          </div>
-          <div className="popular-services-set" aria-hidden="true">
-            {popular.map((service) => renderPopularCard(service, true))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Categories({ categories, selectedCategory, setSelectedCategory }) {
   return (
     <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
@@ -4790,69 +4397,6 @@ function ClientDashboard({
         )}
       </AnimatePresence>
     </DashboardShell>
-  );
-}
-
-function ClientServiceStatusStrip({ booking }) {
-  const status = booking.status || "pending";
-  const normalizedStatus = normalizeTrackingStatus(status);
-  const activeIndex = getActiveStepIndex(status);
-  const trackingEvents = booking.trackingEvents || [];
-
-  return (
-    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-white/10">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
-            Service status
-          </p>
-          <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">
-            {trackingSteps[activeIndex]?.label || "Booking confirmed"}
-          </p>
-        </div>
-        <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-black text-orange-700 dark:bg-orange-400/15 dark:text-orange-100">
-          {String(status).replace(/_/g, " ")}
-        </span>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-5">
-        {trackingSteps.map((step, index) => {
-          const event = getLatestTrackingEvent(trackingEvents, step);
-          const isDone = index < activeIndex || status === "completed";
-          const isActive =
-            step.id === normalizedStatus ||
-            (status === "pending" && index === 0);
-
-          return (
-            <div
-              key={step.id}
-              className={`rounded-xl border px-3 py-2 ${isActive ? "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-300/30 dark:bg-orange-400/10 dark:text-orange-100" : isDone ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100" : "border-slate-200 bg-slate-50 text-slate-400 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-500"}`}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`grid h-5 w-5 place-items-center rounded-full border text-[10px] ${isActive ? "border-orange-500 bg-orange-500 text-white" : isDone ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white dark:border-white/10 dark:bg-white/10"}`}
-                >
-                  {isDone || isActive ? (
-                    <CheckCircle size={12} strokeWidth={3} />
-                  ) : (
-                    index + 1
-                  )}
-                </span>
-                <span className="text-xs font-black leading-tight">
-                  {step.label}
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] font-semibold leading-tight opacity-75">
-                {event?.updatedAt
-                  ? formatTrackingEventTime(event.updatedAt)
-                  : isActive
-                    ? "Current status"
-                    : step.copy}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

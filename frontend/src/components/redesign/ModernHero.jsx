@@ -1,4 +1,3 @@
-import React from "react";
 import { Search, MapPin } from "lucide-react";
 
 export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
