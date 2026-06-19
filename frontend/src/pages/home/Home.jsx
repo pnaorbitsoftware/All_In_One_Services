@@ -2837,7 +2837,6 @@ Status: ${response.status}`
               <span className="text-sm font-black tracking-tight">Help & Support</span>
             </>
           )}
-        </button>
         <AnimatePresence>
           {chatOpen && (
             <ChatBox
@@ -2862,6 +2861,7 @@ Status: ${response.status}`
           )}
         </AnimatePresence>
       </div>
+      </button>
 
       <AnimatePresence>
         {bookingOpen && (
