@@ -2604,11 +2604,12 @@ export default function Home() {
                       fullWidth
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTheme(isDark ? "light" : "dark")}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 p-4 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
-                  >
+                  <button>
+                    type="button" onClick=
+                    {() => setTheme(isDark ? "light" : "dark")}
+                    className="inline-flex items-center justify-center gap-2
+                    rounded-2xl bg-slate-100 p-4 font-black transition
+                    hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
                     {isDark ? <Sun size={18} /> : <Moon size={18} />}
                     {isDark ? t("light") : t("dark")}
                   </button>
