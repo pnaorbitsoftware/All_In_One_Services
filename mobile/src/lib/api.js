@@ -1,5 +1,5 @@
 ﻿import NetInfo from "@react-native-community/netinfo";
-import { API_URL } from "../config/api";
+import { API_URL, API_URL_CANDIDATES } from "../config/api";
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 export const AUTH_REQUEST_TIMEOUT_MS = 45000;
@@ -80,6 +80,18 @@ async function parseApiResponse(response, fallbackMessage) {
   return { message: text || fallbackMessage };
 }
 
+function isMissingApiRoute(status, message = "") {
+  const normalizedMessage = String(message || "").trim().toLowerCase();
+  return (
+    status === 404 &&
+    (
+      normalizedMessage === "not found" ||
+      normalizedMessage === "api route not found." ||
+      /^cannot (get|post|put|patch|delete) /i.test(message)
+    )
+  );
+}
+
 export async function apiRequest(path, options = {}) {
   const {
     body,
@@ -104,75 +116,102 @@ export async function apiRequest(path, options = {}) {
     throw new Error("No Internet Connection. Please check your network and try again.");
   }
   let lastError;
+  const apiUrls = API_URL_CANDIDATES.length ? API_URL_CANDIDATES : [API_URL];
 
   for (let attempt = 0; attempt <= retry; attempt += 1) {
-    const controller = new AbortController();
-    let didTimeout = false;
-    let timeoutId;
-    let externalAbortHandler;
+    let shouldRetryAttempt = false;
 
-    if (timeoutMs > 0) {
-      timeoutId = setTimeout(() => {
-        didTimeout = true;
-        controller.abort();
-      }, timeoutMs);
-    }
+    for (let urlIndex = 0; urlIndex < apiUrls.length; urlIndex += 1) {
+      const baseUrl = apiUrls[urlIndex];
+      const hasFallbackUrl = urlIndex < apiUrls.length - 1;
+      const controller = new AbortController();
+      let didTimeout = false;
+      let timeoutId;
+      let externalAbortHandler;
 
-    if (signal) {
-      if (signal.aborted) {
-        controller.abort();
-      } else if (typeof signal.addEventListener === "function") {
-        externalAbortHandler = () => controller.abort();
-        signal.addEventListener("abort", externalAbortHandler, { once: true });
+      if (timeoutMs > 0) {
+        timeoutId = setTimeout(() => {
+          didTimeout = true;
+          controller.abort();
+        }, timeoutMs);
       }
-    }
 
-    try {
-      const response = await fetch(`${API_URL}${path}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else if (typeof signal.addEventListener === "function") {
+          externalAbortHandler = () => controller.abort();
+          signal.addEventListener("abort", externalAbortHandler, { once: true });
+        }
+      }
 
-      const data = await parseApiResponse(response, "Request failed.");
-      if (!response.ok) {
-        const message = data.error || data.message || "Request failed.";
-        if (attempt < retry && RETRYABLE_STATUS_CODES.has(response.status)) {
-          lastError = new Error(message);
-          await new Promise((resolve) => setTimeout(resolve, 450 * (attempt + 1)));
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+
+        const data = await parseApiResponse(response, "Request failed.");
+        if (!response.ok) {
+          const message = data.error || data.message || "Request failed.";
+
+          if (isMissingApiRoute(response.status, message) && hasFallbackUrl) {
+            lastError = new Error(message);
+            continue;
+          }
+
+          if (attempt < retry && RETRYABLE_STATUS_CODES.has(response.status)) {
+            lastError = new Error(message);
+            shouldRetryAttempt = true;
+            break;
+          }
+
+          const apiError = new Error(message);
+          apiError.noFallback = true;
+          throw apiError;
+        }
+
+        return data;
+      } catch (error) {
+        if (error?.noFallback) {
+          throw error;
+        }
+
+        if (didTimeout) {
+          lastError = new Error("Request timed out. The Render backend may be waking up. Please try again in a minute.");
+        } else if (error?.name === "AbortError") {
+          lastError = new Error("Request was cancelled. Please try again.");
+        } else if (error?.message) {
+          lastError = error;
+        } else {
+          lastError = new Error(`Cannot reach ServiceHub server at ${baseUrl}. Check your internet connection and try again.`);
+        }
+
+        if (hasFallbackUrl && !signal?.aborted) {
           continue;
         }
 
-        throw new Error(message);
-      }
+        if (attempt < retry && !signal?.aborted) {
+          shouldRetryAttempt = true;
+          break;
+        }
 
-      return data;
-    } catch (error) {
-      if (didTimeout) {
-        lastError = new Error("Request timed out. The Render backend may be waking up. Please try again in a minute.");
-      } else if (error?.name === "AbortError") {
-        lastError = new Error("Request was cancelled. Please try again.");
-      } else if (error?.message) {
-        lastError = error;
-      } else {
-        lastError = new Error(`Cannot reach ServiceHub server at ${API_URL}. Check your internet connection and try again.`);
-      }
+        throw lastError;
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
 
-      if (attempt < retry && !signal?.aborted) {
-        await new Promise((resolve) => setTimeout(resolve, 450 * (attempt + 1)));
-        continue;
+        if (signal && externalAbortHandler && typeof signal.removeEventListener === "function") {
+          signal.removeEventListener("abort", externalAbortHandler);
+        }
       }
+    }
 
-      throw lastError;
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      if (signal && externalAbortHandler && typeof signal.removeEventListener === "function") {
-        signal.removeEventListener("abort", externalAbortHandler);
-      }
+    if (shouldRetryAttempt && attempt < retry && !signal?.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, 450 * (attempt + 1)));
     }
   }
 
