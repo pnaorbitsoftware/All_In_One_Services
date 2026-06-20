@@ -52,7 +52,14 @@ const bookingSchema = new mongoose.Schema(
     serviceDuration: {
       type: String,
       required: true,
-      enum: ["30 minutes", "1 hour", "2 hours", "3 hours", "Half day", "Full day"],
+      enum: [
+        "30 minutes",
+        "1 hour",
+        "2 hours",
+        "3 hours",
+        "Half day",
+        "Full day",
+      ],
       default: "1 hour",
     },
     costEstimate: {
@@ -137,7 +144,18 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "accepted", "assigned", "confirmed", "on_the_way", "en_route", "arrived", "job_started", "completed", "cancelled"],
+      enum: [
+        "pending",
+        "accepted",
+        "assigned",
+        "confirmed",
+        "on_the_way",
+        "en_route",
+        "arrived",
+        "job_started",
+        "completed",
+        "cancelled",
+      ],
       default: "pending",
     },
     trackingEvents: {
@@ -145,7 +163,16 @@ const bookingSchema = new mongoose.Schema(
         {
           status: {
             type: String,
-            enum: ["accepted", "confirmed", "assigned", "on_the_way", "en_route", "arrived", "job_started", "completed"],
+            enum: [
+              "accepted",
+              "confirmed",
+              "assigned",
+              "on_the_way",
+              "en_route",
+              "arrived",
+              "job_started",
+              "completed",
+            ],
             required: true,
           },
           updatedAt: {
@@ -288,7 +315,15 @@ const bookingSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["unpaid", "order_created", "paid", "failed", "rejected", "penalty_applied", "refunded"],
+      enum: [
+        "unpaid",
+        "order_created",
+        "paid",
+        "failed",
+        "rejected",
+        "penalty_applied",
+        "refunded",
+      ],
       default: "unpaid",
     },
     razorpayOrderId: {
@@ -317,13 +352,26 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    providerPaymentReleased: {
+      type: Boolean,
+      default: false,
+    },
+
+    providerPaymentReleasedAt: {
+      type: Date,
+      default: null,
+    },
   },
-  { collection: "bookings", timestamps: true }
+  { collection: "bookings", timestamps: true },
 );
 
 bookingSchema.index(
   { clientLocation: "2dsphere" },
-  { partialFilterExpression: { "clientLocation.coordinates": { $exists: true } } }
+  {
+    partialFilterExpression: {
+      "clientLocation.coordinates": { $exists: true },
+    },
+  },
 );
 bookingSchema.index({ user: 1, createdAt: -1 });
 bookingSchema.index({ assignedProvider: 1, status: 1, createdAt: -1 });

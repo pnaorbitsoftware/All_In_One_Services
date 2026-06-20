@@ -4,7 +4,7 @@ export default function ModernNavbar({
   openClientAuth,
 }) {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-indigo-600 via-fuchsia-500 to-cyan-500 shadow-[0_0_35px_rgba(168,85,247,0.35)]">
       <nav className="mx-auto flex h-24 max-w-7xl items-center justify-between px-8">
         {/* Logo */}
         <div
@@ -16,8 +16,8 @@ export default function ModernNavbar({
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">ServiceHub</h1>
-            <p className="text-xs font-medium text-slate-500">
+            <h1 className="text-2xl font-bold text-white">ServiceHub</h1>
+            <p className="text-xs font-medium text-white/80">
               Verified. Local. Reliable.
             </p>
           </div>
@@ -27,28 +27,28 @@ export default function ModernNavbar({
         <div className="hidden lg:flex items-center gap-10 text-sm font-medium">
           <button
             onClick={goMainHome}
-            className="border-b-2 border-blue-600 pb-2 text-blue-600"
+            className="rounded-full bg-purple-700 px-6 py-3 text-white shadow-lg"
           >
             Home
           </button>
 
           <button
             onClick={() => navigateHome("#services")}
-            className="pb-2 text-slate-700 hover:text-blue-600"
+            className="rounded-full bg-green-500 px-6 py-3 text-white shadow-lg"
           >
             Services
           </button>
 
           <button
             onClick={() => navigateHome("#providers")}
-            className="pb-2 text-slate-700 hover:text-blue-600"
+            className="rounded-full bg-orange-500 px-6 py-3 text-white shadow-lg"
           >
             Providers
           </button>
 
           <button
             onClick={() => navigateHome("#contact")}
-            className="pb-2 text-slate-700 hover:text-blue-600"
+            className="rounded-full bg-cyan-500 px-6 py-3 text-white shadow-lg"
           >
             Contact Us
           </button>
@@ -58,14 +58,14 @@ export default function ModernNavbar({
             {/* Working Login Button (Navigates to /contact) */}
             <button
               onClick={() => openClientAuth?.("login")}
-              className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-full bg-white px-5 py-2.5 font-medium text-slate-800"
             >
               Login
             </button>
 
             <button
               onClick={() => openClientAuth?.("register")}
-              className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700"
+              className="rounded-full bg-pink-500 px-6 py-2.5 font-semibold text-white shadow-lg"
             >
               Register
             </button>

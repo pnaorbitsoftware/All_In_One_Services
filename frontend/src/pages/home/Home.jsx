@@ -2009,39 +2009,61 @@ export default function Home() {
       />
       <div className="min-h-screen bg-slate-50 text-slate-950 transition-colors duration-500 dark:bg-slate-950 dark:text-white">
         <header
-          className={`fixed inset-x-0 top-0 z-50 px-3 pt-3 transition-all duration-300 sm:px-5 ${navScrolled ? "pb-2" : "pb-3"}`}
+          className={`fixed inset-x-0 top-0 z-50 px-3 pt-3 transition-all duration-500 sm:px-5 ${navScrolled ? "pb-2" : "pb-3"}`}
         >
           <nav
-            className={`mx-auto flex max-w-[96rem] items-center justify-between gap-3 rounded-[1.35rem] border px-4 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-white/45 backdrop-blur-2xl transition-all duration-300 dark:ring-white/10 sm:px-5 lg:px-6 ${navScrolled ? "h-16 border-white/80 bg-white/88 dark:border-white/10 dark:bg-slate-950/82" : "h-20 border-white/70 bg-white/74 dark:border-white/10 dark:bg-slate-950/66"}`}
+            className={`mx-auto flex max-w-[96rem] items-center justify-between gap-3 rounded-[1.35rem] border px-4 shadow-[0_20px_80px_rgba(15,23,42,0.15)] backdrop-blur-2xl transition-all duration-500 sm:px-5 lg:px-6 ${
+              navScrolled
+                ? "h-16 border-white/80 bg-gradient-to-br from-white/92 via-white/88 to-blue-50/80 shadow-lg shadow-blue-500/10 dark:border-white/10 dark:from-slate-950/90 dark:via-slate-900/90 dark:to-slate-800/80"
+                : "h-20 border-white/70 bg-gradient-to-br from-white/80 via-white/75 to-blue-50/60 dark:border-white/10 dark:from-slate-950/75 dark:via-slate-900/75 dark:to-slate-800/60"
+            }`}
           >
+            <div className="absolute inset-0 -z-10 rounded-[1.35rem] bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-pink-500/5 blur-2xl transition-all duration-500 dark:from-blue-400/5 dark:via-purple-400/5 dark:to-pink-400/5" />
+
             <button
               type="button"
               onClick={goMainHome}
-              className="group flex min-w-0 flex-none items-center gap-3 rounded-2xl pr-2 transition hover:bg-white/55 dark:hover:bg-white/5"
+              className="group flex min-w-0 flex-none items-center gap-3 rounded-2xl pr-3 transition-all duration-300 hover:scale-[1.02]"
             >
               <span
-                className={`grid place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xl shadow-blue-600/20 ring-1 ring-slate-200/80 transition-all duration-300 group-hover:-translate-y-0.5 dark:ring-white/15 ${navScrolled ? "h-10 w-10" : "h-12 w-12"}`}
+                className={`grid place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-[3px] shadow-xl shadow-blue-600/20 transition-all duration-500 group-hover:shadow-2xl group-hover:shadow-blue-600/30 group-hover:scale-105 ${navScrolled ? "h-11 w-11" : "h-14 w-14"}`}
               >
-                <img
-                  src={SERVICEHUB_ICON}
-                  alt="ServiceHub symbol"
-                  className="h-full w-full rounded-xl object-contain"
-                />
+                <span className="h-full w-full rounded-xl bg-white p-1 dark:bg-slate-950">
+                  <img
+                    src={SERVICEHUB_ICON}
+                    alt="ServiceHub symbol"
+                    className="h-full w-full rounded-xl object-contain"
+                  />
+                </span>
               </span>
               <span className="leading-tight">
-                <span className="block text-xl font-black tracking-tight">
+                <span className="block text-2xl font-black tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
                   ServiceHub
                 </span>
-                <span className="hidden text-[11px] font-black uppercase tracking-[0.18em] text-slate-400 sm:block">
+                <span className="hidden text-[11px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500 sm:block">
                   {t("verifiedLocalServices")}
                 </span>
               </span>
             </button>
 
             <div className="hidden min-w-0 flex-1 items-center justify-center lg:flex">
-              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-200/80 bg-white/82 p-1.5 text-sm font-black text-slate-500 shadow-[0_10px_34px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-300">
+              <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-slate-200/50 bg-white/60 p-1 text-sm font-black text-slate-500 shadow-[0_10px_40px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-white/5 dark:bg-white/5 dark:text-slate-300">
                 {mainNavItems.map((item) => {
                   const Icon = item.icon;
+                  const active = isNavActive(item.id);
+                  let buttonColor = "";
+                  if (item.id === "top" || item.id === "home") {
+                    buttonColor =
+                      "bg-purple-600 hover:bg-purple-700 text-white";
+                  } else if (item.id === "services") {
+                    buttonColor =
+                      "bg-emerald-500 hover:bg-emerald-600 text-white";
+                  } else if (item.id === "providers") {
+                    buttonColor =
+                      "bg-orange-500 hover:bg-orange-600 text-white";
+                  } else if (item.id === "contact") {
+                    buttonColor = "bg-sky-500 hover:bg-sky-600 text-white";
+                  }
                   return (
                     <button
                       key={item.id}
@@ -2051,12 +2073,22 @@ export default function Home() {
                           ? handleHomeNav
                           : () => navigateHome(`#${item.id}`)
                       }
-                      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${isNavActive(item.id) ? "bg-slate-950 text-white shadow-md shadow-slate-950/15 dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
+                      className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition-all duration-300 ${
+                        active
+                          ? `${buttonColor} shadow-lg shadow-purple-500/25 ring-1 ring-white/20 scale-105`
+                          : `${buttonColor} hover:scale-105`
+                      }`}
                     >
-                      <Icon className="flex-none" size={16} />
-                      <span className="whitespace-nowrap [overflow-wrap:normal]">
+                      <Icon
+                        className={`flex-none transition-transform duration-300 ${active ? "scale-110" : "group-hover:scale-110"}`}
+                        size={16}
+                      />
+                      <span className="whitespace-nowrap [overflow-wrap:normal] font-semibold">
                         {item.label}
                       </span>
+                      {active && (
+                        <span className="absolute -inset-px rounded-full bg-gradient-to-r from-purple-500 via-purple-500 to-purple-500 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
+                      )}
                     </button>
                   );
                 })}
@@ -2064,36 +2096,66 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setActiveView("client")}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${activeView === "client" ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
+                    className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition-all duration-300 ${
+                      activeView === "client"
+                        ? "bg-pink-600 text-white shadow-lg shadow-pink-500/25 ring-1 ring-white/20 scale-105 hover:bg-pink-700"
+                        : "bg-pink-600 text-white hover:bg-pink-700 hover:scale-105"
+                    }`}
                   >
-                    <CalendarCheck className="flex-none" size={16} />
-                    <span className="whitespace-nowrap [overflow-wrap:normal]">
+                    <CalendarCheck
+                      className="flex-none transition-transform duration-300"
+                      size={16}
+                    />
+                    <span className="whitespace-nowrap [overflow-wrap:normal] font-semibold">
                       {t("dashboard")}
                     </span>
+                    {activeView === "client" && (
+                      <span className="absolute -inset-px rounded-full bg-gradient-to-r from-pink-500 via-pink-500 to-pink-500 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
+                    )}
                   </button>
                 )}
                 {user?.role === "provider" && (
                   <button
                     type="button"
                     onClick={loadProviderDashboard}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${["provider", "client"].includes(activeView) ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
+                    className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition-all duration-300 ${
+                      ["provider", "client"].includes(activeView)
+                        ? "bg-pink-600 text-white shadow-lg shadow-pink-500/25 ring-1 ring-white/20 scale-105 hover:bg-pink-700"
+                        : "bg-pink-600 text-white hover:bg-pink-700 hover:scale-105"
+                    }`}
                   >
-                    <BriefcaseBusiness className="flex-none" size={16} />
-                    <span className="whitespace-nowrap [overflow-wrap:normal]">
+                    <BriefcaseBusiness
+                      className="flex-none transition-transform duration-300"
+                      size={16}
+                    />
+                    <span className="whitespace-nowrap [overflow-wrap:normal] font-semibold">
                       {providerDashboardNavLabel}
                     </span>
+                    {["provider", "client"].includes(activeView) && (
+                      <span className="absolute -inset-px rounded-full bg-gradient-to-r from-pink-500 via-pink-500 to-pink-500 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
+                    )}
                   </button>
                 )}
                 {user?.role === "admin" && (
                   <button
                     type="button"
                     onClick={loadAdminDashboard}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${activeView === "admin" ? "bg-slate-950 text-white shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
+                    className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition-all duration-300 ${
+                      activeView === "admin"
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20 scale-105 hover:bg-blue-700"
+                        : "bg-blue-600 text-white hover:bg-blue-700 hover:scale-105"
+                    }`}
                   >
-                    <ShieldCheck className="flex-none" size={16} />
-                    <span className="whitespace-nowrap [overflow-wrap:normal]">
+                    <ShieldCheck
+                      className="flex-none transition-transform duration-300"
+                      size={16}
+                    />
+                    <span className="whitespace-nowrap [overflow-wrap:normal] font-semibold">
                       {t("admin")}
                     </span>
+                    {activeView === "admin" && (
+                      <span className="absolute -inset-px rounded-full bg-gradient-to-r from-blue-500 via-blue-500 to-blue-500 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
+                    )}
                   </button>
                 )}
               </div>
@@ -2106,13 +2168,15 @@ export default function Home() {
                 aria-label={
                   isDark ? "Switch to light mode" : "Switch to dark mode"
                 }
-                className={`grid h-11 w-11 place-items-center rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                className={`group grid h-11 w-11 place-items-center rounded-full border shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
                   isDark
-                    ? "border-black bg-black text-white"
-                    : "border-slate-200 bg-white text-slate-950"
+                    ? "border-blue-500/30 bg-gradient-to-br from-slate-800 to-slate-900 text-yellow-400 hover:border-blue-400/50 hover:shadow-blue-500/20"
+                    : "border-purple-200/50 bg-gradient-to-br from-white to-purple-50/50 text-slate-700 hover:border-purple-300/70 hover:shadow-purple-500/20"
                 }`}
               >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                <span className="transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12">
+                  {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                </span>
               </button>
               {user ? (
                 <>
@@ -2124,13 +2188,16 @@ export default function Home() {
                         setLoginMenuOpen(false);
                         setMoreMenuOpen(false);
                       }}
-                      className="inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
+                      className={`group inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold transition-all duration-300 bg-pink-600 text-white hover:bg-pink-700 hover:scale-105 shadow-lg shadow-pink-500/25`}
                     >
-                      <UserRoundCheck size={20} />
-                      Account
+                      <UserRoundCheck
+                        size={20}
+                        className="transition-transform duration-300 group-hover:scale-110"
+                      />
+                      <span className="font-semibold">Account</span>
                       <ChevronDown
                         size={15}
-                        className={`transition ${accountMenuOpen ? "rotate-180" : ""}`}
+                        className={`transition-all duration-300 ${accountMenuOpen ? "rotate-180" : "group-hover:rotate-180"}`}
                       />
                     </button>
                     {accountMenuOpen && (
@@ -2255,13 +2322,16 @@ export default function Home() {
                         setLoginMenuOpen((current) => !current);
                         setMoreMenuOpen(false);
                       }}
-                      className="inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-black text-slate-700 [overflow-wrap:normal] transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
+                      className={`group inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold [overflow-wrap:normal] transition-all duration-300 bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 shadow-lg shadow-blue-500/25`}
                     >
-                      <UserRoundCheck size={19} />
+                      <UserRoundCheck
+                        size={19}
+                        className="transition-transform duration-300 group-hover:scale-110"
+                      />
                       {t("login")}
                       <ChevronDown
                         size={15}
-                        className={`transition ${loginMenuOpen ? "rotate-180" : ""}`}
+                        className={`transition-all duration-300 ${loginMenuOpen ? "rotate-180" : "group-hover:rotate-180"}`}
                       />
                     </button>
                     {loginMenuOpen && (
@@ -2381,12 +2451,12 @@ export default function Home() {
                         setMoreMenuOpen((current) => !current);
                         setLoginMenuOpen(false);
                       }}
-                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-5 py-3 text-sm font-black text-slate-700 [overflow-wrap:normal] transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
+                      className={`group inline-flex items-center gap-1 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold [overflow-wrap:normal] transition-all duration-300 bg-slate-800 text-white hover:bg-slate-900 hover:scale-105 shadow-lg shadow-slate-500/25`}
                     >
-                      More{" "}
+                      More
                       <ChevronDown
                         size={15}
-                        className={`transition ${moreMenuOpen ? "rotate-180" : ""}`}
+                        className={`transition-all duration-300 ${moreMenuOpen ? "rotate-180" : "group-hover:rotate-180"}`}
                       />
                     </button>
                     {moreMenuOpen && (
@@ -2454,15 +2524,18 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
-              className="grid h-11 w-11 place-items-center rounded-full bg-slate-950 text-white shadow-lg shadow-slate-950/15 ring-1 ring-white/10 transition hover:-translate-y-0.5 dark:bg-white dark:text-slate-950 lg:hidden"
+              className="group grid h-11 w-11 place-items-center rounded-full bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20 transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/30 lg:hidden"
               aria-label="Open navigation menu"
             >
-              <Menu size={20} />
+              <Menu
+                size={20}
+                className="transition-transform duration-300 group-hover:scale-110"
+              />
             </button>
           </nav>
-          <div className="mx-auto mt-2 h-0.5 max-w-[92rem] overflow-hidden rounded-full bg-transparent">
+          <div className="mx-auto mt-2 h-1 max-w-[92rem] overflow-hidden rounded-full bg-slate-200/30 dark:bg-white/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-teal-500 via-blue-600 to-amber-300 transition-[width] duration-200"
+              className="h-full rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-300 shadow-lg shadow-purple-500/30"
               style={{ width: `${navProgress}%` }}
             />
           </div>
@@ -2474,14 +2547,14 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[60] bg-slate-950/74 p-3 backdrop-blur-md sm:p-4 lg:hidden"
+              className="fixed inset-0 z-[60] bg-gradient-to-br from-slate-950/80 via-slate-900/80 to-blue-950/80 p-3 backdrop-blur-md sm:p-4 lg:hidden"
             >
               <motion.div
-                initial={{ x: 90 }}
-                animate={{ x: 0 }}
-                exit={{ x: 90 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                className="ml-auto flex h-full max-h-[calc(100dvh-1.5rem)] w-full max-w-sm flex-col gap-4 overflow-y-auto rounded-[1.7rem] border border-white/70 bg-[linear-gradient(145deg,#ffffff_0%,#ecfeff_48%,#fff7ed_100%)] p-4 text-slate-950 shadow-2xl dark:border-white/10 dark:bg-[linear-gradient(145deg,#020617_0%,#082f49_52%,#111827_100%)] dark:text-white sm:max-h-[calc(100dvh-2rem)] sm:p-5"
+                initial={{ x: 90, opacity: 0.8 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 90, opacity: 0.8 }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                className="ml-auto flex h-full max-h-[calc(100dvh-1.5rem)] w-full max-w-sm flex-col gap-4 overflow-y-auto rounded-[1.7rem] border border-white/20 bg-gradient-to-br from-white/95 via-blue-50/90 to-purple-50/90 p-4 text-slate-950 shadow-2xl shadow-purple-500/20 backdrop-blur-xl dark:border-white/10 dark:from-slate-950/95 dark:via-slate-900/95 dark:to-slate-800/95 dark:text-white sm:max-h-[calc(100dvh-2rem)] sm:p-5"
               >
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
                   <div className="flex items-center gap-3">
@@ -2502,10 +2575,13 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setMobileNavOpen(false)}
-                    className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+                    className="group grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 text-slate-700 transition-all duration-300 hover:scale-110 hover:bg-gradient-to-br hover:from-blue-500/20 hover:to-purple-500/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
                     aria-label="Close navigation menu"
                   >
-                    <X size={18} />
+                    <X
+                      size={18}
+                      className="transition-transform duration-300 group-hover:rotate-90"
+                    />
                   </button>
                 </div>
                 {user && (
@@ -2530,6 +2606,19 @@ export default function Home() {
                 <div className="grid gap-2">
                   {mainNavItems.map((item) => {
                     const Icon = item.icon;
+                    let buttonColor = "";
+                    if (item.id === "top" || item.id === "home") {
+                      buttonColor =
+                        "bg-purple-600 text-white hover:bg-purple-700";
+                    } else if (item.id === "services") {
+                      buttonColor =
+                        "bg-emerald-500 text-white hover:bg-emerald-600";
+                    } else if (item.id === "providers") {
+                      buttonColor =
+                        "bg-orange-500 text-white hover:bg-orange-600";
+                    } else if (item.id === "contact") {
+                      buttonColor = "bg-sky-500 text-white hover:bg-sky-600";
+                    }
                     return (
                       <button
                         key={item.id}
@@ -2539,13 +2628,13 @@ export default function Home() {
                             ? handleHomeNav
                             : () => navigateHome(`#${item.id}`)
                         }
-                        className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${isNavActive(item.id) ? "bg-slate-950 text-white shadow-lg shadow-slate-950/15 dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"}`}
+                        className={`group flex items-center justify-between rounded-2xl p-4 text-left font-semibold transition-all duration-300 ${buttonColor} hover:scale-[1.02] shadow-lg`}
                       >
                         <span className="flex items-center gap-3">
                           <Icon size={18} />
                           {item.label}
                         </span>
-                        <ChevronRight size={17} />
+                        <ChevronRight size={17} className="opacity-70" />
                       </button>
                     );
                   })}
@@ -2556,13 +2645,13 @@ export default function Home() {
                         setActiveView("client");
                         setMobileNavOpen(false);
                       }}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${activeView === "client" ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
+                      className="group flex items-center justify-between rounded-2xl p-4 text-left font-semibold transition-all duration-300 bg-pink-600 text-white hover:bg-pink-700 hover:scale-[1.02] shadow-lg"
                     >
                       <span className="flex items-center gap-3">
                         <CalendarCheck size={18} />
                         {t("clientDashboard")}
                       </span>
-                      <ChevronRight size={17} />
+                      <ChevronRight size={17} className="opacity-70" />
                     </button>
                   )}
                   {user?.role === "provider" && (
@@ -2572,26 +2661,26 @@ export default function Home() {
                         loadProviderDashboard();
                         setMobileNavOpen(false);
                       }}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${["provider", "client"].includes(activeView) ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
+                      className="group flex items-center justify-between rounded-2xl p-4 text-left font-semibold transition-all duration-300 bg-pink-600 text-white hover:bg-pink-700 hover:scale-[1.02] shadow-lg"
                     >
                       <span className="flex items-center gap-3">
                         <BriefcaseBusiness size={18} />
                         {providerDashboardNavLabel}
                       </span>
-                      <ChevronRight size={17} />
+                      <ChevronRight size={17} className="opacity-70" />
                     </button>
                   )}
                   {user?.role === "admin" && (
                     <button
                       type="button"
                       onClick={loadAdminDashboard}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${activeView === "admin" ? "bg-slate-950 text-white dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
+                      className="group flex items-center justify-between rounded-2xl p-4 text-left font-semibold transition-all duration-300 bg-blue-600 text-white hover:bg-blue-700 hover:scale-[1.02] shadow-lg"
                     >
                       <span className="flex items-center gap-3">
                         <ShieldCheck size={18} />
                         {t("admin")}
                       </span>
-                      <ChevronRight size={17} />
+                      <ChevronRight size={17} className="opacity-70" />
                     </button>
                   )}
                 </div>
@@ -2607,34 +2696,42 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setTheme(isDark ? "light" : "dark")}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 p-4 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
+                    className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-purple-600 text-white p-4 font-semibold transition-all duration-300 hover:scale-[1.02] hover:bg-purple-700 shadow-lg"
                   >
-                    {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                    <span className="transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12">
+                      {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                    </span>
                     {isDark ? t("light") : t("dark")}
                   </button>
                   {user ? (
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="rounded-2xl bg-amber-300 p-4 font-black text-slate-950 shadow-lg shadow-amber-300/20"
+                      className="group rounded-2xl bg-rose-600 text-white p-4 font-bold shadow-lg shadow-rose-500/30 transition-all duration-300 hover:scale-[1.02] hover:bg-rose-700"
                     >
-                      {t("logout")}
+                      <span className="transition-transform duration-300 group-hover:scale-105 inline-block">
+                        {t("logout")}
+                      </span>
                     </button>
                   ) : (
                     <>
                       <button
                         type="button"
                         onClick={() => openClientAuth("login")}
-                        className="rounded-2xl bg-amber-300 p-4 font-black text-slate-950 shadow-lg shadow-amber-300/20"
+                        className="group rounded-2xl bg-blue-600 text-white p-4 font-bold shadow-lg shadow-blue-500/30 transition-all duration-300 hover:scale-[1.02] hover:bg-blue-700"
                       >
-                        {t("login")}
+                        <span className="transition-transform duration-300 group-hover:scale-105 inline-block">
+                          {t("login")}
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => openProviderAuth("register")}
-                        className="rounded-2xl bg-gradient-to-r from-teal-600 to-blue-600 p-4 font-black text-white shadow-lg shadow-blue-600/20"
+                        className="group rounded-2xl bg-emerald-600 text-white p-4 font-bold shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02] hover:bg-emerald-700"
                       >
-                        {t("becomeProvider")}
+                        <span className="transition-transform duration-300 group-hover:scale-105 inline-block">
+                          {t("becomeProvider")}
+                        </span>
                       </button>
                     </>
                   )}
@@ -2651,10 +2748,9 @@ export default function Home() {
               setSearchTerm={setSearchTerm}
               onSearch={searchServices}
             />
-            {/*  <PopularServicesGrid openPopularService={openPopularService} /> >*/}
             <section
               id="services"
-              className="home-section border-y border-[#ded7ca] bg-[#fbfaf6] dark:border-white/10 dark:bg-slate-950"
+              className="home-section border-y border-[#ded7ca] bg-[#fbfaf6] dark:border-white/10 dark:bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg"
             >
               <ModernPopularServices openPopularService={openPopularService} />
               <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[350px_1fr]">
@@ -3283,6 +3379,7 @@ function LanguageSwitcher({ language, setLanguage, t, fullWidth = false }) {
     </div>
   );
 }
+
 function Categories({ categories, selectedCategory, setSelectedCategory }) {
   return (
     <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
@@ -6471,7 +6568,7 @@ function ChatBox({
           <button
             type="submit"
             disabled={isTyping || !input.trim()}
-            className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-amber-300 dark:text-slate-950"
+            className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lgtransition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-amber-300 dark:text-slate-950"
             aria-label="Send message"
           >
             <Send size={16} />

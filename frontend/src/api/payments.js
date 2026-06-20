@@ -10,7 +10,11 @@ const parseApiResponse = async (response, fallbackMessage) => {
   return { message: (await response.text()) || fallbackMessage };
 };
 
-const paymentRequest = async (path, options = {}, fallbackMessage = "Payment request failed.") => {
+const paymentRequest = async (
+  path,
+  options = {},
+  fallbackMessage = "Payment request failed.",
+) => {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
@@ -48,14 +52,14 @@ export const submitProviderEstimate = (bookingId, finalEstimateAmount) =>
       method: "POST",
       body: JSON.stringify({ finalEstimateAmount }),
     },
-    "Estimate could not be submitted."
+    "Estimate could not be submitted.",
   );
 
 export const acceptEstimate = (bookingId) =>
   paymentRequest(
     `/payments/bookings/${bookingId}/estimate/accept`,
     { method: "PATCH" },
-    "Estimate could not be accepted."
+    "Estimate could not be accepted.",
   );
 
 export const rejectEstimate = (bookingId, rejectionReason) =>
@@ -65,7 +69,7 @@ export const rejectEstimate = (bookingId, rejectionReason) =>
       method: "PATCH",
       body: JSON.stringify({ rejectionReason }),
     },
-    "Estimate could not be rejected."
+    "Estimate could not be rejected.",
   );
 
 export const createRazorpayOrder = (bookingId) =>
@@ -75,7 +79,7 @@ export const createRazorpayOrder = (bookingId) =>
       method: "POST",
       body: JSON.stringify({ bookingId }),
     },
-    "Razorpay order could not be created."
+    "Razorpay order could not be created.",
   );
 
 export const verifyRazorpayPayment = (response, bookingId) =>
@@ -90,11 +94,15 @@ export const verifyRazorpayPayment = (response, bookingId) =>
         razorpay_signature: response.razorpay_signature,
       }),
     },
-    "Payment verification failed."
+    "Payment verification failed.",
   );
 
 export const getProviderEarnings = () =>
-  paymentRequest("/payments/provider/earnings", {}, "Provider earnings could not be loaded.");
+  paymentRequest(
+    "/payments/provider/earnings",
+    {},
+    "Provider earnings could not be loaded.",
+  );
 
 export const withdrawProviderEarnings = (bankDetails) =>
   paymentRequest(
@@ -103,15 +111,25 @@ export const withdrawProviderEarnings = (bankDetails) =>
       method: "POST",
       body: JSON.stringify(bankDetails),
     },
-    "Withdrawal could not be completed."
+    "Withdrawal could not be completed.",
   );
 
 export const getAdminLedger = () =>
-  paymentRequest("/payments/admin/ledger", {}, "Admin payment ledger could not be loaded.");
+  paymentRequest(
+    "/payments/admin/ledger",
+    {},
+    "Admin payment ledger could not be loaded.",
+  );
 
 export const sendProviderPayout = (providerId) =>
   paymentRequest(
     `/payments/admin/providers/${providerId}/payout`,
     { method: "POST" },
-    "Provider payout could not be sent."
+    "Provider payout could not be sent.",
+  );
+export const releaseProviderPayment = (bookingId) =>
+  paymentRequest(
+    `/admin/bookings/${bookingId}/release-payment`,
+    { method: "PATCH" },
+    "Provider payment could not be released.",
   );
