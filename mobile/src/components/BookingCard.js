@@ -25,7 +25,10 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
   const provider = booking.assignedProvider || booking.requestedProvider;
   const estimateSubmitted = booking.estimateStatus === "submitted";
   const estimateAccepted = booking.estimateStatus === "accepted";
-  const paymentPending = estimateAccepted && booking.paymentStatus !== "paid" && booking.clientPaymentStatus !== "paid";
+  const terminalStatus = ["completed", "cancelled"].includes(String(booking.status || "").toLowerCase());
+  const paymentPending = !terminalStatus && estimateAccepted && booking.paymentStatus !== "paid" && booking.clientPaymentStatus !== "paid";
+  const hideTrackingForEstimate = (estimateSubmitted || paymentPending) && Number(booking.finalEstimateAmount || 0) > 0;
+  const canTrack = !terminalStatus && !hideTrackingForEstimate;
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -62,12 +65,14 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
           </InfoLine>
         ) : null}
       </View>
-      <ActionButton
-        title="Track Service"
-        icon="timeline-clock-outline"
-        variant="secondary"
-        onPress={() => onTrack?.(booking)}
-      />
+      {canTrack ? (
+        <ActionButton
+          title="Track Service"
+          icon="timeline-clock-outline"
+          variant="secondary"
+          onPress={() => onTrack?.(booking)}
+        />
+      ) : null}
       {paymentPending ? (
         <ActionButton
           title={`Pay final estimate ${formatPrice(booking.finalEstimateAmount || 0)}`}
@@ -75,7 +80,7 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
           onPress={() => onPayEstimate?.(booking)}
         />
       ) : null}
-      {estimateSubmitted ? (
+      {!terminalStatus && estimateSubmitted ? (
         <View style={styles.actions}>
           <ActionButton
             title="Accept estimate"
@@ -92,7 +97,7 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
           />
         </View>
       ) : null}
-      {cancelState.canCancel ? (
+      {!terminalStatus && cancelState.canCancel ? (
         <ActionButton
           title={cancelState.label}
           icon="close-circle-outline"

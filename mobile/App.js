@@ -56,6 +56,7 @@ import ContactUsSheet from "./src/sheets/ContactUsSheet";
 import LocationSearchSheet from "./src/sheets/LocationSearchSheet";
 import EstimateSheet from "./src/sheets/EstimateSheet";
 import MyBookingsSheet from "./src/sheets/MyBookingsSheet";
+import PaymentCheckoutSheet from "./src/sheets/PaymentCheckoutSheet";
 import PaymentMethodsSheet from "./src/sheets/PaymentMethodsSheet";
 import PaymentConfirmationSheet from "./src/sheets/PaymentConfirmationSheet";
 import ProviderProfileSheet from "./src/sheets/ProviderProfileSheet";
@@ -243,6 +244,9 @@ function ServiceHubApp() {
   const [addressesSubmitting, setAddressesSubmitting] = useState(false);
   const [paymentMethodsSubmitting, setPaymentMethodsSubmitting] = useState(false);
   const [locatingAddress, setLocatingAddress] = useState(false);
+  const [paymentCheckout, setPaymentCheckout] = useState(null);
+  const [paymentCheckoutError, setPaymentCheckoutError] = useState("");
+  const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [paymentConfirmation, setPaymentConfirmation] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -948,16 +952,61 @@ function ServiceHubApp() {
       try {
         const data = await paymentApi.createOrder(token, booking._id);
         setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
-        setToast(
-          data.gateway === "razorpay"
-            ? "Razorpay order created. Complete checkout with Razorpay SDK, then verify payment."
-            : data.message || "Payment order created."
-        );
+        if (data.gateway !== "razorpay" || !data.keyId || !data.orderId) {
+          setToast(data.message || "Payment order created.");
+          return;
+        }
+
+        setPaymentCheckout({ booking: data.booking || booking, order: data, paymentResponse: null });
+        setPaymentCheckoutError("");
       } catch (error) {
-        setToast(error.message);
+        setToast(error?.description || error?.message || "Payment could not be completed.");
       }
     },
     [token]
+  );
+
+  const verifyClientEstimatePayment = useCallback(
+    async (paymentResponse) => {
+      const checkoutBooking = paymentCheckout?.booking;
+      const bookingId = checkoutBooking?._id || checkoutBooking?.id;
+
+      if (!bookingId) {
+        setToast("Booking details are missing for payment verification.");
+        return;
+      }
+
+      if (!paymentResponse?.razorpay_payment_id || !paymentResponse?.razorpay_signature) {
+        setPaymentCheckoutError("Razorpay payment details were not returned. Please try again.");
+        return;
+      }
+
+      setPaymentVerifying(true);
+      setPaymentCheckoutError("");
+      setPaymentCheckout((current) => (current ? { ...current, paymentResponse } : current));
+
+      try {
+        const verified = await paymentApi.verify(token, {
+          bookingId,
+          razorpay_order_id: paymentResponse.razorpay_order_id || paymentCheckout?.order?.orderId,
+          razorpay_payment_id: paymentResponse.razorpay_payment_id,
+          razorpay_signature: paymentResponse.razorpay_signature,
+        });
+
+        setBookings((current) => current.map((item) => ((item._id || item.id) === bookingId ? verified.booking : item)));
+        setPaymentCheckout(null);
+        setPaymentCheckoutError("");
+        setPaymentConfirmation(verified.booking);
+        setToast(verified.message || "Payment successful.");
+      } catch (error) {
+        const message = error?.description || error?.message || "Payment could not be verified.";
+        setPaymentCheckoutError(message);
+        setToast(message);
+      } finally {
+        setPaymentVerifying(false);
+      }
+    },
+    [paymentCheckout, token]
   );
 
   const rejectClientEstimate = useCallback(
@@ -1459,6 +1508,7 @@ function ServiceHubApp() {
     providerError,
     providerLoading,
     providerRefreshing,
+    payClientEstimate,
     rejectClientEstimate,
     withdrawProviderEarnings,
     searchTerm,
@@ -1611,6 +1661,29 @@ function ServiceHubApp() {
             submitting={estimateSubmitting}
             onClose={() => setProviderEstimateBooking(null)}
             onSubmit={submitProviderEstimate}
+          />
+          <PaymentCheckoutSheet
+            visible={Boolean(paymentCheckout)}
+            checkout={paymentCheckout}
+            verifying={paymentVerifying}
+            error={paymentCheckoutError}
+            onClose={() => {
+              if (paymentVerifying) return;
+              setPaymentCheckout(null);
+              setPaymentCheckoutError("");
+            }}
+            onSuccess={verifyClientEstimatePayment}
+            onFailure={(message) => {
+              if (paymentVerifying) return;
+              setPaymentCheckout(null);
+              setPaymentCheckoutError("");
+              setToast(message || "Payment was not completed.");
+            }}
+            onRetry={
+              paymentCheckout?.paymentResponse
+                ? () => verifyClientEstimatePayment(paymentCheckout.paymentResponse)
+                : null
+            }
           />
           <PaymentConfirmationSheet
             visible={Boolean(paymentConfirmation)}

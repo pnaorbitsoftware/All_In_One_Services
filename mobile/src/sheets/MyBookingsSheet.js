@@ -1,5 +1,5 @@
 ﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import BookingCard from "../components/BookingCard";
@@ -59,6 +59,7 @@ export default function MyBookingsSheet({
   onTrackBooking,
 }) {
   const theme = useThemeColors();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const groupedBookings = useMemo(() => {
     const active = [];
     const history = [];
@@ -74,6 +75,10 @@ export default function MyBookingsSheet({
 
     return { active, history };
   }, [bookings]);
+
+  useEffect(() => {
+    if (!visible) setHistoryOpen(false);
+  }, [visible]);
 
   return (
     <ModalSheet
@@ -120,16 +125,44 @@ export default function MyBookingsSheet({
             onPayEstimate={onPayEstimate}
             onTrack={onTrackBooking}
           />
-          <Section
-            title="Booking History"
-            bookings={groupedBookings.history}
-            emptyCopy="Book your frist service"
-            onCancel={onCancelBooking}
-            onAcceptEstimate={onAcceptEstimate}
-            onRejectEstimate={onRejectEstimate}
-            onPayEstimate={onPayEstimate}
-            onTrack={onTrackBooking}
-          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setHistoryOpen((open) => !open)}
+            style={({ pressed }) => [
+              styles.historyButton,
+              { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.historyText}>
+              <Text style={[styles.historyTitle, { color: theme.text }]}>Booking History</Text>
+              <Text style={[styles.historyCopy, { color: theme.textMuted }]}>
+                {groupedBookings.history.length
+                  ? `${groupedBookings.history.length} completed or canceled bookings`
+                  : "Completed and canceled bookings will appear here"}
+              </Text>
+            </View>
+            <Text style={[styles.sectionCount, { backgroundColor: theme.surface, color: theme.textMuted }]}>
+              {groupedBookings.history.length}
+            </Text>
+            <MaterialCommunityIcons
+              name={historyOpen ? "chevron-up" : "chevron-down"}
+              size={24}
+              color={theme.textMuted}
+            />
+          </Pressable>
+          {historyOpen ? (
+            <Section
+              title="Booking History"
+              bookings={groupedBookings.history}
+              emptyCopy="No booking history yet."
+              onCancel={onCancelBooking}
+              onAcceptEstimate={onAcceptEstimate}
+              onRejectEstimate={onRejectEstimate}
+              onPayEstimate={onPayEstimate}
+              onTrack={null}
+            />
+          ) : null}
         </>
       )}
     </ModalSheet>
@@ -152,6 +185,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 19,
+  },
+  historyButton: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  historyCopy: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+  historyText: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  historyTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0,
   },
   pressed: {
     opacity: 0.78,

@@ -6,7 +6,7 @@ import ModalSheet from "../components/ModalSheet";
 import { formatPrice } from "../lib/formatters";
 import { colors, radius, useThemeColors } from "../theme";
 
-export default function PaymentConfirmationSheet({ visible, booking, onClose, onGoToBookings }) {
+export default function PaymentConfirmationSheet({ visible, booking, onClose, onGoToBookings, onViewReceipt }) {
   const theme = useThemeColors();
   if (!booking) return null;
 
@@ -22,7 +22,7 @@ export default function PaymentConfirmationSheet({ visible, booking, onClose, on
       footer={
         <View style={styles.footer}>
           <ActionButton title="Go to My Bookings" icon="calendar-check-outline" onPress={onGoToBookings} style={styles.footerButton} />
-          <ActionButton title={booking.receiptUrl ? "View Receipt" : "Receipt Pending"} icon="receipt" variant="secondary" disabled={!booking.receiptUrl} onPress={() => {}} style={styles.footerButton} />
+          <ActionButton title={booking.receiptUrl ? "View Receipt" : "Receipt Pending"} icon="receipt" variant="secondary" disabled={!booking.receiptUrl} onPress={() => onViewReceipt?.(booking.receiptUrl)} style={styles.footerButton} />
         </View>
       }
     >
