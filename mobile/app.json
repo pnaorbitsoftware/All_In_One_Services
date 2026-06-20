@@ -39,7 +39,7 @@
                                  ]
                              ],
                  "extra":  {
-                               "apiUrl":  "http://10.0.2.2:5000/api",
+                               "apiUrl":  "https://all-in-one-services-eegn.onrender.com/api",
                                "eas":  {
                                            "projectId":  "13cf87d6-8411-4240-8d39-9152efdf9fc0"
                                        }
