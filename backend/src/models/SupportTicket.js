@@ -42,9 +42,8 @@ const supportTicketSchema = new mongoose.Schema(
         "Payment Issue",
         "Provider Issue",
         "Account Issue",
-        "Technical Problem",
-        "Refund Request",
-        "Other",
+        "Technical Issue",
+        "General Inquiry",
       ],
     },
     priority: {
@@ -54,16 +53,33 @@ const supportTicketSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Open", "In Review", "Resolved", "Closed"],
+      enum: [
+        "Open",
+        "Assigned",
+        "In Progress",
+        "Waiting for Customer",
+        "Resolved",
+        "Closed",
+      ],
       default: "Open",
     },
-    attachment: {
-      type: String,
-      default: "",
-    },
+    attachments: [
+      {
+        name: { type: String, required: true },
+        url: { type: String, required: true },
+      },
+    ],
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      default: null,
+    },
+    bookingId: {
+      type: String,
+      default: "",
+    },
+    resolvedAt: {
+      type: Date,
       default: null,
     },
   },
