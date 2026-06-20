@@ -97,10 +97,10 @@ export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
           {/* Right Side: Image with Floating & Scale Micro-interaction */}
           <div className="relative justify-self-center lg:justify-self-end w-full max-w-lg lg:max-w-none group">
             <img
-              src="https://www.shutterstock.com/image-photo/image-this-style-skilled-trades-260nw-2730120451.jpg"
+              src="./src/components/redesign/img/ChatGPT Image Jun 19, 2026, 10_17_49 PM.png"
               alt="Professional workers vector"
-              className="w-full object-cover rounded-[32px] shadow-2xl transition-all duration-500 ease-in-out group-hover:scale-[1.02] group-hover:shadow-blue-100/50"
-              style={{ height: "450px" }}
+              className="w-full object-cover rounded-[20px] shadow-2xl transition-all duration-800 ease-in-out group-hover:scale-[1.02] group-hover:shadow-blue-100/50"
+              style={{ height: "410px" }}
             />
           </div>
         </div>

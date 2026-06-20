@@ -1,6 +1,6 @@
 import { Star, MapPin } from "lucide-react";
 
-export default function ModernProviders({ services, setSelectedService }) {
+export default function ModernProviders({ services = [], setSelectedService }) {
   return (
     <section id="providers" className="bg-white py-20">
       <div className="mx-auto max-w-[1400px] px-6">
@@ -25,9 +25,9 @@ export default function ModernProviders({ services, setSelectedService }) {
         </div>
 
         <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
-          {services.slice(0, 8).map((service) => (
+          {services.slice(0, 8).map((service, index) => (
             <div
-              key={service.id || service.providerId || service.name}
+              key={service.id || service.providerId || service.name || index}
               className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-2 hover:shadow-xl"
             >
               <img
@@ -66,14 +66,18 @@ export default function ModernProviders({ services, setSelectedService }) {
 
                 <div className="mt-5 flex gap-3">
                   <button
-                    onClick={() => setSelectedService(service)}
+                    onClick={() =>
+                      setSelectedService && setSelectedService(service)
+                    }
                     className="flex-1 rounded-xl border border-slate-300 py-2 font-medium"
                   >
                     View Profile
                   </button>
 
                   <button
-                    onClick={() => setSelectedService(service)}
+                    onClick={() =>
+                      setSelectedService && setSelectedService(service)
+                    }
                     className="flex-1 rounded-xl bg-blue-600 py-2 font-medium text-white"
                   >
                     Book Now

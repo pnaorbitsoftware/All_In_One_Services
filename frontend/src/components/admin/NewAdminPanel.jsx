@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { releaseProviderPayment } from "../../api/payments";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -32,31 +33,40 @@ export default function NewAdminPanel({
   refreshAdminPayments,
   setIsAdminMode,
 }) {
-  // Step 1-A: Provider selection state added below props
+  // State declarations
   const [selectedProviders, setSelectedProviders] = useState({});
-
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // CRM States
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [replyText, setReplyText] = useState("");
-
-  // Archive Filter
   const [historyFilter, setHistoryFilter] = useState("all_bookings");
-
-  // Drawer State
   const [activeDrawerProvider, setActiveDrawerProvider] = useState(null);
 
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  // Handle release payment
+  const handleReleasePayment = async (bookingId) => {
+    try {
+      await releaseProviderPayment(bookingId);
+      refreshAdminPayments?.();
+      window.location.reload();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  // Calculate stats
   const stats = adminData?.stats || {};
   const bookingCount = adminData?.bookings?.length || 0;
   const providerCount = adminData?.providers?.length || 0;
   const totalRevenue =
     paymentData?.totalRevenue || stats.totalCostEstimate || 3588;
-
   const avgTicketSize =
     bookingCount > 0 ? (totalRevenue / bookingCount).toFixed(2) : 0;
-
   const completedBookingsCount = (adminData?.bookings || []).filter(
     (b) => b.status?.toLowerCase() === "completed",
   ).length;
@@ -64,7 +74,6 @@ export default function NewAdminPanel({
     bookingCount > 0
       ? ((completedBookingsCount / bookingCount) * 100).toFixed(1)
       : 0;
-
   const approvedProvidersCount = (adminData?.providers || []).filter(
     (p) => p.approvalStatus?.toLowerCase() === "approved",
   ).length;
@@ -73,6 +82,7 @@ export default function NewAdminPanel({
       ? ((approvedProvidersCount / providerCount) * 100).toFixed(1)
       : 0;
 
+  // Calculate top services
   const calculateTopServices = () => {
     const counts = {};
     (adminData?.bookings || []).forEach((b) => {
@@ -83,12 +93,13 @@ export default function NewAdminPanel({
       .sort((a, b) => b.value - a.value)
       .slice(0, 4);
   };
-  const realTopServices = calculateTopServices();
 
+  const realTopServices = calculateTopServices();
   const leaderBoardProviders = [...(adminData?.providers || [])]
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
     .slice(0, 4);
 
+  // Menu items
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "bookings", label: "Bookings Queue", icon: CalendarDays },
@@ -99,6 +110,7 @@ export default function NewAdminPanel({
     { id: "history", label: "Archive Vault", icon: History },
   ];
 
+  // Handle send reply
   const handleSendReply = async (messageId) => {
     if (!replyText.trim()) return;
     try {
@@ -114,11 +126,12 @@ export default function NewAdminPanel({
           return msg;
         });
         setAdminData({ ...adminData, contactMessages: updatedMessages });
+        if (setStatusMessage) setStatusMessage("Reply processed successfully!");
+        setReplyText("");
+        setSelectedMessage(null);
       }
-      if (setStatusMessage) setStatusMessage("Reply processed successfully!");
-      setReplyText("");
-      setSelectedMessage(null);
-    } catch {
+    } catch (err) {
+      console.error(err);
       if (setStatusMessage) {
         setStatusMessage("Error syncing response.");
       }
@@ -127,7 +140,7 @@ export default function NewAdminPanel({
 
   return (
     <div className="fixed inset-0 w-screen h-screen bg-slate-100 flex overflow-hidden z-50 font-sans text-slate-800">
-      {/* SIDEBAR CONTAINER */}
+      {/* SIDEBAR */}
       <aside
         className={`bg-slate-950 text-white transition-all duration-300 flex flex-col h-full flex-shrink-0 z-30 shadow-xl ${sidebarOpen ? "w-72" : "w-20"}`}
       >
@@ -169,11 +182,22 @@ export default function NewAdminPanel({
             );
           })}
         </div>
+
+        {/* Logout Button */}
+        <div className="mt-auto border-t border-slate-700 pt-4 p-4">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-3 rounded-xl bg-red-600 px-4 py-3 text-white font-semibold transition hover:bg-red-700"
+          >
+            <span>🚪</span>
+            {sidebarOpen && <span className="truncate">Logout</span>}
+          </button>
+        </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-        {/* TOP PANEL CONTROL BAR */}
+        {/* TOP BAR */}
         <div className="h-20 border-b bg-white px-8 flex items-center justify-between flex-shrink-0 shadow-sm z-10">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight capitalize">
@@ -194,7 +218,7 @@ export default function NewAdminPanel({
           )}
         </div>
 
-        {/* INNER SCROLL CONTAINER */}
+        {/* SCROLLABLE CONTENT */}
         <div className="flex-1 overflow-y-auto p-8 space-y-8">
           {/* DASHBOARD TAB */}
           {activeTab === "dashboard" && (
@@ -205,72 +229,77 @@ export default function NewAdminPanel({
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                       Total Users
                     </p>
-                    <h3 className="mt-2 text-3xl font-black text-slate-900">
-                      {stats.totalUsers || 7}
+                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                      {stats.totalUsers || 0}
                     </h3>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                     <Users size={24} />
                   </div>
                 </div>
+
                 <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                       Active Providers
                     </p>
-                    <h3 className="mt-2 text-3xl font-black text-slate-900">
-                      {stats.totalProviders || 41}
+                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                      {stats.totalProviders || 0}
                     </h3>
                   </div>
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
                     <Briefcase size={24} />
                   </div>
                 </div>
+
                 <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                       Total Bookings
                     </p>
-                    <h3 className="mt-2 text-3xl font-black text-slate-900">
-                      {stats.totalBookings || 12}
+                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                      {stats.totalBookings || 0}
                     </h3>
                   </div>
                   <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
                     <CalendarDays size={24} />
                   </div>
                 </div>
+
                 <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                       Pending Work Queue
                     </p>
-                    <h3 className="mt-2 text-3xl font-black text-slate-900">
-                      {stats.pendingWork || 5}
+                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                      {stats.pendingWork || 0}
                     </h3>
                   </div>
                   <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
                     <Clock size={24} />
                   </div>
                 </div>
+
                 <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                       Completed Deliveries
                     </p>
-                    <h3 className="mt-2 text-3xl font-black text-slate-900">
-                      {stats.completedWork || 8}
+                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                      {stats.completedWork || 0}
                     </h3>
                   </div>
                   <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
                     <CheckCircle size={24} />
                   </div>
                 </div>
+
                 <div className="rounded-2xl p-6 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-md flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-blue-100 uppercase tracking-wider">
                       Gross Pipeline Revenue
                     </p>
-                    <h3 className="mt-2 text-3xl font-black">
+                    <h3 className="mt-2 text-2xl font-black">
                       ₹{totalRevenue}
                     </h3>
                   </div>
@@ -305,12 +334,7 @@ export default function NewAdminPanel({
                             </p>
                           </div>
                           <span
-                            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                              provider.approvalStatus?.toLowerCase() ===
-                              "approved"
-                                ? "bg-green-50 text-green-700"
-                                : "bg-rose-50 text-rose-700"
-                            }`}
+                            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${provider.approvalStatus?.toLowerCase() === "approved" ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700"}`}
                           >
                             {provider.approvalStatus || "pending"}
                           </span>
@@ -339,11 +363,7 @@ export default function NewAdminPanel({
                           </p>
                         </div>
                         <span
-                          className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                            booking.status?.toLowerCase() === "completed"
-                              ? "bg-green-50 text-green-700"
-                              : "bg-amber-50 text-amber-700"
-                          }`}
+                          className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${booking.status?.toLowerCase() === "completed" ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}
                         >
                           {booking.status || "pending"}
                         </span>
@@ -397,7 +417,7 @@ export default function NewAdminPanel({
                       <th className="p-4 min-w-[110px] whitespace-nowrap">
                         Date
                       </th>
-                      <th className="p-4 pr-6 text-center min-w-[180px] whitespace-nowrap">
+                      <th className="p-4 pr-6 text-center min-w-[180px]">
                         Operational Actions
                       </th>
                     </tr>
@@ -412,7 +432,7 @@ export default function NewAdminPanel({
                           className="hover:bg-slate-50/80 transition-colors"
                         >
                           <td className="p-4 pl-6 font-mono text-xs text-slate-400 whitespace-nowrap">
-                            {booking._id ? `...${booking._id.slice(-6)}` : "-"}
+                            {booking._id ? booking._id.slice(-6) : "-"}
                           </td>
                           <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
                             {booking.name || "-"}
@@ -439,13 +459,10 @@ export default function NewAdminPanel({
                                   [booking._id]: e.target.value,
                                 }))
                               }
-                              disabled={
-                                booking.status?.toLowerCase() === "completed"
-                              }
+                              disabled={cleanStatus === "completed"}
                               className="w-full rounded-lg border border-slate-300 px-2 py-2 text-xs bg-white disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-700"
                             >
                               <option value="">Select Provider</option>
-
                               {(adminData?.providers || [])
                                 .filter(
                                   (provider) =>
@@ -468,14 +485,7 @@ export default function NewAdminPanel({
                           </td>
                           <td className="p-4 whitespace-nowrap">
                             <span
-                              className={`inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                                cleanStatus === "completed"
-                                  ? "bg-green-50 text-green-700 border border-green-200"
-                                  : cleanStatus === "accepted" ||
-                                      cleanStatus === "job_started"
-                                    ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                    : "bg-amber-50 text-amber-700 border border-amber-200"
-                              }`}
+                              className={`inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${cleanStatus === "completed" ? "bg-green-50 text-green-700 border border-green-200" : cleanStatus === "accepted" || cleanStatus === "job_started" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}
                             >
                               {booking.status || "pending"}
                             </span>
@@ -489,7 +499,6 @@ export default function NewAdminPanel({
                           </td>
                           <td className="p-4 pr-6 text-center whitespace-nowrap">
                             <div className="flex justify-center items-center gap-2">
-                              {/* Newly Added Assign Button Block */}
                               {selectedProviders[booking._id] &&
                                 cleanStatus !== "completed" && (
                                   <button
@@ -505,7 +514,6 @@ export default function NewAdminPanel({
                                     Assign
                                   </button>
                                 )}
-
                               {cleanStatus !== "accepted" &&
                                 cleanStatus !== "completed" &&
                                 cleanStatus !== "job_started" && (
@@ -632,11 +640,7 @@ export default function NewAdminPanel({
                           </td>
                           <td className="p-4 whitespace-nowrap">
                             <span
-                              className={`inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                                cleanAppStatus === "approved"
-                                  ? "bg-green-50 text-green-700 border border-green-200"
-                                  : "bg-rose-50 text-rose-700 border border-rose-200"
-                              }`}
+                              className={`inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${cleanAppStatus === "approved" ? "bg-green-50 text-green-700 border border-green-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}
                             >
                               {provider.approvalStatus || "pending"}
                             </span>
@@ -701,7 +705,7 @@ export default function NewAdminPanel({
             </div>
           )}
 
-          {/* PAYMENTS TAB */}
+          {/* PAYMENTS TAB - UPDATED WITH PROVIDER PAYOUT SUMMARY */}
           {activeTab === "payments" && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
@@ -750,77 +754,62 @@ export default function NewAdminPanel({
                 </div>
               </div>
 
+              {/* Provider Payout Summary - Replaced Audit Trail Ledger */}
               <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
                 <div className="p-5 border-b bg-slate-50/50">
                   <h3 className="font-bold text-slate-900 text-sm">
-                    Audit Trail Ledger
+                    Provider Payout Summary
                   </h3>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-                        <th className="p-4 pl-6 whitespace-nowrap">
-                          Transaction Hash
-                        </th>
-                        <th className="p-4 whitespace-nowrap">
-                          Customer Entity
-                        </th>
-                        <th className="p-4 whitespace-nowrap">
-                          Captured Capital
-                        </th>
-                        <th className="p-4 whitespace-nowrap">
-                          Retained Overhead
-                        </th>
-                        <th className="p-4 whitespace-nowrap">Channel Mode</th>
-                        <th className="p-4 pr-6 whitespace-nowrap">
-                          Gateway Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(paymentData?.transactions || []).length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan="6"
-                            className="p-8 text-center text-slate-400 font-medium"
-                          >
-                            No Ledger Audit Logs Syncing
-                          </td>
-                        </tr>
-                      ) : (
-                        (paymentData?.transactions || []).map((txn, idx) => (
-                          <tr
-                            key={txn._id || idx}
-                            className="hover:bg-slate-50/50"
-                          >
-                            <td className="p-4 pl-6 font-mono text-xs text-slate-400 whitespace-nowrap">
-                              {txn._id || "TXN-9021"}
-                            </td>
-                            <td className="p-4 font-semibold text-slate-800 whitespace-nowrap">
-                              {txn.customerName || "-"}
-                            </td>
-                            <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
-                              ₹{txn.amount}
-                            </td>
-                            <td className="p-4 text-blue-600 font-semibold whitespace-nowrap">
-                              ₹{(txn.amount * 0.2).toFixed(0)}
-                            </td>
-                            <td className="p-4 whitespace-nowrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-600 uppercase">
-                                Gateway
-                              </span>
-                            </td>
-                            <td className="p-4 pr-6 whitespace-nowrap">
-                              <span className="bg-green-50 text-green-700 text-xs px-2.5 py-1 rounded-md font-bold">
-                                SUCCESS
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+
+                <div className="p-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs text-slate-500">
+                        Released Payments
+                      </p>
+                      <h3 className="text-xl font-bold text-green-600">
+                        {
+                          adminData?.bookings?.filter(
+                            (b) => b.providerPaymentReleased,
+                          ).length
+                        }
+                      </h3>
+                    </div>
+
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs text-slate-500">Pending Payments</p>
+                      <h3 className="text-xl font-bold text-amber-600">
+                        {
+                          adminData?.bookings?.filter(
+                            (b) =>
+                              b.status?.toLowerCase() === "completed" &&
+                              !b.providerPaymentReleased,
+                          ).length
+                        }
+                      </h3>
+                    </div>
+
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs text-slate-500">Completed Jobs</p>
+                      <h3 className="text-xl font-bold text-blue-600">
+                        {
+                          adminData?.bookings?.filter(
+                            (b) => b.status?.toLowerCase() === "completed",
+                          ).length
+                        }
+                      </h3>
+                    </div>
+
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs text-slate-500">
+                        Platform Earnings
+                      </p>
+                      <h3 className="text-xl font-bold text-purple-600">
+                        ₹{(totalRevenue * 0.2).toFixed(0)}
+                      </h3>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -961,7 +950,6 @@ export default function NewAdminPanel({
                   </div>
                 </div>
               </div>
-
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
                   <h3 className="text-base font-bold text-slate-900 mb-5">
@@ -998,7 +986,6 @@ export default function NewAdminPanel({
                     )}
                   </div>
                 </div>
-
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
                   <h3 className="text-base font-bold text-slate-900 mb-5">
                     Network Operator Leaderboards
@@ -1060,7 +1047,6 @@ export default function NewAdminPanel({
                   </button>
                 </div>
               </div>
-
               <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100 min-h-[300px]">
                 {historyFilter === "all_bookings" && (
                   <div className="overflow-x-auto">
@@ -1068,7 +1054,6 @@ export default function NewAdminPanel({
                       <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
                       Archive Stack: Settled Deliveries
                     </h3>
-
                     {!adminData?.bookings ||
                     adminData.bookings.filter(
                       (b) => b.status?.toLowerCase() === "completed",
@@ -1095,6 +1080,9 @@ export default function NewAdminPanel({
                             <th className="p-4 pr-5 text-right min-w-[150px] whitespace-nowrap">
                               Pipeline Amount
                             </th>
+                            <th className="p-4 text-center whitespace-nowrap">
+                              Payment Status
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1118,6 +1106,22 @@ export default function NewAdminPanel({
                                 <td className="p-4 pr-5 font-extrabold text-slate-900 text-right whitespace-nowrap">
                                   ₹{b.finalEstimateAmount || b.amount || 0}
                                 </td>
+                                <td className="p-4 text-center">
+                                  {b.providerPaymentReleased ? (
+                                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-lg text-xs font-bold">
+                                      Paid
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() =>
+                                        handleReleasePayment(b._id)
+                                      }
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-xs font-bold transition"
+                                    >
+                                      Release
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                         </tbody>
@@ -1125,14 +1129,12 @@ export default function NewAdminPanel({
                     )}
                   </div>
                 )}
-
                 {historyFilter === "cancelled_bookings" && (
                   <div className="overflow-x-auto">
                     <h3 className="font-bold text-sm mb-5 text-rose-700 flex items-center gap-2 tracking-wide uppercase">
                       <span className="h-2.5 w-2.5 rounded-full bg-rose-500 inline-block"></span>
                       Archive Stack: Terminated Requests
                     </h3>
-
                     {!adminData?.bookings ||
                     adminData.bookings.filter(
                       (b) =>
@@ -1197,7 +1199,7 @@ export default function NewAdminPanel({
         </div>
       </main>
 
-      {/* DRAWER BACKDROP OVERLAY */}
+      {/* DRAWER BACKDROP */}
       {activeDrawerProvider && (
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity duration-300"
@@ -1205,7 +1207,7 @@ export default function NewAdminPanel({
         />
       )}
 
-      {/* OPERATOR SPECIFICATION SLIDE DRAWER */}
+      {/* OPERATOR DETAIL DRAWER */}
       <div
         className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col transform transition-transform duration-300 ease-in-out ${activeDrawerProvider ? "translate-x-0" : "translate-x-full"}`}
       >
@@ -1229,6 +1231,7 @@ export default function NewAdminPanel({
                   `https://ui-avatars.com/api/?name=${encodeURIComponent(activeDrawerProvider.name || "Pro")}&background=random`
                 }
                 className="w-20 h-20 rounded-full object-cover border-2 border-blue-500 p-0.5 shadow-md"
+                alt="Profile"
               />
               <h4 className="text-base font-bold text-slate-900">
                 {activeDrawerProvider.name}

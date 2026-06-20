@@ -1,14 +1,4 @@
-﻿import {
-  AirVent,
-  Hammer,
-  Paintbrush,
-  Refrigerator,
-  Sparkles,
-  Tv,
-  WashingMachine,
-  Wrench,
-  Zap,
-} from "lucide-react";
+﻿import {} from "lucide-react";
 
 export const services = [
   {
@@ -21,12 +11,16 @@ export const services = [
     responseTime: "~30 min",
     price: "From Rs. 299",
     phone: "+91 9876543210",
-    description: "Leak repair, bathroom fittings, pipe replacement, and emergency plumbing support.",
-    about: "Our verified plumbers handle everything from leaky faucets and pipe repairs to full bathroom installations. Available for emergency callouts across your city.",
-    features: ["Leak detection & repair", "Pipe installation", "Drain cleaning", "Bathroom fitting", "Emergency callouts"],
-    icon: Wrench,
+    description:
+      "Leak repair, bathroom fittings, pipe replacement, and emergency plumbing support.",
+    about:
+      "Our verified plumbers handle everything from leaky faucets and pipe repairs to full bathroom installations. Available for emergency callouts across your city.",
+    features: [
+      "Leak detection & repair",
+      "Pipe installation",
+      "Drain cleaning",
+      "Bathroom fitting",
+      "Emergency callouts",
+    ],
   },
-  
-  
-
 ];
