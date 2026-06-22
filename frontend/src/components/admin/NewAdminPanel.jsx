@@ -32,6 +32,7 @@ export default function NewAdminPanel({
   setStatusMessage,
   refreshAdminPayments,
   setIsAdminMode,
+  onLogout,
 }) {
   // State declarations
   const [selectedProviders, setSelectedProviders] = useState({});
@@ -44,8 +45,7 @@ export default function NewAdminPanel({
 
   // Handle logout
   const handleLogout = () => {
-    localStorage.clear();
-    window.location.reload();
+    onLogout?.();
   };
 
   // Handle release payment

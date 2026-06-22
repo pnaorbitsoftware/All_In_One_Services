@@ -15,14 +15,20 @@ const paymentRequest = async (
   options = {},
   fallbackMessage = "Payment request failed.",
 ) => {
+  const token = getToken();
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
   });
+  if (response.status === 401) {
+    localStorage.removeItem("servicehub_token");
+    localStorage.removeItem("servicehub_user");
+    window.dispatchEvent(new Event("servicehub:auth-invalid"));
+  }
   const data = await parseApiResponse(response, fallbackMessage);
   if (!response.ok) {
     throw new Error(data.error || data.message || fallbackMessage);

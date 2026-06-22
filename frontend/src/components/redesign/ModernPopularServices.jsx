@@ -1,3 +1,7 @@
+// Deprecated component.
+// Currently unused.
+// Kept temporarily for future cleanup/refactor.
+
 import { BriefcaseBusiness } from "lucide-react";
 import { motion } from "framer-motion";
 

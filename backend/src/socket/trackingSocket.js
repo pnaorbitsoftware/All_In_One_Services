@@ -1,5 +1,6 @@
 import { createAdapter } from "@socket.io/redis-adapter";
 import jwt from "jsonwebtoken";
+import { jwtSecret } from "../config/auth.js";
 import { Server } from "socket.io";
 
 import Booking from "../models/Booking.js";
@@ -151,7 +152,6 @@ export const setupTrackingSocket = async (server, corsOptions) => {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
       if (!token) return next(new Error("Authentication required."));
 
-      const jwtSecret = process.env.JWT_SECRET || "dev_servicehub_secret_change_me";
       const decoded = jwt.verify(token, jwtSecret);
       const user = await User.findById(decoded.userId);
       if (!user) return next(new Error("Session expired."));

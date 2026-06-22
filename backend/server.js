@@ -13,7 +13,7 @@ import contactRoutes from "./src/routes/contactRoutes.js";
 import locationRoutes from "./src/routes/locationRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
 import providerRoutes from "./src/routes/providerRoutes.js";
-import { connectToDatabase, getDatabaseStatus, mongoDbName, mongoUri } from "./src/database/mongo.js";
+import { connectToDatabase, getDatabaseStatus, mongoDbName } from "./src/database/mongo.js";
 import setupDatabase from "./src/database/setupDatabase.js";
 import { responseTimeLogger } from "./src/middleware/performance.js";
 import { setupTrackingSocket } from "./src/socket/trackingSocket.js";
@@ -198,7 +198,7 @@ const startServer = async () => {
     await connectToDatabase();
 
     console.log(
-      `Connected to MongoDB: ${mongoUri}${mongoDbName} in ${Date.now() - connectedAt}ms`
+      `Connected to MongoDB database "${mongoDbName}" in ${Date.now() - connectedAt}ms`,
     );
 
     const server = http.createServer(app);

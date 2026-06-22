@@ -1,6 +1,20 @@
 import "./ServiceModal.css";
 import { motion } from "framer-motion";
-import { BriefcaseBusiness, CalendarCheck, Check, Clock, IndianRupee, MapPin, Star, X } from "lucide-react";
+import { useEffect } from "react";
+import {
+  BriefcaseBusiness,
+  CalendarCheck,
+  Check,
+  Clock,
+  IndianRupee,
+  MapPin,
+  Star,
+  X,
+} from "lucide-react";
+
+// Placeholder image string जर image नसेल किंवा लोड झाली नाही तर
+const SERVICE_PLACEHOLDER =
+  "https://via.placeholder.com/600x400?text=Service+Image";
 
 const reviewSamples = [
   "Clean work and on-time arrival.",
@@ -8,11 +22,42 @@ const reviewSamples = [
   "Quick response and neat finishing.",
 ];
 
-export default function ServiceModal({ service, onBook, onClose, canBook = true }) {
+export default function ServiceModal({
+  service,
+  onBook,
+  onClose,
+  canBook = true,
+}) {
+  // Escape key ने modal बंद करण्यासाठी
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        onClose?.();
+      }
+    };
+
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [onClose]);
+
+  // Modal ओपन असताना बॅकग्राउंड स्क्रोल बंद करण्यासाठी
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   if (!service) return null;
 
   const Icon = service.icon || BriefcaseBusiness;
-  const features = service.features?.length ? service.features : [service.category, "On-site visit", "Work inspection"];
+  const features = service.features?.length
+    ? service.features
+    : [service.category, "On-site visit", "Work inspection"];
 
   return (
     <motion.div
@@ -31,15 +76,24 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
         exit={{ opacity: 0, y: 18, scale: 0.97 }}
         transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
       >
-        <button className="modal-close" onClick={onClose} aria-label="Close modal">
+        <button
+          className="modal-close"
+          onClick={onClose}
+          aria-label="Close modal"
+        >
           <X size={18} />
         </button>
 
-        {service.image && (
-          <div className="modal-cover">
-            <img src={service.image} alt={`${service.name} ${service.category} provider`} />
-          </div>
-        )}
+        {/* इथे अट काढली आहे, आता image नसेल तरी placeholder दिसेल */}
+        <div className="modal-cover">
+          <img
+            src={service.image || SERVICE_PLACEHOLDER}
+            alt={service.name || "Service Cover"}
+            onError={(e) => {
+              e.currentTarget.src = SERVICE_PLACEHOLDER;
+            }}
+          />
+        </div>
 
         <div className="modal-header">
           <div className="modal-icon">
@@ -47,7 +101,10 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
           </div>
           <div>
             <h2>{service.name}</h2>
-            <p>{service.category}{service.location ? ` | ${service.location}` : ""}</p>
+            <p>
+              {service.category}
+              {service.location ? ` | ${service.location}` : ""}
+            </p>
           </div>
         </div>
 
@@ -56,7 +113,9 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
             <div className="modal-stat">
               <Star size={18} />
               <span>Rating</span>
-              <strong>{service.rating || 0} ({service.reviews || 0})</strong>
+              <strong>
+                {service.rating || 0} ({service.reviews || 0})
+              </strong>
             </div>
             <div className="modal-stat">
               <Clock size={18} />
@@ -85,8 +144,8 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
           <div className="modal-section">
             <h3>What's included</h3>
             <div className="feature-list">
-              {features.map((feature) => (
-                <span key={feature}>
+              {features.map((feature, index) => (
+                <span key={`${feature}-${index}`}>
                   <Check size={13} />
                   {feature}
                 </span>
@@ -97,11 +156,14 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
           <div className="modal-section compact-reviews">
             <div>
               <h3>Reviews</h3>
-              <span><Star size={13} /> {service.rating || 0} from {service.reviews || 0} customers</span>
+              <span>
+                <Star size={13} /> {service.rating || 0} from{" "}
+                {service.reviews || 0} customers
+              </span>
             </div>
             <div className="review-chip-list">
-              {reviewSamples.map((review) => (
-                <span key={review}>{review}</span>
+              {reviewSamples.map((review, index) => (
+                <span key={`review-${index}`}>{review}</span>
               ))}
             </div>
           </div>

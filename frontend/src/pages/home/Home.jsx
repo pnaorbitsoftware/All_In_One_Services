@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import ModernHero from "../../components/redesign/ModernHero";
 import ModernPopularServices from "../../components/redesign/ModernPopularServices";
 import NewAdminPanel from "../../components/admin/NewAdminPanel";
+import ModernNavbar from "../../components/redesign/ModernNavbar";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,7 +10,6 @@ import {
   BriefcaseBusiness,
   CalendarCheck,
   Camera,
-  ChevronDown,
   ChevronRight,
   CheckCircle,
   Clock,
@@ -17,20 +17,20 @@ import {
   Heart,
   House,
   IndianRupee,
-  Languages,
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
   Mail,
   MapPin,
   Menu,
   MessageCircle,
-  Moon,
   Send,
   ShieldCheck,
   Sparkles,
   Star,
-  Sun,
   Trash2,
+  UserRound,
   UploadCloud,
-  UserRoundCheck,
   Volume2,
   VolumeX,
   Wallet,
@@ -489,13 +489,49 @@ const parseApiResponse = async (response, fallbackMessage) => {
   return { message: (await response.text()) || fallbackMessage };
 };
 
+const authInvalidEvent = "servicehub:auth-invalid";
+const allowedSessionRoles = new Set(["user", "provider", "admin"]);
+
+const clearStoredAuthSession = () => {
+  localStorage.removeItem("servicehub_token");
+  localStorage.removeItem("servicehub_user");
+};
+
+const isExpiredToken = (token) => {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1] || ""));
+    return typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
+};
+
+const authenticatedFetch = async (url, options = {}) => {
+  const response = await fetch(url, options);
+  if (response.status === 401) {
+    clearStoredAuthSession();
+    window.dispatchEvent(new Event(authInvalidEvent));
+  }
+  return response;
+};
+
 const getSavedUser = () => {
   try {
     const savedUser = localStorage.getItem("servicehub_user");
-    return savedUser ? JSON.parse(savedUser) : null;
+    if (!savedUser) return null;
+    const parsedUser = JSON.parse(savedUser);
+    if (
+      !parsedUser ||
+      typeof parsedUser !== "object" ||
+      !allowedSessionRoles.has(parsedUser.role) ||
+      !(parsedUser.id || parsedUser._id)
+    ) {
+      clearStoredAuthSession();
+      return null;
+    }
+    return parsedUser;
   } catch {
-    localStorage.removeItem("servicehub_user");
-    localStorage.removeItem("servicehub_token");
+    clearStoredAuthSession();
     return null;
   }
 };
@@ -723,11 +759,11 @@ export default function Home() {
   const [statusMessage, setStatusMessage] = useState("");
   const [payingBookingId, setPayingBookingId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [location, setLocation] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeView, setActiveView] = useState("home");
   const [activeSection, setActiveSection] = useState("top");
   const [navScrolled, setNavScrolled] = useState(false);
-  const [navProgress, setNavProgress] = useState(0);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [loginMenuOpen, setLoginMenuOpen] = useState(false);
@@ -736,6 +772,28 @@ export default function Home() {
   const [profileImageOpen, setProfileImageOpen] = useState(false);
   const [providerAccountOpen, setProviderAccountOpen] = useState(false);
   const [providerAccountEditOpen, setProviderAccountEditOpen] = useState(false);
+  useEffect(() => {
+    const isProviderModalOpen = providerAccountOpen || providerAccountEditOpen;
+
+    if (!isProviderModalOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        setProviderAccountOpen(false);
+        setProviderAccountEditOpen(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleEsc);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [providerAccountOpen, providerAccountEditOpen]);
   const [chatOpen, setChatOpen] = useState(false);
   const [providerVisibleCount, setProviderVisibleCount] = useState(4);
   const [providerClientMode, setProviderClientMode] = useState(false);
@@ -775,10 +833,30 @@ export default function Home() {
       setAuthLocked(false);
     }
     setBookingOpen(false);
+    setSelectedService(null);
     setProfileImageOpen(false);
     setProviderAccountOpen(false);
     setProviderAccountEditOpen(false);
+    setChatOpen(false);
   }, []);
+
+  const clearSessionState = useCallback(
+    ({ message = "" } = {}) => {
+      clearStoredAuthSession();
+      closeSessionUi();
+      setUser(null);
+      setBookings([]);
+      setProviderData(null);
+      setProviderEarnings(null);
+      setAdminData(null);
+      setAdminPaymentData(null);
+      setSelectedProviders({});
+      setProviderClientMode(false);
+      setActiveView("home");
+      if (message) setStatusMessage(message);
+    },
+    [closeSessionUi],
+  );
 
   useEffect(() => {
     if (!statusMessage) return undefined;
@@ -788,48 +866,85 @@ export default function Home() {
   }, [statusMessage]);
 
   useEffect(() => {
-    const syncAuthSession = () => {
+    let stopped = false;
+    let storageSyncTimer;
+
+    const syncAuthSession = async () => {
       const savedToken = localStorage.getItem("servicehub_token");
       const savedUser = getSavedUser();
 
-      if (savedToken && savedUser) {
-        setUser((current) =>
-          current?._id === savedUser._id && current?.role === savedUser.role
-            ? current
-            : savedUser,
-        );
+      if (!savedToken || !savedUser || isExpiredToken(savedToken)) {
+        if (!stopped) clearSessionState();
         return;
       }
 
-      if (savedToken && !savedUser) return;
+      setUser(savedUser);
 
-      localStorage.removeItem("servicehub_token");
-      localStorage.removeItem("servicehub_user");
-      setUser(null);
-      setBookings([]);
-      setProviderData(null);
-      setProviderEarnings(null);
-      setAdminData(null);
-      setAdminPaymentData(null);
-      setProviderClientMode(false);
-      closeSessionUi({ closeAuth: false });
+      try {
+        const response = await authenticatedFetch(`${API_URL}/auth/profile`, {
+          headers: { Authorization: `Bearer ${savedToken}` },
+        });
+        if (!response.ok || stopped) return;
+        const data = await response.json();
+        const verifiedUser = data.user;
+        if (
+          !verifiedUser ||
+          !allowedSessionRoles.has(verifiedUser.role) ||
+          !(verifiedUser.id || verifiedUser._id)
+        ) {
+          clearSessionState({ message: "Your session data was invalid. Please log in again." });
+          return;
+        }
+        localStorage.setItem("servicehub_user", JSON.stringify(verifiedUser));
+        setUser(verifiedUser);
+        setActiveView((currentView) => {
+          const allowedViews = {
+            user: new Set(["home", "client"]),
+            provider: new Set(["home", "client", "provider"]),
+            admin: new Set(["admin"]),
+          };
+          if (allowedViews[verifiedUser.role]?.has(currentView)) return currentView;
+          return verifiedUser.role === "provider"
+            ? "provider"
+            : verifiedUser.role === "admin"
+              ? "admin"
+              : "client";
+        });
+      } catch {
+        // Keep a locally valid session during temporary network outages.
+      }
     };
 
     const handleVisibilityChange = () => {
       if (!document.hidden) syncAuthSession();
     };
+    const handleStorageChange = (event) => {
+      if (
+        event.key &&
+        !["servicehub_token", "servicehub_user"].includes(event.key)
+      )
+        return;
+      window.clearTimeout(storageSyncTimer);
+      storageSyncTimer = window.setTimeout(syncAuthSession, 25);
+    };
+    const handleInvalidSession = () =>
+      clearSessionState({ message: "Your session expired. Please log in again." });
 
     syncAuthSession();
-    window.addEventListener("storage", syncAuthSession);
+    window.addEventListener("storage", handleStorageChange);
     window.addEventListener("focus", syncAuthSession);
+    window.addEventListener(authInvalidEvent, handleInvalidSession);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("storage", syncAuthSession);
+      stopped = true;
+      window.clearTimeout(storageSyncTimer);
+      window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("focus", syncAuthSession);
+      window.removeEventListener(authInvalidEvent, handleInvalidSession);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [closeSessionUi]);
+  }, [clearSessionState]);
 
   useEffect(() => {
     const closeMoreMenu = (event) => {
@@ -925,7 +1040,7 @@ export default function Home() {
     if (!currentToken) return;
 
     try {
-      const response = await fetch(`${API_URL}/bookings/my`, {
+      const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
         headers: { Authorization: `Bearer ${currentToken}` },
       });
       const data = response.ok ? await response.json() : { bookings: [] };
@@ -942,7 +1057,7 @@ export default function Home() {
     let stopped = false;
     const loadClientBookings = async () => {
       try {
-        const response = await fetch(`${API_URL}/bookings/my`, {
+        const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = response.ok ? await response.json() : { bookings: [] };
@@ -990,19 +1105,38 @@ export default function Home() {
   );
 
   const filteredServices = marketplaceServices.filter((service) => {
-    const haystack = [
+    const serviceQuery = searchTerm.trim().toLowerCase();
+    const locationQuery = location.trim().toLowerCase();
+
+    const serviceHaystack = [
       service.name,
       service.category,
-      service.location,
       service.description,
       service.price,
     ]
       .join(" ")
       .toLowerCase();
-    return (
-      (selectedCategory === "All" || service.category === selectedCategory) &&
-      haystack.includes(searchTerm.toLowerCase())
-    );
+
+    const locationHaystack = [
+      service.location,
+      service.city,
+      service.area,
+      service.serviceArea,
+      service.address,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    const categoryMatch =
+      selectedCategory === "All" || service.category === selectedCategory;
+
+    const serviceMatch =
+      !serviceQuery || serviceHaystack.includes(serviceQuery);
+
+    const locationMatch =
+      !locationQuery || locationHaystack.includes(locationQuery);
+
+    return categoryMatch && serviceMatch && locationMatch;
   });
 
   const providerProfile = providerData?.provider;
@@ -1026,13 +1160,6 @@ export default function Home() {
   useEffect(() => {
     const handleScroll = () => {
       setNavScrolled(window.scrollY > 12);
-      const scrollableHeight =
-        document.documentElement.scrollHeight - window.innerHeight;
-      setNavProgress(
-        scrollableHeight > 0
-          ? Math.min((window.scrollY / scrollableHeight) * 100, 100)
-          : 0,
-      );
       const sections = ["top", "services", "providers", "contact"];
       const current = sections.findLast((id) => {
         const element = document.getElementById(id);
@@ -1047,6 +1174,11 @@ export default function Home() {
   }, []);
 
   const navigateHome = (hash = "") => {
+    if (user?.role === "admin") {
+      setActiveView("admin");
+      setMobileNavOpen(false);
+      return;
+    }
     setActiveView("home");
     setMobileNavOpen(false);
     window.setTimeout(() => {
@@ -1070,12 +1202,16 @@ export default function Home() {
     navigateHome("#top");
   };
 
-  const loadProviderDashboard = async () => {
+  const loadProviderDashboard = useCallback(async () => {
+    if (user?.role !== "provider") {
+      setStatusMessage("Provider access required.");
+      return;
+    }
     const currentToken = localStorage.getItem("servicehub_token");
     if (!currentToken) return;
     try {
       setProviderClientMode(false);
-      const response = await fetch(`${API_URL}/providers/dashboard`, {
+      const response = await authenticatedFetch(`${API_URL}/providers/dashboard`, {
         headers: { Authorization: `Bearer ${currentToken}` },
       });
       const data = await parseApiResponse(
@@ -1101,7 +1237,7 @@ export default function Home() {
       setActiveView("provider");
     } catch (error) {
       try {
-        const profileResponse = await fetch(`${API_URL}/providers/profile`, {
+        const profileResponse = await authenticatedFetch(`${API_URL}/providers/profile`, {
           headers: { Authorization: `Bearer ${currentToken}` },
         });
         const profileData = await parseApiResponse(
@@ -1135,9 +1271,24 @@ export default function Home() {
       setStatusMessage(error.message);
       setActiveView("provider");
     }
-  };
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (
+      user?.role !== "provider" ||
+      activeView !== "provider" ||
+      providerData ||
+      !token
+    )
+      return;
+    loadProviderDashboard();
+  }, [activeView, loadProviderDashboard, providerData, token, user?.role]);
 
   const openProviderClientDashboard = () => {
+    if (user?.role !== "provider") {
+      setStatusMessage("Provider access required.");
+      return;
+    }
     setProviderClientMode(true);
     setActiveView("client");
     setMobileNavOpen(false);
@@ -1159,13 +1310,13 @@ export default function Home() {
 
     const intervalId = window.setInterval(loadProviderDashboard, 10000);
     return () => window.clearInterval(intervalId);
-  }, [activeView, providerProfile?.approvalStatus, user?.role, token]);
+  }, [activeView, loadProviderDashboard, providerProfile?.approvalStatus, user?.role, token]);
 
   const openProviderAccount = async () => {
     const currentToken = localStorage.getItem("servicehub_token");
     if (!currentToken) return;
     try {
-      const response = await fetch(`${API_URL}/providers/profile`, {
+      const response = await authenticatedFetch(`${API_URL}/providers/profile`, {
         headers: { Authorization: `Bearer ${currentToken}` },
       });
       const data = await parseApiResponse(
@@ -1192,7 +1343,7 @@ export default function Home() {
   const submitProviderAccount = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch(`${API_URL}/providers/profile`, {
+      const response = await authenticatedFetch(`${API_URL}/providers/profile`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1249,12 +1400,14 @@ export default function Home() {
 
   const loadAdminDashboard = async () => {
     try {
+      if (user?.role !== "admin")
+        throw new Error("Admin access required.");
       const currentToken = localStorage.getItem("servicehub_token");
       if (!currentToken)
         throw new Error("Please log in as admin to open the admin panel.");
       const authHeaders = { Authorization: `Bearer ${currentToken}` };
       const [response, paymentData] = await Promise.all([
-        fetch(`${API_URL}/admin/dashboard`, { headers: authHeaders }),
+        authenticatedFetch(`${API_URL}/admin/dashboard`, { headers: authHeaders }),
         getAdminLedger().catch(() => null),
       ]);
       const data = await parseApiResponse(
@@ -1286,7 +1439,7 @@ export default function Home() {
     if (!currentToken) return;
 
     try {
-      const response = await fetch(`${API_URL}/admin/dashboard`, {
+      const response = await authenticatedFetch(`${API_URL}/admin/dashboard`, {
         headers: { Authorization: `Bearer ${currentToken}` },
       });
       const data = await parseApiResponse(
@@ -1346,18 +1499,15 @@ export default function Home() {
 
   const handleLogout = () => {
     const roleLabel = formatRoleLabel(user?.role);
-    localStorage.removeItem("servicehub_token");
-    localStorage.removeItem("servicehub_user");
-    closeSessionUi();
-    setUser(null);
-    setBookings([]);
-    setProviderData(null);
-    setProviderEarnings(null);
-    setAdminData(null);
-    setAdminPaymentData(null);
-    setProviderClientMode(false);
-    setActiveView("home");
-    setStatusMessage(`${roleLabel} logged out successfully.`);
+    const currentToken = localStorage.getItem("servicehub_token");
+    if (currentToken) {
+      fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${currentToken}` },
+        keepalive: true,
+      }).catch(() => {});
+    }
+    clearSessionState({ message: `${roleLabel} logged out successfully.` });
   };
 
   const speakLizaIntro = () => {
@@ -1383,8 +1533,14 @@ export default function Home() {
       return true;
     });
   };
-
   const openBooking = (service) => {
+    if (!user) {
+      setSelectedService(null);
+      setBookingOpen(false);
+      openClientAuth("login");
+      return;
+    }
+
     if (user?.role === "admin") {
       setSelectedService(null);
       setBookingOpen(false);
@@ -1430,7 +1586,7 @@ export default function Home() {
       if (!currentToken)
         throw new Error("Please log in to update your profile image.");
 
-      const response = await fetch(`${API_URL}/auth/profile-image`, {
+      const response = await authenticatedFetch(`${API_URL}/auth/profile-image`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1485,7 +1641,7 @@ export default function Home() {
     for (const apiUrl of AUTH_API_URLS) {
       for (const path of profilePaths) {
         try {
-          response = await fetch(`${apiUrl}${path}`, {
+          response = await authenticatedFetch(`${apiUrl}${path}`, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -1612,6 +1768,11 @@ export default function Home() {
 
   const submitBooking = async (event) => {
     event.preventDefault();
+    if (user?.role === "admin") {
+      setBookingOpen(false);
+      setStatusMessage("Admin accounts cannot book services.");
+      return;
+    }
     if (user?.role === "provider" && !providerClientMode) {
       setBookingOpen(false);
       setStatusMessage(
@@ -1632,7 +1793,7 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/bookings`, {
+      const response = await authenticatedFetch(`${API_URL}/bookings`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1671,7 +1832,7 @@ export default function Home() {
 
   const acceptProviderRequest = async (bookingId) => {
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/accept`,
         {
           method: "PATCH",
@@ -1706,7 +1867,7 @@ export default function Home() {
     cancellationReason = "",
   ) => {
     try {
-      const response = await fetch(
+        const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/status`,
         {
           method: "PATCH",
@@ -1873,7 +2034,7 @@ export default function Home() {
 
   const updateProviderApproval = async (providerId, approvalStatus) => {
     try {
-      const response = await fetch(
+        const response = await authenticatedFetch(
         `${API_URL}/admin/providers/${providerId}/approval`,
         {
           method: "PATCH",
@@ -1906,7 +2067,7 @@ export default function Home() {
 
   const updateBookingRequest = async (bookingId, payload) => {
     try {
-      const response = await fetch(`${API_URL}/admin/bookings/${bookingId}`, {
+      const response = await authenticatedFetch(`${API_URL}/admin/bookings/${bookingId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1932,7 +2093,7 @@ export default function Home() {
 
   const cancelClientBooking = async (bookingId) => {
     try {
-      const response = await fetch(`${API_URL}/bookings/${bookingId}/cancel`, {
+      const response = await authenticatedFetch(`${API_URL}/bookings/${bookingId}/cancel`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1967,7 +2128,7 @@ export default function Home() {
 
   const submitClientReview = async (bookingId, payload) => {
     try {
-      const response = await fetch(`${API_URL}/bookings/${bookingId}/review`, {
+      const response = await authenticatedFetch(`${API_URL}/bookings/${bookingId}/review`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -2008,648 +2169,101 @@ export default function Home() {
         ]}
       />
       <div className="min-h-screen bg-slate-50 text-slate-950 transition-colors duration-500 dark:bg-slate-950 dark:text-white">
-        <header
-          className={`fixed inset-x-0 top-0 z-50 px-3 pt-3 transition-all duration-300 sm:px-5 ${navScrolled ? "pb-2" : "pb-3"}`}
-        >
-          <nav
-            className={`mx-auto flex max-w-[96rem] items-center justify-between gap-3 rounded-[1.35rem] border px-4 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-white/45 backdrop-blur-2xl transition-all duration-300 dark:ring-white/10 sm:px-5 lg:px-6 ${navScrolled ? "h-16 border-white/80 bg-white/88 dark:border-white/10 dark:bg-slate-950/82" : "h-20 border-white/70 bg-white/74 dark:border-white/10 dark:bg-slate-950/66"}`}
-          >
-            <button
-              type="button"
-              onClick={goMainHome}
-              className="group flex min-w-0 flex-none items-center gap-3 rounded-2xl pr-2 transition hover:bg-white/55 dark:hover:bg-white/5"
-            >
-              <span
-                className={`grid place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xl shadow-blue-600/20 ring-1 ring-slate-200/80 transition-all duration-300 group-hover:-translate-y-0.5 dark:ring-white/15 ${navScrolled ? "h-10 w-10" : "h-12 w-12"}`}
-              >
-                <img
-                  src={SERVICEHUB_ICON}
-                  alt="ServiceHub symbol"
-                  className="h-full w-full rounded-xl object-contain"
-                />
-              </span>
-              <span className="leading-tight">
-                <span className="block text-xl font-black tracking-tight">
-                  ServiceHub
-                </span>
-                <span className="hidden text-[11px] font-black uppercase tracking-[0.18em] text-slate-400 sm:block">
-                  {t("verifiedLocalServices")}
-                </span>
-              </span>
-            </button>
-
-            <div className="hidden min-w-0 flex-1 items-center justify-center lg:flex">
-              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-200/80 bg-white/82 p-1.5 text-sm font-black text-slate-500 shadow-[0_10px_34px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-300">
-                {mainNavItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={
-                        item.id === "top"
-                          ? handleHomeNav
-                          : () => navigateHome(`#${item.id}`)
-                      }
-                      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${isNavActive(item.id) ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-md shadow-slate-950/15 dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
-                    >
-                      <Icon className="flex-none" size={16} />
-                      <span className="whitespace-nowrap [overflow-wrap:normal]">
-                        {item.label}
-                      </span>
-                    </button>
-                  );
-                })}
-                {user?.role === "user" && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveView("client")}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${activeView === "client" ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
-                  >
-                    <CalendarCheck className="flex-none" size={16} />
-                    <span className="whitespace-nowrap [overflow-wrap:normal]">
-                      {t("dashboard")}
-                    </span>
-                  </button>
-                )}
-                {user?.role === "provider" && (
-                  <button
-                    type="button"
-                    onClick={loadProviderDashboard}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${["provider", "client"].includes(activeView) ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
-                  >
-                    <BriefcaseBusiness className="flex-none" size={16} />
-                    <span className="whitespace-nowrap [overflow-wrap:normal]">
-                      {providerDashboardNavLabel}
-                    </span>
-                  </button>
-                )}
-                {user?.role === "admin" && (
-                  <button
-                    type="button"
-                    onClick={loadAdminDashboard}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 [overflow-wrap:normal] transition ${activeView === "admin" ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-md dark:bg-amber-300 dark:text-slate-950" : "hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/10 dark:hover:text-white"}`}
-                  >
-                    <ShieldCheck className="flex-none" size={16} />
-                    <span className="whitespace-nowrap [overflow-wrap:normal]">
-                      {t("admin")}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="hidden flex-none items-center gap-2 lg:flex xl:gap-3">
-              <button
-                type="button"
-                onClick={() => setTheme(isDark ? "light" : "dark")}
-                aria-label={
-                  isDark ? "Switch to light mode" : "Switch to dark mode"
-                }
-                className={`grid h-11 w-11 place-items-center rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-                  isDark
-                    ? "border-black bg-black text-white"
-                    : "border-slate-200 bg-white text-slate-950"
-                }`}
-              >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
-              {user ? (
-                <>
-                  <div ref={accountMenuRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountMenuOpen((current) => !current);
-                        setLoginMenuOpen(false);
-                        setMoreMenuOpen(false);
-                      }}
-                      className="inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
-                    >
-                      <UserRoundCheck size={20} />
-                      Account
-                      <ChevronDown
-                        size={15}
-                        className={`transition ${accountMenuOpen ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {accountMenuOpen && (
-                      <div className="absolute right-0 top-12 z-[75] w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white py-4 text-slate-800 shadow-2xl shadow-slate-950/15 dark:border-white/10 dark:bg-slate-900 dark:text-white">
-                        <p className="px-5 pb-3 text-lg font-black text-slate-800 dark:text-white">
-                          Your Account
-                        </p>
-                        {[
-                          {
-                            label: "My Profile",
-                            icon: UserRoundCheck,
-                            action: openProfileMenu,
-                          },
-                          {
-                            label:
-                              user.role === "provider"
-                                ? "Provider Dashboard"
-                                : user.role === "admin"
-                                  ? "Admin Dashboard"
-                                  : "Client Dashboard",
-                            icon: CalendarCheck,
-                            action: () => {
-                              if (user.role === "provider")
-                                loadProviderDashboard();
-                              else if (user.role === "admin")
-                                loadAdminDashboard();
-                              else setActiveView("client");
-                            },
-                          },
-                          {
-                            label: "Services",
-                            icon: BriefcaseBusiness,
-                            action: () => navigateHome("#services"),
-                          },
-                          {
-                            label: "Providers",
-                            icon: MapPin,
-                            action: () => navigateHome("#providers"),
-                          },
-                          {
-                            label: "Coupons",
-                            icon: Sparkles,
-                            action: () =>
-                              setStatusMessage(
-                                "Coupons will be available soon.",
-                              ),
-                          },
-                          {
-                            label: "ServiceHub Plus Zone",
-                            icon: Star,
-                            action: () =>
-                              setStatusMessage(
-                                "ServiceHub Plus will be available soon.",
-                              ),
-                          },
-                          {
-                            label: "Saved Cards & Wallet",
-                            icon: Wallet,
-                            action: () =>
-                              setStatusMessage(
-                                "Saved cards and wallet will be available soon.",
-                              ),
-                          },
-                          {
-                            label: "Saved Addresses",
-                            icon: MapPin,
-                            action: openProfileMenu,
-                          },
-                          {
-                            label: "Gift Cards",
-                            icon: Wallet,
-                            action: () =>
-                              setStatusMessage(
-                                "Gift cards will be available soon.",
-                              ),
-                          },
-                          {
-                            label: "Notifications",
-                            icon: Bell,
-                            action: () =>
-                              setStatusMessage(
-                                "Notifications are shown inside your dashboard.",
-                              ),
-                          },
-                          {
-                            label: "Logout",
-                            icon: ArrowRight,
-                            action: handleLogout,
-                          },
-                        ].map((item) => {
-                          const Icon = item.icon;
-                          return (
-                            <button
-                              key={item.label}
-                              type="button"
-                              onClick={() => {
-                                setAccountMenuOpen(false);
-                                item.action();
-                              }}
-                              className="flex w-full items-center gap-4 px-5 py-3 text-left text-base font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white"
-                            >
-                              <Icon size={20} className="flex-none" />
-                              {item.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <LanguageSwitcher
-                    language={language}
-                    setLanguage={setLanguage}
-                    t={t}
-                  />
-                </>
-              ) : (
-                <>
-                  <div ref={loginMenuRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginMenuOpen((current) => !current);
-                        setMoreMenuOpen(false);
-                      }}
-                      className="inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-black text-slate-700 [overflow-wrap:normal] transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
-                    >
-                      <UserRoundCheck size={19} />
-                      {t("login")}
-                      <ChevronDown
-                        size={15}
-                        className={`transition ${loginMenuOpen ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {loginMenuOpen && (
-                      <div className="absolute right-0 top-12 z-[75] w-80 overflow-hidden rounded-b-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl shadow-slate-950/15 dark:border-white/10 dark:bg-slate-900 dark:text-white">
-                        <span className="absolute -top-2 right-16 h-4 w-4 rotate-45 bg-blue-600" />
-                        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-white/10">
-                          <div>
-                            <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
-                              New customer?
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLoginMenuOpen(false);
-                              openClientAuth("register");
-                            }}
-                            className="rounded-lg bg-blue-600 px-6 py-2.5 text-center text-base font-black text-white transition hover:bg-blue-700"
-                          >
-                            Signup
-                          </button>
-                        </div>
-                        <div className="py-2">
-                          {[
-                            {
-                              label: "My Profile",
-                              icon: UserRoundCheck,
-                              action: () => openClientAuth("login"),
-                            },
-                            {
-                              label: "ServiceHub Plus Zone",
-                              icon: Sparkles,
-                              action: () =>
-                                setStatusMessage(
-                                  "Login to access ServiceHub rewards.",
-                                ),
-                            },
-                            {
-                              label: "Services",
-                              icon: BriefcaseBusiness,
-                              action: () => navigateHome("#services"),
-                            },
-                            {
-                              label: "Providers",
-                              icon: MapPin,
-                              action: () => navigateHome("#providers"),
-                            },
-                            {
-                              label: "Become a Provider",
-                              icon: BriefcaseBusiness,
-                              action: () => openProviderAuth("register"),
-                            },
-                            {
-                              label: "Rewards",
-                              icon: Wallet,
-                              action: () =>
-                                setStatusMessage(
-                                  "Rewards will be available after login.",
-                                ),
-                            },
-                            {
-                              label: "Notification Preferences",
-                              icon: Bell,
-                              action: () =>
-                                setStatusMessage(
-                                  "Notification preferences will be available after login.",
-                                ),
-                            },
-                            {
-                              label: "24x7 Customer Care",
-                              icon: MessageCircle,
-                              action: () => navigateHome("#contact"),
-                            },
-                            {
-                              label: "Advertise",
-                              icon: ShieldCheck,
-                              action: () => {
-                                navigateHome("#contact");
-                                setStatusMessage(
-                                  "Please contact admin for ServiceHub advertising.",
-                                );
-                              },
-                            },
-                            {
-                              label: "Download App",
-                              icon: UploadCloud,
-                              action: () =>
-                                setStatusMessage(
-                                  "ServiceHub app download will be available soon.",
-                                ),
-                            },
-                          ].map((item) => {
-                            const Icon = item.icon;
-                            return (
-                              <button
-                                key={item.label}
-                                type="button"
-                                onClick={() => {
-                                  setLoginMenuOpen(false);
-                                  item.action();
-                                }}
-                                className="flex w-full items-center gap-4 px-5 py-3 text-left text-base font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white"
-                              >
-                                <Icon size={20} className="flex-none" />
-                                {item.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div ref={moreMenuRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMoreMenuOpen((current) => !current);
-                        setLoginMenuOpen(false);
-                      }}
-                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-5 py-3 text-sm font-black text-slate-700 [overflow-wrap:normal] transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
-                    >
-                      More{" "}
-                      <ChevronDown
-                        size={15}
-                        className={`transition ${moreMenuOpen ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {moreMenuOpen && (
-                      <div className="absolute right-0 top-13 z-[70] w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white py-3 text-slate-800 shadow-2xl shadow-slate-950/15 dark:border-white/10 dark:bg-slate-900 dark:text-white">
-                        <p className="px-5 pb-2 text-base font-black text-slate-700 dark:text-slate-200">
-                          More
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMoreMenuOpen(false);
-                            openProviderAuth("register");
-                          }}
-                          className="flex w-full items-center gap-4 px-5 py-3 text-left text-base font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white"
-                        >
-                          <BriefcaseBusiness size={20} /> Become a Provider
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMoreMenuOpen(false);
-                            setStatusMessage(
-                              "Notification settings will be available after login.",
-                            );
-                          }}
-                          className="flex w-full items-center gap-4 px-5 py-3 text-left text-base font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white"
-                        >
-                          <Bell size={20} /> Notification Settings
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMoreMenuOpen(false);
-                            navigateHome("#contact");
-                          }}
-                          className="flex w-full items-center gap-4 px-5 py-3 text-left text-base font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white"
-                        >
-                          <MessageCircle size={20} /> 24x7 Customer Care
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMoreMenuOpen(false);
-                            navigateHome("#contact");
-                            setStatusMessage(
-                              "Please contact admin for ServiceHub advertising.",
-                            );
-                          }}
-                          className="flex w-full items-center gap-4 px-5 py-3 text-left text-base font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white"
-                        >
-                          <Sparkles size={20} /> Advertise on ServiceHub
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <LanguageSwitcher
-                    language={language}
-                    setLanguage={setLanguage}
-                    t={t}
-                  />
-                </>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(true)}
-              className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-lg shadow-slate-950/15 ring-1 ring-white/10 transition hover:-translate-y-0.5 dark:bg-white dark:text-slate-950 lg:hidden"
-              aria-label="Open navigation menu"
-            >
-              <Menu size={20} />
-            </button>
-          </nav>
-          <div className="mx-auto mt-2 h-0.5 max-w-[92rem] overflow-hidden rounded-full bg-transparent">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-teal-500 via-blue-600 to-amber-300 transition-[width] duration-200"
-              style={{ width: `${navProgress}%` }}
-            />
-          </div>
-        </header>
-
-        <AnimatePresence>
-          {mobileNavOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[60] bg-slate-950/74 p-3 backdrop-blur-md sm:p-4 lg:hidden"
-            >
-              <motion.div
-                initial={{ x: 90 }}
-                animate={{ x: 0 }}
-                exit={{ x: 90 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                className="ml-auto flex h-full max-h-[calc(100dvh-1.5rem)] w-full max-w-sm flex-col gap-4 overflow-y-auto rounded-[1.7rem] border border-white/70 bg-[linear-gradient(145deg,#ffffff_0%,#ecfeff_48%,#fff7ed_100%)] p-4 text-slate-950 shadow-2xl dark:border-white/10 dark:bg-[linear-gradient(145deg,#020617_0%,#082f49_52%,#111827_100%)] dark:text-white sm:max-h-[calc(100dvh-2rem)] sm:p-5"
-              >
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/10">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg shadow-blue-600/20 ring-1 ring-slate-200/80 dark:ring-white/15">
-                      <img
-                        src={SERVICEHUB_ICON}
-                        alt="ServiceHub symbol"
-                        className="h-full w-full rounded-xl object-contain"
-                      />
-                    </span>
-                    <div>
-                      <p className="font-black">ServiceHub</p>
-                      <p className="text-xs font-bold text-slate-400">
-                        {t("verifiedLocalServices")}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMobileNavOpen(false)}
-                    className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
-                    aria-label="Close navigation menu"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                {user && (
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
-                    <ProfileAvatar
-                      user={user}
-                      onClick={() => {
-                        openProfileMenu();
-                        setMobileNavOpen(false);
-                      }}
-                    />
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                        {t("signedIn")}
-                      </p>
-                      <p className="mt-1 font-black">
-                        {user.role === "admin" ? t("admin") : user.name}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <div className="grid gap-2">
-                  {mainNavItems.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={
-                          item.id === "top"
-                            ? handleHomeNav
-                            : () => navigateHome(`#${item.id}`)
-                        }
-                        className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${isNavActive(item.id) ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-lg shadow-slate-950/15 dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"}`}
-                      >
-                        <span className="flex items-center gap-3">
-                          <Icon size={18} />
-                          {item.label}
-                        </span>
-                        <ChevronRight size={17} />
-                      </button>
-                    );
-                  })}
-                  {user?.role === "user" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveView("client");
-                        setMobileNavOpen(false);
-                      }}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition activeView === "client"
-  ? "bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg" dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <CalendarCheck size={18} />
-                        {t("clientDashboard")}
-                      </span>
-                      <ChevronRight size={17} />
-                    </button>
-                  )}
-                  {user?.role === "provider" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        loadProviderDashboard();
-                        setMobileNavOpen(false);
-                      }}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${["provider", "client"].includes(activeView) ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <BriefcaseBusiness size={18} />
-                        {providerDashboardNavLabel}
-                      </span>
-                      <ChevronRight size={17} />
-                    </button>
-                  )}
-                  {user?.role === "admin" && (
-                    <button
-                      type="button"
-                      onClick={loadAdminDashboard}
-                      className={`flex items-center justify-between rounded-2xl p-4 text-left font-black transition ${activeView === "admin" ? "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-lg dark:bg-amber-300 dark:text-slate-950" : "bg-slate-50 text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <ShieldCheck size={18} />
-                        {t("admin")}
-                      </span>
-                      <ChevronRight size={17} />
-                    </button>
-                  )}
-                </div>
-                <div className="mt-auto grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 dark:border-white/10">
-                  <div className="col-span-2">
-                    <LanguageSwitcher
-                      language={language}
-                      setLanguage={setLanguage}
-                      t={t}
-                      fullWidth
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setTheme(isDark ? "light" : "dark")}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 p-4 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
-                  >
-                    {isDark ? <Sun size={18} /> : <Moon size={18} />}
-                    {isDark ? t("light") : t("dark")}
-                  </button>
-                  {user ? (
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="rounded-2xl bg-amber-300 p-4 font-black text-slate-950 shadow-lg shadow-amber-300/20"
-                    >
-                      {t("logout")}
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => openClientAuth("login")}
-                        className="rounded-2xl bg-amber-300 p-4 font-black text-slate-950 shadow-lg shadow-amber-300/20"
-                      >
-                        {t("login")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openProviderAuth("register")}
-                        className="rounded-2xl bg-gradient-to-r from-teal-600 to-blue-600 p-4 font-black text-white shadow-lg shadow-blue-600/20"
-                      >
-                        {t("becomeProvider")}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {activeView === "home" && <ModernNavbar
+          navScrolled={navScrolled}
+          SERVICEHUB_ICON={SERVICEHUB_ICON}
+          user={user}
+          activeView={activeView}
+          providerDashboardNavLabel={providerDashboardNavLabel || "Workspace"}
+          language={language}
+          supportedLanguages={
+            supportedLanguages || [
+              { code: "en", label: "English", short: "EN" },
+              { code: "hi", label: "हिंदी", short: "HI" },
+              { code: "mr", label: "मराठी", short: "MR" },
+            ]
+          }
+          isDark={isDark}
+          mainNavItems={mainNavItems || []}
+          accountMenuOpen={accountMenuOpen}
+          loginMenuOpen={loginMenuOpen}
+          moreMenuOpen={moreMenuOpen}
+          mobileNavOpen={mobileNavOpen}
+          accountMenuRef={accountMenuRef}
+          loginMenuRef={loginMenuRef}
+          moreMenuRef={moreMenuRef}
+          t={t || ((key) => key)}
+          setTheme={typeof setTheme === "function" ? setTheme : () => {}}
+          setLanguage={
+            typeof setLanguage === "function" ? setLanguage : () => {}
+          }
+          setActiveView={
+            typeof setActiveView === "function" ? setActiveView : () => {}
+          }
+          setAccountMenuOpen={
+            typeof setAccountMenuOpen === "function"
+              ? setAccountMenuOpen
+              : () => {}
+          }
+          setLoginMenuOpen={
+            typeof setLoginMenuOpen === "function" ? setLoginMenuOpen : () => {}
+          }
+          setMoreMenuOpen={
+            typeof setMoreMenuOpen === "function" ? setMoreMenuOpen : () => {}
+          }
+          setMobileNavOpen={
+            typeof setMobileNavOpen === "function" ? setMobileNavOpen : () => {}
+          }
+          navigateHome={
+            typeof navigateHome === "function" ? navigateHome : () => {}
+          }
+          goMainHome={
+            typeof goMainHome === "function"
+              ? goMainHome
+              : typeof handleHomeNav === "function"
+                ? handleHomeNav
+                : () => {}
+          }
+          handleHomeNav={
+            typeof handleHomeNav === "function" ? handleHomeNav : () => {}
+          }
+          isNavActive={
+            typeof isNavActive === "function" ? isNavActive : () => false
+          }
+          openClientAuth={
+            typeof openClientAuth === "function" ? openClientAuth : () => {}
+          }
+          openProviderAuth={
+            typeof openProviderAuth === "function" ? openProviderAuth : () => {}
+          }
+          openProfileMenu={
+            typeof openProfileMenu === "function" ? openProfileMenu : () => {}
+          }
+          loadProviderDashboard={
+            typeof loadProviderDashboard === "function"
+              ? loadProviderDashboard
+              : () => {}
+          }
+          loadAdminDashboard={
+            typeof loadAdminDashboard === "function"
+              ? loadAdminDashboard
+              : () => {}
+          }
+          handleLogout={
+            typeof handleLogout === "function" ? handleLogout : () => {}
+          }
+          setStatusMessage={
+            typeof setStatusMessage === "function" ? setStatusMessage : () => {}
+          }
+        />}
 
         {activeView === "home" && (
           <main id="top" className="overflow-hidden pt-24 lg:pt-28">
             <ModernHero
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
+              location={location}
+              setLocation={setLocation}
               onSearch={searchServices}
             />
             {/*  <PopularServicesGrid openPopularService={openPopularService} /> >*/}
@@ -2680,10 +2294,15 @@ export default function Home() {
           </main>
         )}
 
-        {activeView === "client" && (
+        {activeView === "client" && ["user", "provider"].includes(user?.role) && (
           <ClientDashboard
+            key={`client-${bookings
+              .map(
+                (booking) =>
+                  `${booking._id}:${booking.status}:${booking.estimateStatus}:${booking.paymentStatus}:${booking.clientRating || ""}`,
+              )
+              .join("|")}`}
             bookings={bookings}
-            setActiveView={setActiveView}
             cancelClientBooking={cancelClientBooking}
             onAcceptEstimate={handleAcceptEstimate}
             onRejectEstimate={handleRejectEstimate}
@@ -2695,11 +2314,21 @@ export default function Home() {
             onBrowseServices={browseServicesAsClient}
             onProviderDashboard={loadProviderDashboard}
             onRefreshBookings={refreshClientBookings}
+            onOpenProfile={openProfileMenu}
+            onLogout={handleLogout}
           />
         )}
 
-        {activeView === "provider" && (
+        {activeView === "provider" && user?.role === "provider" && (
           <ProviderDashboard
+            key={`provider-${providerProfile?._id || "none"}-${providerRequests
+              .map((booking) => `${booking._id}:${booking.status}`)
+              .join("|")}-${providerBookings
+              .map(
+                (booking) =>
+                  `${booking._id}:${booking.status}:${booking.estimateStatus}:${booking.paymentStatus}`,
+              )
+              .join("|")}`}
             providerProfile={providerProfile}
             providerRequests={providerRequests}
             providerBookings={providerBookings}
@@ -2714,10 +2343,12 @@ export default function Home() {
               providerProfile?.approvalStatus !== "approved"
             }
             onBookAsClient={openProviderClientDashboard}
+            onOpenProfile={openProviderAccount}
+            onLogout={handleLogout}
           />
         )}
 
-        {activeView === "admin" && (
+        {activeView === "admin" && user?.role === "admin" && (
           <NewAdminPanel
             adminData={adminData}
             selectedProviders={selectedProviders}
@@ -2730,6 +2361,7 @@ export default function Home() {
             adminEmail={user?.email || ""}
             paymentData={adminPaymentData}
             refreshAdminPayments={loadAdminDashboard}
+            onLogout={handleLogout}
           />
         )}
 
@@ -2739,7 +2371,7 @@ export default function Home() {
             setStatusMessage={setStatusMessage}
           />
         )}
-        {activeView !== "admin" && (
+        {activeView === "home" && (
           <ServiceHubFooter onServiceClick={openPopularService} />
         )}
         <button
@@ -2806,6 +2438,7 @@ export default function Home() {
           onClose={() => setProviderAccountEditOpen(false)}
         />
       )}
+
       <AnimatePresence>
         {profileImageOpen && user && user.role !== "provider" && (
           <ProfileImageModal
@@ -2855,8 +2488,6 @@ export default function Home() {
                   ? "admin"
                   : "client",
             );
-            if (nextUser.role === "provider") loadProviderDashboard();
-            if (nextUser.role === "admin") loadAdminDashboard();
             if (nextUser.role === "user") refreshClientBookings();
             setStatusMessage(
               `${formatRoleLabel(nextUser.role)} logged in successfully.`,
@@ -2865,46 +2496,6 @@ export default function Home() {
         />
       )}
     </div>
-  );
-}
-
-function ProfileAvatar({ user, onClick, size = "md" }) {
-  const imageUrl =
-    user?.profileImage || user?.avatarUrl || user?.photoUrl || "";
-  const label =
-    user?.role === "admin"
-      ? "Admin profile"
-      : `${user?.name || "User"} profile`;
-  const Component = onClick ? "button" : "span";
-  const avatarSize = size === "sm" ? 36 : 48;
-
-  return (
-    <Component
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
-      style={{
-        width: avatarSize,
-        height: avatarSize,
-        minWidth: avatarSize,
-        minHeight: avatarSize,
-        borderRadius: "9999px",
-      }}
-      className={`grid place-items-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 p-0 text-base font-black text-white shadow-sm ring-2 ring-white transition dark:border-white/10 dark:bg-slate-800 dark:ring-white/10 ${onClick ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-teal-200 dark:focus:ring-teal-400/30" : ""}`}
-      title={label}
-      aria-label={label}
-    >
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={label}
-          loading="lazy"
-          decoding="async"
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <DefaultProfileSymbol />
-      )}
-    </Component>
   );
 }
 
@@ -3229,84 +2820,48 @@ function ProfileImageModal({
   );
 }
 
-function LanguageSwitcher({ language, setLanguage, t, fullWidth = false }) {
-  const [open, setOpen] = useState(false);
-  const currentLanguage =
-    supportedLanguages.find((item) => item.code === language) ||
-    supportedLanguages[0];
-  const chooseLanguage = (code) => {
-    setLanguage(code);
-    setOpen(false);
-  };
-
+function Categories({ categories, selectedCategory, setSelectedCategory }) {
   return (
-    <div
-      data-no-translate="true"
-      className={`relative ${fullWidth ? "w-full" : "w-auto"}`}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`inline-flex items-center justify-between gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-teal-200 dark:border-white/10 dark:bg-white/10 dark:text-white dark:focus:ring-teal-400/30 ${fullWidth ? "w-full rounded-2xl px-3 py-3 text-sm" : "min-w-[104px]"}`}
-        aria-label={t("language")}
-        aria-expanded={open}
-      >
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <Languages size={fullWidth ? 15 : 13} />
-          <span key={currentLanguage.code} className="truncate">
-            {currentLanguage.label}
-          </span>
-        </span>
-        <ChevronDown
-          size={14}
-          className={`flex-none transition ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div
-          data-no-translate="true"
-          className={`absolute right-0 top-[calc(100%+0.45rem)] z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-sm font-black text-slate-700 shadow-2xl shadow-slate-950/12 dark:border-white/10 dark:bg-slate-900 dark:text-white ${fullWidth ? "left-0 right-auto w-full" : "w-36"}`}
+    <>
+      <div className="border-b border-[#ded7ca] bg-[#fffdf8] px-4 py-4 dark:border-white/10 dark:bg-slate-900 lg:hidden">
+        <label className="mb-2 block text-sm font-black text-slate-700 dark:text-slate-200">
+          Select service category
+        </label>
+        <select
+          value={selectedCategory}
+          onChange={(event) => setSelectedCategory(event.target.value)}
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-white/10 dark:bg-slate-950 dark:text-white"
         >
-          {supportedLanguages.map((item) => (
+          {categories.map((category) => (
+            <option key={category} value={category}>
+              {category}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
+        <h2 className="home-section-title font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
+          Providers category
+        </h2>
+        <div className="scrollbar-hidden mt-7 grid max-h-[calc(100vh-14rem)] gap-2.5 overflow-y-auto pr-1">
+          {categories.map((category) => (
             <button
-              key={item.code}
+              key={category}
               type="button"
-              onClick={() => chooseLanguage(item.code)}
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${item.code === language ? "bg-teal-600 text-white" : "hover:bg-slate-100 dark:hover:bg-white/10"}`}
+              onClick={() => setSelectedCategory(category)}
+              className={`border-b border-slate-200/70 px-1 py-3 text-left text-base font-black transition last:border-b-0 dark:border-white/10 ${
+                selectedCategory === category
+                  ? "text-teal-700 dark:text-amber-300"
+                  : "text-slate-950 hover:translate-x-1 hover:text-teal-700 dark:text-slate-200 dark:hover:text-amber-300"
+              }`}
             >
-              <span>{item.label}</span>
-              {item.code === language && <CheckCircle size={14} />}
+              {category}
             </button>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
-function Categories({ categories, selectedCategory, setSelectedCategory }) {
-  return (
-    <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
-      <h2 className="home-section-title font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
-        Providers category
-      </h2>
-      <div className="scrollbar-hidden mt-7 grid max-h-[calc(100vh-14rem)] gap-2.5 overflow-y-auto pr-1">
-        {categories.map((category) => (
-          <button
-            key={category}
-            type="button"
-            onClick={() => setSelectedCategory(category)}
-            className={`border-b border-slate-200/70 px-1 py-3 text-left text-base font-black transition last:border-b-0 dark:border-white/10 ${
-              selectedCategory === category
-                ? "text-teal-700 dark:text-amber-300"
-                : "text-slate-950 hover:translate-x-1 hover:text-teal-700 dark:text-slate-200 dark:hover:text-amber-300"
-            }`}
-          >
-            {category}
-          </button>
-        ))}
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -3386,6 +2941,11 @@ function Providers({
                         alt={`${service.name} ${service.category} provider`}
                         loading="lazy"
                         decoding="async"
+                        onError={(e) => {
+                          e.currentTarget.src =
+                            categoryImages[service.category] ||
+                            categoryImages.Cleaning;
+                        }}
                         className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                       />
                     </span>
@@ -3518,7 +3078,6 @@ function FAQ() {
 
 function ClientDashboard({
   bookings,
-  setActiveView,
   cancelClientBooking,
   onAcceptEstimate,
   onRejectEstimate,
@@ -3530,6 +3089,8 @@ function ClientDashboard({
   onBrowseServices,
   onProviderDashboard,
   onRefreshBookings,
+  onOpenProfile,
+  onLogout,
 }) {
   const [now, setNow] = useState(INITIAL_DASHBOARD_TIME);
   const [rejectTargetBooking, setRejectTargetBooking] = useState(null);
@@ -3641,6 +3202,37 @@ function ClientDashboard({
       value: bookingSections[3].bookings.length,
       copy: "Cancelled request records.",
       tone: "from-rose-50 to-white text-rose-700",
+    },
+  ];
+  const clientSidebarItems = [
+    {
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+    },
+    {
+      label: "Bookings",
+      icon: CalendarCheck,
+      badge: bookings.length,
+      onClick: () =>
+        bookingHistoryRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+    },
+    {
+      label: "Find providers",
+      icon: UserRound,
+      badge: savedProviderCount,
+      onClick: onBrowseServices,
+    },
+    {
+      label: "Reviews",
+      icon: Star,
+      badge: bookings.filter(
+        (booking) => booking.status === "completed" && !booking.clientRating,
+      ).length,
+      onClick: () => setCompletedPageOpen(true),
     },
   ];
 
@@ -3842,6 +3434,10 @@ function ClientDashboard({
         title="Cancelled Services"
         subtitle="Review every cancelled booking with provider, date, payment, address, and reason details."
         notifications={notifications}
+        variant="client"
+        sidebarItems={clientSidebarItems}
+        onProfile={onOpenProfile}
+        onLogout={onLogout}
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <button
@@ -3879,6 +3475,10 @@ function ClientDashboard({
         title="Completed Services"
         subtitle="Review every completed service with provider, date, payment, address, and service details."
         notifications={notifications}
+        variant="client"
+        sidebarItems={clientSidebarItems}
+        onProfile={onOpenProfile}
+        onLogout={onLogout}
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <button
@@ -3923,6 +3523,10 @@ function ClientDashboard({
       }
       notifications={notifications}
       workspaceLabel={t("workspace")}
+      variant="client"
+      sidebarItems={clientSidebarItems}
+      onProfile={onOpenProfile}
+      onLogout={onLogout}
       headerActions={
         <button
           type="button"
@@ -3998,7 +3602,7 @@ function ClientDashboard({
                 { behavior: "smooth", block: "start" },
               );
             }}
-            className={`rounded-2xl border border-slate-200 bg-gradient-to-br ${block.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:from-white/10 dark:to-white/5`}
+            className={`dashboard-status-card rounded-2xl border border-slate-200 bg-gradient-to-br ${block.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:from-white/10 dark:to-white/5`}
           >
             <p className="text-3xl font-black text-slate-950 dark:text-white">
               {block.value}
@@ -4020,9 +3624,81 @@ function ClientDashboard({
           </button>
         ))}
       </div>
+      <div className="dashboard-overview-grid mt-6 grid gap-5 xl:grid-cols-2">
+        <Panel title="Recent booking activity">
+          <div className="grid gap-3">
+            {bookings.slice(0, 3).map((booking) => (
+              <button
+                key={booking._id}
+                type="button"
+                onClick={() =>
+                  bookingHistoryRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  })
+                }
+                className="dashboard-list-row"
+              >
+                <span>
+                  <strong>{booking.service}</strong>
+                  <small>
+                    {formatBookingDate(booking.preferredDate)} · {formatBookingTime(booking.preferredTime)}
+                  </small>
+                </span>
+                <StatusBadge status={booking.status} />
+              </button>
+            ))}
+            {!bookings.length && (
+              <EmptyState
+                title="No booking activity yet"
+                copy="Book a service and every update will appear here."
+              />
+            )}
+          </div>
+        </Panel>
+        <Panel title="Payments and estimates">
+          <div className="grid gap-3">
+            {bookings
+              .filter(
+                (booking) =>
+                  booking.estimateStatus || booking.paymentStatus,
+              )
+              .slice(0, 3)
+              .map((booking) => (
+                <button
+                  key={booking._id}
+                  type="button"
+                  onClick={() =>
+                    bookingHistoryRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    })
+                  }
+                  className="dashboard-list-row"
+                >
+                  <span>
+                    <strong>{booking.service}</strong>
+                    <small>
+                      Estimate: {booking.estimateStatus || "not submitted"}
+                    </small>
+                  </span>
+                  <PaymentStatusBadge status={booking.paymentStatus || "unpaid"} />
+                </button>
+              ))}
+            {!bookings.some(
+              (booking) => booking.estimateStatus || booking.paymentStatus,
+            ) && (
+              <EmptyState
+                title="No payment updates"
+                copy="Estimates and payment actions will appear here."
+              />
+            )}
+          </div>
+        </Panel>
+      </div>
       <div className="mt-8">
         <Panel title="Booking history">
-          <div ref={bookingHistoryRef} className="grid gap-5">
+          <div ref={bookingHistoryRef} className="dashboard-scroll-target grid gap-5">
             {bookings.length ? (
               bookingSections
                 .filter(
@@ -4075,7 +3751,7 @@ function ClientDashboard({
         <div className="mt-5 flex justify-center">
           <button
             type="button"
-            onClick={() => setActiveView("home")}
+            onClick={onBrowseServices}
             className="rounded-2xl bg-slate-950 px-6 py-4 font-black text-white dark:bg-amber-300 dark:text-slate-950"
           >
             {t("bookAnotherService")}
@@ -4442,12 +4118,17 @@ function ProviderDashboard({
   setStatusMessage,
   providerDashboardLocked,
   onBookAsClient,
+  onOpenProfile,
+  onLogout,
 }) {
   const [cancelTargetBooking, setCancelTargetBooking] = useState(null);
   const [estimateTargetBooking, setEstimateTargetBooking] = useState(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [historyPageOpen, setHistoryPageOpen] = useState(false);
   const historySectionRef = useRef(null);
+  const requestSectionRef = useRef(null);
+  const jobsSectionRef = useRef(null);
+  const earningsSectionRef = useRef(null);
   const confirmedJobs = providerBookings.filter(
     (booking) => !["completed", "cancelled"].includes(booking.status),
   );
@@ -4501,6 +4182,53 @@ function ProviderDashboard({
         message: `${booking.service} estimate accepted, payment is still pending.`,
       })),
   ].slice(0, 8);
+  const providerSidebarItems = [
+    {
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+    },
+    {
+      label: "Requests",
+      icon: Bell,
+      badge: providerRequests.length,
+      onClick: () =>
+        requestSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+    },
+    {
+      label: "Active jobs",
+      icon: BriefcaseBusiness,
+      badge: confirmedJobs.length,
+      onClick: () =>
+        jobsSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+    },
+    {
+      label: "Earnings",
+      icon: Wallet,
+      onClick: () =>
+        earningsSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+    },
+    {
+      label: "History",
+      icon: ListChecks,
+      badge: historyJobs.length,
+      onClick: () => setHistoryPageOpen(true),
+    },
+    {
+      label: "Book as client",
+      icon: CalendarCheck,
+      onClick: onBookAsClient,
+    },
+  ];
   const token = localStorage.getItem("servicehub_token");
   const handleBookingAlert = useCallback(
     (event) => {
@@ -4525,6 +4253,10 @@ function ProviderDashboard({
         title="Provider Dashboard"
         subtitle="Your provider workspace will open after admin approval."
         notifications={notifications}
+        variant="provider"
+        sidebarItems={providerSidebarItems}
+        onProfile={onOpenProfile}
+        onLogout={onLogout}
       >
         <ProviderApprovalWaitCard
           approvalStatus={approvalStatus}
@@ -4543,6 +4275,9 @@ function ProviderDashboard({
         notifications={notifications}
         refreshDashboard={refreshDashboard}
         onBack={() => setHistoryPageOpen(false)}
+        sidebarItems={providerSidebarItems}
+        onProfile={onOpenProfile}
+        onLogout={onLogout}
       />
     );
   }
@@ -4552,6 +4287,10 @@ function ProviderDashboard({
       title="Provider Dashboard"
       subtitle="A premium workspace for accepting requests, managing revenue, and completing service work."
       notifications={notifications}
+      variant="provider"
+      sidebarItems={providerSidebarItems}
+      onProfile={onOpenProfile}
+      onLogout={onLogout}
       headerActions={
         <button
           type="button"
@@ -4602,7 +4341,7 @@ function ProviderDashboard({
               value={providerProfile?.rating || "0.0"}
             />
           </div>
-          <div className="mt-5 grid gap-5 lg:grid-cols-4">
+          <div ref={earningsSectionRef} className="dashboard-scroll-target mt-5 grid gap-5 lg:grid-cols-4">
             <ProviderWithdrawCard
               earningsSummary={earningsSummary}
               providerProfile={providerProfile}
@@ -4628,7 +4367,7 @@ function ProviderDashboard({
             />
           </div>
           <div className="mt-8">
-            <Panel title="New client requests">
+            <Panel title="New client requests" sectionRef={requestSectionRef}>
               <div className="grid gap-4">
                 {providerRequests.length ? (
                   providerRequests.map((booking) => (
@@ -4650,7 +4389,7 @@ function ProviderDashboard({
             </Panel>
           </div>
           <div className="mt-5 grid gap-5 xl:grid-cols-2">
-            <Panel title="Confirmed service jobs">
+            <Panel title="Confirmed service jobs" sectionRef={jobsSectionRef}>
               <div className="grid gap-4">
                 {confirmedJobs.length ? (
                   confirmedJobs.map((booking) => (
@@ -4784,6 +4523,9 @@ function ProviderClientHistoryPage({
   notifications,
   refreshDashboard,
   onBack,
+  sidebarItems,
+  onProfile,
+  onLogout,
 }) {
   const completedCount = historyJobs.filter(
     (booking) => booking.status === "completed",
@@ -4797,6 +4539,10 @@ function ProviderClientHistoryPage({
       title="Client History"
       subtitle="All completed and cancelled client jobs for your provider account."
       notifications={notifications}
+      variant="provider"
+      sidebarItems={sidebarItems}
+      onProfile={onProfile}
+      onLogout={onLogout}
       headerActions={
         <>
           <button
@@ -5633,90 +5379,129 @@ function DashboardShell({
   notifications = [],
   headerActions = null,
   workspaceLabel = "ServiceHub workspace",
+  variant = "client",
+  sidebarItems = [],
+  onProfile,
+  onLogout,
 }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const hasNotifications = notifications.length > 0;
-  const isAdminWorkspace = /admin/i.test(title);
 
   return (
-    <main
-      className={`min-h-screen px-4 pb-16 pt-28 sm:px-6 lg:px-8 ${isAdminWorkspace ? "bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f5_42%,#f8fafc_100%)] dark:bg-[linear-gradient(180deg,#020617_0%,#08111f_52%,#020617_100%)]" : "dark:bg-slate-950"}`}
-    >
-      <div className="mx-auto max-w-[92rem]">
-        <div
-          className={`relative z-20 mb-8 overflow-visible rounded-[1.35rem] border p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:p-6 ${isAdminWorkspace ? "border-white/80 bg-white/88 dark:border-white/10 dark:bg-white/7" : "border-transparent bg-transparent shadow-none"}`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-teal-700 dark:text-teal-200">
-                {workspaceLabel}
-              </p>
-              <h1 className="mt-2 text-3xl font-black leading-tight text-slate-950 dark:text-white sm:text-4xl">
-                {title}
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500 dark:text-slate-300 sm:text-base">
-                {subtitle}
-              </p>
-            </div>
-            <div className="relative z-30 flex flex-wrap items-center justify-end gap-3">
-              {headerActions}
+    <main className={`dashboard-app-shell dashboard-${variant}`}>
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          className="dashboard-sidebar-backdrop"
+          aria-label="Close dashboard menu"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+      <aside className={`dashboard-sidebar ${mobileSidebarOpen ? "open" : ""}`}>
+        <div className="dashboard-brand">
+          <img src={SERVICEHUB_ICON} alt="ServiceHub" />
+          <span>
+            <strong>ServiceHub</strong>
+            <small>{variant === "provider" ? "Provider Control Hub" : "Client Control Hub"}</small>
+          </span>
+        </div>
+        <nav className="dashboard-side-nav" aria-label={`${variant} dashboard navigation`}>
+          {sidebarItems.map(({ label, icon: Icon, onClick, badge }, index) => (
+            <button
+              key={label}
+              type="button"
+              className={index === 0 ? "active" : ""}
+              onClick={() => {
+                onClick?.();
+                setMobileSidebarOpen(false);
+              }}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+              {Number(badge) > 0 && <em>{badge}</em>}
+            </button>
+          ))}
+        </nav>
+        <div className="dashboard-sidebar-bottom">
+          <div className="dashboard-live-card">
+            <span>Live workspace</span>
+            <strong>
+              {variant === "provider"
+                ? "Requests, jobs, tracking, estimates and payouts."
+                : "Bookings, providers, payments and reviews."}
+            </strong>
+          </div>
+          <button type="button" className="dashboard-logout" onClick={onLogout}>
+            <LogOut size={18} /> Logout
+          </button>
+        </div>
+      </aside>
+
+      <section className="dashboard-main-column">
+        <header className="dashboard-topbar">
+          <button
+            type="button"
+            className="dashboard-menu-button"
+            aria-label="Open dashboard menu"
+            onClick={() => setMobileSidebarOpen(true)}
+          >
+            <Menu size={21} />
+          </button>
+          <div className="dashboard-heading">
+            <p>{workspaceLabel}</p>
+            <h1>{title}</h1>
+            <span>{subtitle}</span>
+          </div>
+          <div className="dashboard-header-actions">
+            {headerActions}
+            <button
+              type="button"
+              onClick={onProfile}
+              aria-label="Open profile"
+              className="dashboard-icon-button"
+            >
+              <UserRound size={19} />
+            </button>
+            <div className="dashboard-notification-wrap">
               <button
                 type="button"
                 onClick={() => setNotificationsOpen((current) => !current)}
                 aria-label="Open notifications"
-                className="relative grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:text-teal-700 hover:shadow-lg dark:border-white/10 dark:bg-white/10 dark:text-white"
+                className="dashboard-icon-button"
               >
                 <Bell size={18} />
-                {hasNotifications && (
-                  <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
-                    {notifications.length}
-                  </span>
-                )}
+                {hasNotifications && <b>{notifications.length}</b>}
               </button>
               {notificationsOpen && (
-                <div className="absolute right-0 top-14 z-[120] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl dark:border-white/10 dark:bg-slate-900 dark:text-white">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-white/10">
-                    <p className="font-black">Notifications</p>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600 dark:bg-white/10 dark:text-slate-200">
-                      {notifications.length}
-                    </span>
+                <div className="dashboard-notification-popover">
+                  <div className="dashboard-notification-title">
+                    <strong>Notifications</strong><span>{notifications.length}</span>
                   </div>
-                  <div className="max-h-80 overflow-y-auto p-3">
-                    {hasNotifications ? (
-                      notifications.map((item, index) => (
-                        <div
-                          key={`${item.title}-${index}`}
-                          className="rounded-xl p-3 transition hover:bg-slate-50 dark:hover:bg-white/5"
-                        >
-                          <p className="font-black">{item.title}</p>
-                          <p className="mt-1 text-sm font-semibold leading-6 text-slate-500 dark:text-slate-300">
-                            {item.message}
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-slate-200 p-5 text-center dark:border-white/10">
-                        <p className="font-black">No notifications</p>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-                          New updates will appear here.
-                        </p>
+                  <div className="dashboard-notification-list">
+                    {hasNotifications ? notifications.map((item, index) => (
+                      <div key={`${item.title}-${index}`}>
+                        <strong>{item.title}</strong>
+                        <p>{item.message}</p>
                       </div>
+                    )) : (
+                      <div><strong>No notifications</strong><p>New updates will appear here.</p></div>
                     )}
                   </div>
                 </div>
               )}
             </div>
           </div>
-        </div>
-        {children}
-      </div>
+        </header>
+        <div className="dashboard-content">{children}</div>
+      </section>
     </main>
   );
 }
 
 function StatCard({ icon: Icon, label, value }) {
   return (
-    <div className="group relative overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:border-teal-200 hover:shadow-[0_22px_60px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-white/5">
+    <div className="dashboard-stat-card group relative overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:border-teal-200 hover:shadow-[0_22px_60px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-white/5">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-500 via-blue-600 to-amber-300" />
       <div className="flex items-start justify-between gap-4">
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100 transition group-hover:scale-105 dark:bg-teal-300/10 dark:text-teal-100 dark:ring-teal-300/20">
@@ -5740,7 +5525,7 @@ function Panel({ title, children, className = "", sectionRef }) {
   return (
     <section
       ref={sectionRef}
-      className={`h-fit overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-[0_16px_45px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5 ${className}`}
+      className={`dashboard-panel h-fit overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-[0_16px_45px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5 ${className}`}
     >
       <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-white/10 dark:bg-white/5 sm:px-6">
         <h2 className="text-lg font-black text-slate-950 dark:text-white">

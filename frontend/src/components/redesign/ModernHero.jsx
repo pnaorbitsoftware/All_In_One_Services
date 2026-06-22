@@ -1,9 +1,72 @@
+import { useMemo, useState } from "react";
 import { Search, MapPin } from "lucide-react";
 import heroImage from "./img/image.jpeg";
-export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
+
+const DEFAULT_SERVICES = [
+  "AC Repair",
+  "Appliance Repair",
+  "Carpenter",
+  "Cleaning",
+  "Electrician",
+  "Home Cleaning",
+  "Painter",
+  "Plumber",
+  "Refrigerator Repair",
+  "Washing Machine Repair",
+];
+
+const DEFAULT_LOCATIONS = [
+  "Baramati",
+  "Pune",
+  "Pimpri",
+  "Chinchwad",
+  "Akurdi",
+  "Nigdi",
+  "Wakad",
+  "Hinjewadi",
+  "Baner",
+  "Kothrud",
+  "Hadapsar",
+  "Magarpatta",
+  "Kharadi",
+  "Viman Nagar",
+  "Katraj",
+  "Swargate",
+];
+
+export default function ModernHero({
+  searchTerm,
+  setSearchTerm,
+  location,
+  setLocation,
+  onSearch,
+  serviceSuggestions = DEFAULT_SERVICES,
+  locationSuggestions = DEFAULT_LOCATIONS,
+}) {
+  const [activeDropdown, setActiveDropdown] = useState(null);
+
+  const filteredServices = useMemo(() => {
+    const q = (searchTerm || "").toLowerCase().trim();
+    return serviceSuggestions
+      .filter((item) => item?.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [searchTerm, serviceSuggestions]);
+
+  const filteredLocations = useMemo(() => {
+    const q = (location || "").toLowerCase().trim();
+    return locationSuggestions
+      .filter((item) => item?.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [location, locationSuggestions]);
+
+  const submitSearch = () => {
+    setActiveDropdown(null);
+    if (typeof onSearch === "function") onSearch();
+  };
+
   return (
-    <section className="bg-[#f8fafc] pt-24 pb-12">
-      {/* 1. Faint Background Image Layer */}
+    <section className="relative overflow-visible bg-[#f8fafc] pt-24 pb-20">
+      {" "}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-[0.07] pointer-events-none transition-opacity duration-1000 ease-in-out"
         style={{
@@ -11,13 +74,10 @@ export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
             "url('https://blog.planview.com/wp-content/uploads/2022/05/iStock-1293656833-1024x585.jpg')",
         }}
       />
-
-      {/* 2. Main Content Container */}
       <div className="relative z-10 mx-auto max-w-7xl px-6">
         <div className="grid items-center gap-16 lg:grid-cols-2">
-          {/* Left Side: Content & Search Form (With Fade-in-up Animation Effect) */}
           <div className="transition-all duration-700 transform translate-y-0 opacity-100">
-            <h1 className="text-6xl font-extrabold leading-tight text-slate-900 transition-all duration-500 hover:tracking-wide">
+            <h1 className="text-5xl font-extrabold leading-tight text-slate-900 transition-all duration-500 hover:tracking-wide sm:text-6xl">
               Find{" "}
               <span className="text-blue-600 inline-block hover:scale-105 transition-transform duration-300 cursor-default">
                 trusted
@@ -30,44 +90,90 @@ export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
               home service needs.
             </p>
 
-            {/* Form with hover shadow animation */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (typeof onSearch === "function") onSearch();
+                submitSearch();
               }}
-              className="mt-10 rounded-2xl bg-white p-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow duration-300"
+              className="relative z-50 mt-10 rounded-2xl bg-white p-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow duration-300"
             >
               <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                {/* Search Input */}
-                <div className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-300">
-                  <Search
-                    size={20}
-                    className="text-slate-400 shrink-0 transition-transform duration-300 group-focus-within:scale-110"
-                  />
-                  <input
-                    type="text"
-                    value={searchTerm || ""}
-                    onChange={(e) => {
-                      if (typeof setSearchTerm === "function")
-                        setSearchTerm(e.target.value);
-                    }}
-                    placeholder="Search for a service..."
-                    className="h-14 w-full outline-none text-slate-800 bg-transparent"
-                  />
+                <div className="relative">
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-300">
+                    <Search size={20} className="text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={searchTerm || ""}
+                      onFocus={() => setActiveDropdown("service")}
+                      onChange={(e) => {
+                        setActiveDropdown("service");
+                        setSearchTerm?.(e.target.value);
+                      }}
+                      placeholder="Search for a service..."
+                      className="h-14 w-full outline-none text-slate-800 bg-transparent"
+                    />
+                  </div>
+
+                  {activeDropdown === "service" &&
+                    filteredServices.length > 0 && (
+                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+                        {filteredServices.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setSearchTerm?.(item);
+                              setActiveDropdown(null);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            <Search size={16} className="text-slate-400" />
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                 </div>
 
-                {/* Location Input */}
-                <div className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-300">
-                  <MapPin size={20} className="text-slate-400 shrink-0" />
-                  <input
-                    type="text"
-                    placeholder="Enter your location"
-                    className="h-14 w-full outline-none text-slate-800 bg-transparent"
-                  />
+                <div className="relative">
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-300">
+                    <MapPin size={20} className="text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={location || ""}
+                      onFocus={() => setActiveDropdown("location")}
+                      onChange={(e) => {
+                        setActiveDropdown("location");
+                        setLocation?.(e.target.value);
+                      }}
+                      placeholder="Enter your location"
+                      className="h-14 w-full outline-none text-slate-800 bg-transparent"
+                    />
+                  </div>
+
+                  {activeDropdown === "location" &&
+                    filteredLocations.length > 0 && (
+                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+                        {filteredLocations.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setLocation?.(item);
+                              setActiveDropdown(null);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            <MapPin size={16} className="text-slate-400" />
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                 </div>
 
-                {/* Submit Button with Scale & Pulse Animation */}
                 <button
                   type="submit"
                   className="rounded-xl bg-blue-600 px-8 h-14 text-white font-semibold hover:bg-blue-700 hover:scale-[1.03] active:scale-[0.97] hover:shadow-md hover:shadow-blue-200 transition-all duration-200 ease-out"
@@ -77,29 +183,19 @@ export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
               </div>
             </form>
 
-            {/* Badges with smooth hover pop effect */}
             <div className="mt-8 flex flex-wrap gap-6 text-sm font-medium text-slate-600">
-              <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer transition-colors duration-200 transform hover:translate-x-1">
-                ✓ Verified Professionals
-              </span>
-              <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer transition-colors duration-200 transform hover:translate-x-1">
-                ✓ Upfront Pricing
-              </span>
-              <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer transition-colors duration-200 transform hover:translate-x-1">
-                ✓ On-Time Service
-              </span>
-              <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer transition-colors duration-200 transform hover:translate-x-1">
-                ✓ 24/7 Support
-              </span>
+              <span>✓ Verified Professionals</span>
+              <span>✓ Upfront Pricing</span>
+              <span>✓ On-Time Service</span>
+              <span>✓ 24/7 Support</span>
             </div>
           </div>
 
-          {/* Right Side: Image with Floating & Scale Micro-interaction */}
           <div className="relative justify-self-center lg:justify-self-end w-full max-w-lg lg:max-w-none group">
             <img
               src={heroImage}
-              alt="Professional workers vector"
-              className="w-full object-cover rounded-[20px] shadow-2xl transition-all duration-800 ease-in-out group-hover:scale-[1.02] group-hover:shadow-blue-100/50"
+              alt="ServiceHub home service professionals"
+              className="w-full object-cover rounded-[20px] shadow-2xl transition-all duration-700 ease-in-out group-hover:scale-[1.02] group-hover:shadow-blue-100/50"
               style={{ height: "410px" }}
             />
           </div>

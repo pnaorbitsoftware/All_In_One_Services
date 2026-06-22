@@ -1,9 +1,27 @@
 import "./AuthModal.css";
-import { useEffect, useState } from "react";
-import { BriefcaseBusiness, Eye, EyeOff, ImagePlus, IndianRupee, Lock, Mail, MapPin, Phone, User, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  BriefcaseBusiness,
+  Eye,
+  EyeOff,
+  ImagePlus,
+  IndianRupee,
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
+  User,
+  X,
+} from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-const AUTH_API_URLS = [...new Set([API_URL, "http://localhost:5000/api", "http://localhost:5001/api"])];
+const AUTH_API_URLS = [
+  ...new Set([
+    API_URL,
+    "http://localhost:5000/api",
+    "http://localhost:5001/api",
+  ]),
+];
 const providerCategories = [
   "Plumber",
   "Electrician",
@@ -40,15 +58,18 @@ const authTranslations = {
     createClientAccount: "Client Registration",
     providerLogin: "Provider Login",
     clientLogin: "Client Login",
-    resetCopy: "Use your registered email address or mobile number to create a new password.",
-    providerRegisterCopy: "Create your provider profile. Admin approval is required before your profile appears on the website.",
+    resetCopy:
+      "Use your registered email address or mobile number to create a new password.",
+    providerRegisterCopy:
+      "Create your provider profile. Admin approval is required before your profile appears on the website.",
     registerCopy: "Register to book services faster and manage your requests.",
     loginCopy: "Login to continue booking trusted home services.",
     providerWorkspace: "Provider workspace",
     clientAccess: "Client access",
-    providerAccessCopy: "Add your service details and join after OTP verification.",
+    providerAccessCopy:
+      "Add your service details and join after OTP verification.",
     clientAccessCopy: "Login with your registered email and password.",
-    email: "Email",
+    email: "Email address",
     password: "Password",
     confirmPassword: "Confirm password",
     login: "Login",
@@ -65,9 +86,12 @@ const authTranslations = {
     createClientAccount: "क्लाइंट रजिस्ट्रेशन",
     providerLogin: "प्रदाता लॉगिन",
     clientLogin: "क्लाइंट लॉगिन",
-    resetCopy: "नया पासवर्ड बनाने के लिए अपना रजिस्टर्ड ईमेल या मोबाइल नंबर इस्तेमाल करें.",
-    providerRegisterCopy: "अपनी प्रदाता प्रोफाइल बनाएं. वेबसाइट पर दिखने से पहले एडमिन मंजूरी जरूरी है.",
-    registerCopy: "सेवाएं जल्दी बुक करने और अनुरोध संभालने के लिए रजिस्टर करें.",
+    resetCopy:
+      "नया पासवर्ड बनाने के लिए अपना रजिस्टर्ड ईमेल या मोबाइल नंबर इस्तेमाल करें.",
+    providerRegisterCopy:
+      "अपनी प्रदाता प्रोफाइल बनाएं. वेबसाइट पर दिखने से पहले एडमिन मंजूरी जरूरी है.",
+    registerCopy:
+      "सेवाएं जल्दी बुक करने और अनुरोध संभालने के लिए रजिस्टर करें.",
     loginCopy: "विश्वसनीय होम सेवाएं बुक करने के लिए लॉगिन करें.",
     providerWorkspace: "प्रदाता कार्यक्षेत्र",
     clientAccess: "क्लाइंट एक्सेस",
@@ -91,8 +115,10 @@ const authTranslations = {
     providerLogin: "प्रदाता लॉगिन",
     clientLogin: "क्लायंट लॉगिन",
     resetCopy: "नवीन पासवर्डसाठी तुमचा नोंदणीकृत ईमेल किंवा मोबाइल नंबर वापरा.",
-    providerRegisterCopy: "तुमची प्रदाता प्रोफाइल तयार करा. वेबसाइटवर दिसण्यापूर्वी अॅडमिन मंजुरी आवश्यक आहे.",
-    registerCopy: "सेवा जलद बुक करण्यासाठी आणि विनंत्या व्यवस्थापित करण्यासाठी नोंदणी करा.",
+    providerRegisterCopy:
+      "तुमची प्रदाता प्रोफाइल तयार करा. वेबसाइटवर दिसण्यापूर्वी अॅडमिन मंजुरी आवश्यक आहे.",
+    registerCopy:
+      "सेवा जलद बुक करण्यासाठी आणि विनंत्या व्यवस्थापित करण्यासाठी नोंदणी करा.",
     loginCopy: "विश्वसनीय होम सेवा बुक करण्यासाठी लॉगिन करा.",
     providerWorkspace: "प्रदाता कार्यक्षेत्र",
     clientAccess: "क्लायंट प्रवेश",
@@ -178,56 +204,66 @@ export default function AuthModal({
   const [resetToken, setResetToken] = useState("");
   const [registrationOtpRequired, setRegistrationOtpRequired] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState({});
+  const modalRef = useRef(null);
 
   const isRegister = mode === "register";
   const isLogin = mode === "login" && !isResetMode;
   const isPasswordReset = mode === "login" && isResetMode;
   const isProviderRegister = isRegister && form.role === "provider";
   const roleOptions = lockedRole ? [initialRole] : ["user"];
-  const t = (key) => authTranslations[language]?.[key] || authTranslations.en[key] || key;
+  const t = (key) =>
+    authTranslations[language]?.[key] || authTranslations.en[key] || key;
   const authTitle = isPasswordReset
     ? t("resetPassword")
     : isProviderRegister
-    ? t("becomeProvider")
-    : isRegister
-    ? t("createClientAccount")
-    : form.role === "provider"
-    ? t("providerLogin")
-    : t("clientLogin");
+      ? t("becomeProvider")
+      : isRegister
+        ? t("createClientAccount")
+        : form.role === "provider"
+          ? t("providerLogin")
+          : t("clientLogin");
   const authCopy = isPasswordReset
     ? t("resetCopy")
     : isProviderRegister
-    ? t("providerRegisterCopy")
+      ? t("providerRegisterCopy")
+      : isRegister
+        ? t("registerCopy")
+        : t("loginCopy");
+  const modeLabel = isPasswordReset
+    ? "Secure reset"
     : isRegister
-    ? t("registerCopy")
-    : t("loginCopy");
-  const modeLabel = isPasswordReset ? "Secure reset" : isRegister ? "Create account" : "Welcome back";
+      ? "Create account"
+      : "Welcome back";
   const modalClassName = [
     "auth-modal",
     isProviderRegister ? "auth-modal-wide" : "",
     isRegister ? "auth-modal-register" : "auth-modal-login",
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
   const lockedRoleTitle = isRegister
     ? form.role === "provider"
       ? "Provider registration"
       : "Client registration"
     : form.role === "provider"
-    ? t("providerWorkspace")
-    : t("clientAccess");
+      ? t("providerWorkspace")
+      : t("clientAccess");
   const lockedRoleCopy = isRegister
     ? form.role === "provider"
       ? "Create your provider profile and verify it with email OTP."
       : "Create your client account and verify it with email OTP."
     : form.role === "provider"
-    ? t("providerAccessCopy")
-    : t("clientAccessCopy");
+      ? t("providerAccessCopy")
+      : t("clientAccessCopy");
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
     setForm((prev) => ({
       ...prev,
       [field]: value,
-      ...(field === "category" && value !== "Other" ? { customCategory: "" } : {}),
+      ...(field === "category" && value !== "Other"
+        ? { customCategory: "" }
+        : {}),
     }));
   };
 
@@ -238,18 +274,28 @@ export default function AuthModal({
         const image = new Image();
         image.onload = () => {
           const maxSize = 900;
-          const scale = Math.min(maxSize / image.width, maxSize / image.height, 1);
+          const scale = Math.min(
+            maxSize / image.width,
+            maxSize / image.height,
+            1,
+          );
           const canvas = document.createElement("canvas");
           canvas.width = Math.max(Math.round(image.width * scale), 1);
           canvas.height = Math.max(Math.round(image.height * scale), 1);
           const context = canvas.getContext("2d");
+          if (!context) {
+            reject(new Error("Your browser could not prepare the work photo."));
+            return;
+          }
           context.drawImage(image, 0, 0, canvas.width, canvas.height);
           resolve(canvas.toDataURL("image/jpeg", 0.84));
         };
-        image.onerror = () => reject(new Error("Selected work photo could not be loaded."));
+        image.onerror = () =>
+          reject(new Error("Selected work photo could not be loaded."));
         image.src = reader.result;
       };
-      reader.onerror = () => reject(new Error("Selected work photo could not be read."));
+      reader.onerror = () =>
+        reject(new Error("Selected work photo could not be read."));
       reader.readAsDataURL(file);
     });
 
@@ -280,7 +326,10 @@ export default function AuthModal({
   };
 
   const togglePasswordVisibility = (field) => {
-    setVisiblePasswords((current) => ({ ...current, [field]: !current[field] }));
+    setVisiblePasswords((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
   };
 
   const handleRequestClose = (event) => {
@@ -296,18 +345,36 @@ export default function AuthModal({
   };
 
   useEffect(() => {
-    setError("");
-    setSuccessMessage("");
-    setIsResetMode(false);
-    setResetStep("identifier");
-    setResetToken("");
-    setRegistrationOtpRequired(false);
-    setForm((prev) => ({ ...prev, role: initialRole }));
-  }, [mode, initialRole]);
+    const previousOverflow = document.body.style.overflow;
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        onClose?.();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleEsc);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    if (modalRef.current) modalRef.current.scrollTop = 0;
+  }, [mode, isResetMode, resetStep, registrationOtpRequired]);
 
   const handleGenerateOtp = async () => {
     setError("");
     setSuccessMessage("");
+
+    if (!form.resetIdentifier.trim()) {
+      setError("Enter your registered email address or mobile number.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -327,9 +394,15 @@ export default function AuthModal({
       }
 
       setResetStep("otp");
-      setSuccessMessage(`OTP sent to registered ${otpChannelLabel(form.resetOtpChannel)}. Use it within 5 minutes.`);
+      setSuccessMessage(
+        `OTP sent to registered ${otpChannelLabel(form.resetOtpChannel)}. Use it within 5 minutes.`,
+      );
     } catch (otpError) {
-      setError(otpError.message === "Failed to fetch" ? "Backend is not reachable. Start the backend server and try again." : otpError.message);
+      setError(
+        otpError.message === "Failed to fetch"
+          ? "Backend is not reachable. Start the backend server and try again."
+          : otpError.message,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -338,6 +411,12 @@ export default function AuthModal({
   const handleVerifyOtp = async () => {
     setError("");
     setSuccessMessage("");
+
+    if (!/^\d{6}$/.test(form.resetOtp.trim())) {
+      setError("Enter the valid 6-digit OTP.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -360,7 +439,11 @@ export default function AuthModal({
       setResetStep("password");
       setSuccessMessage(data.message || "OTP verified successfully.");
     } catch (otpError) {
-      setError(otpError.message === "Failed to fetch" ? "Backend is not reachable. Start the backend server and try again." : otpError.message);
+      setError(
+        otpError.message === "Failed to fetch"
+          ? "Backend is not reachable. Start the backend server and try again."
+          : otpError.message,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -394,7 +477,9 @@ export default function AuthModal({
           throw new Error(data.message || "Password reset failed.");
         }
 
-        setSuccessMessage(data.message || "Password updated successfully. Please login.");
+        setSuccessMessage(
+          data.message || "Password updated successfully. Please login.",
+        );
         setForm((prev) => ({
           ...prev,
           password: "",
@@ -413,18 +498,17 @@ export default function AuthModal({
         throw new Error("Password and confirm password must match.");
       }
 
-      const loginPayload =
-        isRegister
-          ? {
-              ...form,
-              otpChannel: form.otpChannel,
-              otp: registrationOtpRequired ? form.registrationOtp : "",
-            }
-          : {
-              email: form.email,
-              password: form.password,
-              role: form.role,
-            };
+      const loginPayload = isRegister
+        ? {
+            ...form,
+            otpChannel: form.otpChannel,
+            otp: registrationOtpRequired ? form.registrationOtp : "",
+          }
+        : {
+            email: form.email,
+            password: form.password,
+            role: form.role,
+          };
 
       let detectedAdminAccount = false;
 
@@ -440,7 +524,9 @@ export default function AuthModal({
         const statusData = await statusResponse.json();
 
         if (statusResponse.ok && !statusData.registered) {
-          throw new Error(statusData.message || notRegisteredMessage(form.role));
+          throw new Error(
+            statusData.message || notRegisteredMessage(form.role),
+          );
         }
 
         detectedAdminAccount = statusData.actualRole === "admin";
@@ -497,7 +583,9 @@ export default function AuthModal({
       if (isRegister && data.requiresOtp) {
         const selectedOtpChannel = data.otpChannel || form.otpChannel;
         setRegistrationOtpRequired(true);
-        setSuccessMessage(`OTP sent to registered ${otpChannelLabel(selectedOtpChannel)}. Use it within 5 minutes.`);
+        setSuccessMessage(
+          `OTP sent to registered ${otpChannelLabel(selectedOtpChannel)}. Use it within 5 minutes.`,
+        );
         return;
       }
 
@@ -506,7 +594,11 @@ export default function AuthModal({
       onAuthSuccess?.(data.user);
       onClose();
     } catch (authError) {
-      setError(authError.message === "Failed to fetch" ? "Backend is not reachable. Start the backend server and try again." : authError.message);
+      setError(
+        authError.message === "Failed to fetch"
+          ? "Backend is not reachable. Start the backend server and try again."
+          : authError.message,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -514,17 +606,40 @@ export default function AuthModal({
 
   return (
     <div className="auth-backdrop" onMouseDown={handleBackdropClose}>
-      <div className={modalClassName} onMouseDown={(event) => event.stopPropagation()}>
-        <button className="auth-close" type="button" onMouseDown={(event) => event.stopPropagation()} onClick={handleRequestClose} aria-label="Close">
+      <div
+        key={`${mode}-${isResetMode ? resetStep : "auth"}`}
+        ref={modalRef}
+        data-auth-mode={mode}
+        className={modalClassName}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          className="auth-close"
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={handleRequestClose}
+          aria-label="Close"
+        >
           <X size={18} />
         </button>
 
         <div className="auth-hero">
+          <div className="auth-brand" aria-label="ServiceHub">
+            <span className="auth-brand-mark" aria-hidden="true">
+              S
+            </span>
+            <span>
+              Service<span>Hub</span>
+            </span>
+          </div>
           <div className="auth-hero-icon">
             <BadgeIcon role={form.role} />
           </div>
           <span className="auth-eyebrow">{modeLabel}</span>
-          <h2>{authTitle}</h2>
+          <h2 id="auth-modal-title">{authTitle}</h2>
           <p>{authCopy}</p>
           <div className="auth-trust-row" aria-label="ServiceHub trust signals">
             <span>Verified services</span>
@@ -543,18 +658,22 @@ export default function AuthModal({
               </div>
             </div>
           ) : (
-          <div className="auth-role-tabs" aria-label="Account type">
-            {roleOptions.map((role) => (
-              <button
-                className={form.role === role ? "active" : ""}
-                key={role}
-                type="button"
-                onClick={() => setForm((prev) => ({ ...prev, role }))}
-              >
-                {role === "user" ? "Client" : role === "provider" ? "Provider" : "Admin"}
-              </button>
-            ))}
-          </div>
+            <div className="auth-role-tabs" aria-label="Account type">
+              {roleOptions.map((role) => (
+                <button
+                  className={form.role === role ? "active" : ""}
+                  key={role}
+                  type="button"
+                  onClick={() => setForm((prev) => ({ ...prev, role }))}
+                >
+                  {role === "user"
+                    ? "Client"
+                    : role === "provider"
+                      ? "Provider"
+                      : "Admin"}
+                </button>
+              ))}
+            </div>
           )}
 
           {isPasswordReset && (
@@ -595,7 +714,7 @@ export default function AuthModal({
               {resetStep !== "identifier" && (
                 <label>
                   OTP
-                  <div className="auth-input">
+                  <div className="auth-input auth-otp-input">
                     <Lock size={18} />
                     <input
                       type="text"
@@ -629,7 +748,9 @@ export default function AuthModal({
                     <div className="auth-input">
                       <Lock size={18} />
                       <input
-                        type={visiblePasswords.resetPassword ? "text" : "password"}
+                        type={
+                          visiblePasswords.resetPassword ? "text" : "password"
+                        }
                         value={form.resetPassword}
                         onChange={handleChange("resetPassword")}
                         placeholder="Minimum 6 characters"
@@ -639,10 +760,20 @@ export default function AuthModal({
                       <button
                         type="button"
                         className="auth-password-toggle"
-                        onClick={() => togglePasswordVisibility("resetPassword")}
-                        aria-label={visiblePasswords.resetPassword ? "Hide password" : "Show password"}
+                        onClick={() =>
+                          togglePasswordVisibility("resetPassword")
+                        }
+                        aria-label={
+                          visiblePasswords.resetPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
                       >
-                        {visiblePasswords.resetPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {visiblePasswords.resetPassword ? (
+                          <EyeOff size={18} />
+                        ) : (
+                          <Eye size={18} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -652,7 +783,11 @@ export default function AuthModal({
                     <div className="auth-input">
                       <Lock size={18} />
                       <input
-                        type={visiblePasswords.resetConfirmPassword ? "text" : "password"}
+                        type={
+                          visiblePasswords.resetConfirmPassword
+                            ? "text"
+                            : "password"
+                        }
                         value={form.resetConfirmPassword}
                         onChange={handleChange("resetConfirmPassword")}
                         placeholder="Re-enter new password"
@@ -662,10 +797,20 @@ export default function AuthModal({
                       <button
                         type="button"
                         className="auth-password-toggle"
-                        onClick={() => togglePasswordVisibility("resetConfirmPassword")}
-                        aria-label={visiblePasswords.resetConfirmPassword ? "Hide password" : "Show password"}
+                        onClick={() =>
+                          togglePasswordVisibility("resetConfirmPassword")
+                        }
+                        aria-label={
+                          visiblePasswords.resetConfirmPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
                       >
-                        {visiblePasswords.resetConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {visiblePasswords.resetConfirmPassword ? (
+                          <EyeOff size={18} />
+                        ) : (
+                          <Eye size={18} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -756,12 +901,17 @@ export default function AuthModal({
                   >
                     <option value="">Choose service category</option>
                     {providerCategories.map((category) => (
-                      <option key={category} value={category}>{category}</option>
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
                     ))}
                     <option value="Other">Other</option>
                   </select>
                 </div>
-                <p className="auth-field-helper">Can't find your service? Select 'Other' and enter your service category.</p>
+                <p className="auth-field-helper">
+                  Can't find your service? Select 'Other' and enter your service
+                  category.
+                </p>
               </label>
 
               {form.category === "Other" && (
@@ -791,7 +941,9 @@ export default function AuthModal({
                   >
                     <option value="">Choose location</option>
                     {providerLocations.map((location) => (
-                      <option key={location} value={location}>{location}</option>
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -835,81 +987,106 @@ export default function AuthModal({
                     onChange={handleWorkImageChange}
                   />
                 </div>
-                {form.workImageName && <span className="auth-file-selected">{form.workImageName}</span>}
+                {form.workImageName && (
+                  <span className="auth-file-selected">
+                    {form.workImageName}
+                  </span>
+                )}
               </label>
             </div>
           )}
 
           {!isPasswordReset && (
-          <label>
-            {t("email")}
-            <div className="auth-input">
-              <Mail size={18} />
-              <input
-                type="email"
-                value={form.email}
-                onChange={handleChange("email")}
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-          </label>
+            <label>
+              {t("email")}
+              <div className="auth-input">
+                <Mail size={18} />
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={handleChange("email")}
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+              {isLogin && (
+                <p className="auth-field-helper">
+                  Use your registered email address to log in.
+                </p>
+              )}
+            </label>
           )}
 
           {!isPasswordReset && (
-          <label>
-            {t("password")}
-            <div className="auth-input">
-              <Lock size={18} />
-              <input
-                type={visiblePasswords.password ? "text" : "password"}
-                value={form.password}
-                onChange={handleChange("password")}
-                placeholder="Minimum 6 characters"
-                minLength="6"
-                required
-              />
-              <button
-                type="button"
-                className="auth-password-toggle"
-                onClick={() => togglePasswordVisibility("password")}
-                aria-label={visiblePasswords.password ? "Hide password" : "Show password"}
-              >
-                {visiblePasswords.password ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </label>
+            <label>
+              {t("password")}
+              <div className="auth-input">
+                <Lock size={18} />
+                <input
+                  type={visiblePasswords.password ? "text" : "password"}
+                  value={form.password}
+                  onChange={handleChange("password")}
+                  placeholder="Minimum 6 characters"
+                  minLength="6"
+                  required
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => togglePasswordVisibility("password")}
+                  aria-label={
+                    visiblePasswords.password
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                >
+                  {visiblePasswords.password ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
+                </button>
+              </div>
+            </label>
           )}
 
           {isRegister && (
-          <label>
-            {t("confirmPassword")}
-            <div className="auth-input">
-              <Lock size={18} />
-              <input
-                type={visiblePasswords.confirmPassword ? "text" : "password"}
-                value={form.confirmPassword}
-                onChange={handleChange("confirmPassword")}
-                placeholder="Re-enter password"
-                minLength="6"
-                required
-              />
-              <button
-                type="button"
-                className="auth-password-toggle"
-                onClick={() => togglePasswordVisibility("confirmPassword")}
-                aria-label={visiblePasswords.confirmPassword ? "Hide password" : "Show password"}
-              >
-                {visiblePasswords.confirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </label>
+            <label>
+              {t("confirmPassword")}
+              <div className="auth-input">
+                <Lock size={18} />
+                <input
+                  type={visiblePasswords.confirmPassword ? "text" : "password"}
+                  value={form.confirmPassword}
+                  onChange={handleChange("confirmPassword")}
+                  placeholder="Re-enter password"
+                  minLength="6"
+                  required
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => togglePasswordVisibility("confirmPassword")}
+                  aria-label={
+                    visiblePasswords.confirmPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                >
+                  {visiblePasswords.confirmPassword ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
+                </button>
+              </div>
+            </label>
           )}
 
           {isRegister && registrationOtpRequired && (
             <label>
               Registration OTP
-              <div className="auth-input">
+              <div className="auth-input auth-otp-input">
                 <Lock size={18} />
                 <input
                   type="text"
@@ -925,10 +1102,31 @@ export default function AuthModal({
           )}
 
           {error && <div className="auth-error">{error}</div>}
-          {successMessage && <div className="auth-success">{successMessage}</div>}
+          {successMessage && (
+            <div className="auth-success">{successMessage}</div>
+          )}
+          {(registrationOtpRequired ||
+            (isPasswordReset && resetStep === "otp")) && (
+            <div className="auth-security-note">
+              <Lock size={16} />
+              <span>Your information is safe with us.</span>
+            </div>
+          )}
           {(!isPasswordReset || resetStep === "password") && (
-            <button className="auth-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Please wait..." : isPasswordReset ? "Update password" : isRegister && registrationOtpRequired ? "Verify OTP and register" : isRegister ? "Generate registered OTP on email" : t("login")}
+            <button
+              className="auth-submit"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? "Please wait..."
+                : isPasswordReset
+                  ? "Update password"
+                  : isRegister && registrationOtpRequired
+                    ? "Verify OTP and register"
+                    : isRegister
+                      ? "Generate registered OTP on email"
+                      : t("login")}
             </button>
           )}
         </form>
@@ -940,12 +1138,19 @@ export default function AuthModal({
               type="button"
               onClick={() => {
                 setError("");
-              setSuccessMessage("");
-              setIsResetMode(true);
-              setResetStep("identifier");
-              setResetToken("");
-              setForm((prev) => ({ ...prev, role: lockedRole ? initialRole : prev.role === "admin" ? "user" : prev.role }));
-            }}
+                setSuccessMessage("");
+                setIsResetMode(true);
+                setResetStep("identifier");
+                setResetToken("");
+                setForm((prev) => ({
+                  ...prev,
+                  role: lockedRole
+                    ? initialRole
+                    : prev.role === "admin"
+                      ? "user"
+                      : prev.role,
+                }));
+              }}
             >
               {t("forgotPassword")}
             </button>
@@ -955,35 +1160,38 @@ export default function AuthModal({
             className="auth-switch auth-switch-right"
             type="button"
             onClick={() => {
-            setError("");
-            setSuccessMessage("");
-            setRegistrationOtpRequired(false);
-            if (isPasswordReset) {
-              setIsResetMode(false);
-              setResetStep("identifier");
-              setResetToken("");
-              setForm((prev) => ({
-                ...prev,
-                resetIdentifier: "",
-                resetOtp: "",
-                resetPassword: "",
-                resetConfirmPassword: "",
-              }));
-              return;
-            }
+              setError("");
+              setSuccessMessage("");
+              setRegistrationOtpRequired(false);
+              if (isPasswordReset) {
+                setIsResetMode(false);
+                setResetStep("identifier");
+                setResetToken("");
+                setForm((prev) => ({
+                  ...prev,
+                  resetIdentifier: "",
+                  resetOtp: "",
+                  resetPassword: "",
+                  resetConfirmPassword: "",
+                }));
+                return;
+              }
               onModeChange(isRegister ? "login" : "register");
             }}
           >
             {isPasswordReset
               ? t("backToLogin")
               : isRegister
-              ? form.role === "provider"
-                ? t("alreadyProvider")
-                : t("alreadyAccount")
-              : form.role === "provider"
-              ? t("newProviderRegister")
-              : t("newUserRegister")}
+                ? form.role === "provider"
+                  ? t("alreadyProvider")
+                  : t("alreadyAccount")
+                : form.role === "provider"
+                  ? t("newProviderRegister")
+                  : t("newUserRegister")}
           </button>
+        </div>
+        <div className="auth-security-footer">
+          <Lock size={13} /> Your data is encrypted and secure.
         </div>
       </div>
     </div>
@@ -991,7 +1199,11 @@ export default function AuthModal({
 }
 
 function BadgeIcon({ role }) {
-  return role === "provider" ? <BriefcaseBusiness size={20} /> : <User size={20} />;
+  return role === "provider" ? (
+    <BriefcaseBusiness size={20} />
+  ) : (
+    <User size={20} />
+  );
 }
 
 function OtpChannelPicker({ value, onChange }) {
@@ -999,7 +1211,9 @@ function OtpChannelPicker({ value, onChange }) {
     <label>
       Send OTP by
       <div className="otp-channel-options">
-        <label className={`otp-channel-option ${value === "email" ? "active" : ""}`}>
+        <label
+          className={`otp-channel-option ${value === "email" ? "active" : ""}`}
+        >
           <input
             type="radio"
             name="otpChannel"
