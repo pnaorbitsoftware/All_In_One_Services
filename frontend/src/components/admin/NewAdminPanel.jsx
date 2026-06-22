@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { releaseProviderPayment } from "../../api/payments";
 import {
   LayoutDashboard,
@@ -20,7 +20,13 @@ import {
   Send,
   LogOut,
   FolderOpen,
+  LifeBuoy,
+  Paperclip,
+  AlertCircle,
+  FileText,
 } from "lucide-react";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function NewAdminPanel({
   adminData,
@@ -42,6 +48,239 @@ export default function NewAdminPanel({
   const [replyText, setReplyText] = useState("");
   const [historyFilter, setHistoryFilter] = useState("all_bookings");
   const [activeDrawerProvider, setActiveDrawerProvider] = useState(null);
+
+  // Helpdesk Ticketing States
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [supportAnalytics, setSupportAnalytics] = useState(null);
+  const [supportStaff, setSupportStaff] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [ticketMessages, setTicketMessages] = useState([]);
+  const [ticketReplyText, setTicketReplyText] = useState("");
+  const [ticketReplyAttachment, setTicketReplyAttachment] = useState(null);
+  const [isInternalNote, setIsInternalNote] = useState(false);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [replyLoading, setReplyLoading] = useState(false);
+
+  // Filters for Helpdesk Queue
+  const [ticketStatusFilter, setTicketStatusFilter] = useState("All");
+  const [ticketCategoryFilter, setTicketCategoryFilter] = useState("All");
+  const [ticketPriorityFilter, setTicketPriorityFilter] = useState("All");
+  const [ticketSearchQuery, setTicketSearchQuery] = useState("");
+
+  const ticketMessagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (activeTab === "support" && ticketMessagesEndRef.current) {
+      ticketMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [ticketMessages, activeTab]);
+
+  const fetchSupportTickets = async () => {
+    setSupportLoading(true);
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const url = new URL(`${API_URL}/support/tickets`);
+      url.searchParams.append("status", ticketStatusFilter);
+      url.searchParams.append("category", ticketCategoryFilter);
+      url.searchParams.append("priority", ticketPriorityFilter);
+      url.searchParams.append("search", ticketSearchQuery);
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSupportTickets(data.tickets || []);
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMessage?.("Could not fetch support tickets.");
+    } finally {
+      setSupportLoading(false);
+    }
+  };
+
+  const fetchSupportAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const res = await fetch(`${API_URL}/support/analytics`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSupportAnalytics(data.stats);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const fetchSupportStaff = async () => {
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const res = await fetch(`${API_URL}/support/staff`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSupportStaff(data.staff || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadTicketDetails = async (ticketId) => {
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const res = await fetch(`${API_URL}/support/tickets/${ticketId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSelectedTicket(data.ticket);
+        setTicketMessages(data.messages || []);
+      } else {
+        setStatusMessage?.(data.message || "Failed to load ticket details.");
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMessage?.("Error fetching ticket details.");
+    }
+  };
+
+  const handleTicketStatusChange = async (ticketId, nextStatus) => {
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const res = await fetch(`${API_URL}/support/tickets/${ticketId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSelectedTicket(data.data);
+        setStatusMessage?.(`Ticket status set to ${nextStatus}.`);
+        fetchSupportTickets();
+        fetchSupportAnalytics();
+      } else {
+        setStatusMessage?.(data.message || "Could not update status.");
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMessage?.("Server error updating status.");
+    }
+  };
+
+  const handleTicketAssign = async (ticketId, staffId) => {
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const res = await fetch(`${API_URL}/support/tickets/${ticketId}/assign`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ assignedTo: staffId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSelectedTicket(data.data);
+        setStatusMessage?.("Ticket successfully assigned.");
+        fetchSupportTickets();
+      } else {
+        setStatusMessage?.(data.message || "Could not assign ticket.");
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMessage?.("Server error assigning ticket.");
+    }
+  };
+
+  const handleAdminFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setStatusMessage?.("File size exceeds 5MB limit.");
+      return;
+    }
+
+    const allowedTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/webp",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      setStatusMessage?.("Unsupported file type. Use Images, PDF, Word, or TXT.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setTicketReplyAttachment({ name: file.name, url: reader.result });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSendTicketReply = async (e) => {
+    e.preventDefault();
+    if (!ticketReplyText.trim() && !ticketReplyAttachment) return;
+
+    setReplyLoading(true);
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const res = await fetch(`${API_URL}/support/tickets/${selectedTicket.ticketId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message: ticketReplyText,
+          attachment: ticketReplyAttachment,
+          isInternal: isInternalNote,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTicketMessages(prev => [...prev, data.data]);
+        setTicketReplyText("");
+        setTicketReplyAttachment(null);
+        setStatusMessage?.(isInternalNote ? "Internal note added." : "Reply dispatched to user.");
+        fetchSupportTickets();
+      } else {
+        setStatusMessage?.(data.message || "Failed to submit response.");
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMessage?.("Error connecting to support backend.");
+    } finally {
+      setReplyLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "support") {
+      fetchSupportTickets();
+      fetchSupportAnalytics();
+      fetchSupportStaff();
+    }
+  }, [activeTab, ticketStatusFilter, ticketCategoryFilter, ticketPriorityFilter, ticketSearchQuery]);
+
+
 
   // Handle logout
   const handleLogout = () => {
@@ -106,6 +345,7 @@ export default function NewAdminPanel({
     { id: "providers", label: "Providers Network", icon: Users },
     { id: "payments", label: "Settlements", icon: CreditCard },
     { id: "messages", label: "CRM Inbox", icon: MessageSquare },
+    { id: "support", label: "Helpdesk Tickets", icon: LifeBuoy },
     { id: "analytics", label: "Analytics Dashboard", icon: BarChart3 },
     { id: "history", label: "Archive Vault", icon: History },
   ];
@@ -1015,6 +1255,430 @@ export default function NewAdminPanel({
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* HELPDESK TICKETS TAB */}
+          {activeTab === "support" && (
+            <div className="space-y-6">
+              {/* Analytics Summary */}
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  {
+                    label: "Total Tickets",
+                    value: supportAnalytics?.total ?? 0,
+                    icon: LifeBuoy,
+                    color: "text-slate-600 bg-slate-100",
+                  },
+                  {
+                    label: "Open Tickets",
+                    value: supportAnalytics?.open ?? 0,
+                    icon: AlertCircle,
+                    color: "text-blue-600 bg-blue-50",
+                  },
+                  {
+                    label: "Resolved",
+                    value: supportAnalytics?.resolved ?? 0,
+                    icon: CheckCircle,
+                    color: "text-emerald-600 bg-emerald-50",
+                  },
+                  {
+                    label: "Avg Resolution",
+                    value: supportAnalytics?.avgResolutionTime ?? "N/A",
+                    icon: Clock,
+                    color: "text-purple-600 bg-purple-50",
+                  },
+                  {
+                    label: "High/Urgent",
+                    value: supportAnalytics?.highPriority ?? 0,
+                    icon: AlertCircle,
+                    color: "text-rose-600 bg-rose-50",
+                  },
+                ].map((stat, idx) => (
+                  <div key={idx} className="rounded-2xl p-5 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{stat.label}</p>
+                      <h3 className="mt-1.5 text-xl font-black text-slate-900">{stat.value}</h3>
+                    </div>
+                    <div className={`p-2.5 rounded-lg ${stat.color}`}>
+                      <stat.icon size={20} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Main Ticket Interface */}
+              <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden flex h-[620px]">
+                {/* Left Ticket Queue Sidebar */}
+                <div className="w-1/3 border-r flex flex-col bg-slate-50/30 flex-shrink-0">
+                  {/* Search & Filters */}
+                  <div className="p-4 border-b bg-white space-y-3 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900 text-sm">Helpdesk Queue</h3>
+                      <button
+                        onClick={() => {
+                          fetchSupportTickets();
+                          fetchSupportAnalytics();
+                        }}
+                        className="text-[11px] text-blue-600 font-bold hover:underline"
+                      >
+                        Sync Queue
+                      </button>
+                    </div>
+
+                    <div className="relative font-sans">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={ticketSearchQuery}
+                        onChange={(e) => setTicketSearchQuery(e.target.value)}
+                        placeholder="Search ID, subject, email..."
+                        className="w-full rounded-xl border border-slate-200 bg-slate-55 pl-9 pr-3 py-2 text-[11px] text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition placeholder-slate-400 font-medium"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1 text-[10px]">
+                      <select
+                        value={ticketStatusFilter}
+                        onChange={(e) => setTicketStatusFilter(e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                      >
+                        <option value="All">All Status</option>
+                        <option value="Open">Open</option>
+                        <option value="Assigned">Assigned</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Waiting for Customer">Waiting</option>
+                        <option value="Resolved">Resolved</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+
+                      <select
+                        value={ticketCategoryFilter}
+                        onChange={(e) => setTicketCategoryFilter(e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                      >
+                        <option value="All">All Categories</option>
+                        <option value="Booking Issue">Booking</option>
+                        <option value="Payment Issue">Payment</option>
+                        <option value="Provider Issue">Provider</option>
+                        <option value="Account Issue">Account</option>
+                        <option value="Technical Issue">Technical</option>
+                        <option value="General Inquiry">General</option>
+                      </select>
+
+                      <select
+                        value={ticketPriorityFilter}
+                        onChange={(e) => setTicketPriorityFilter(e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                      >
+                        <option value="All">All Priority</option>
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                        <option value="Urgent">Urgent</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Queue Scrollable View */}
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                    {supportLoading ? (
+                      <div className="p-8 text-center text-slate-400 text-xs font-semibold flex flex-col items-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                        Fetching Queue...
+                      </div>
+                    ) : supportTickets.length === 0 ? (
+                      <div className="p-12 text-center text-slate-400 text-xs font-semibold">
+                        No support tickets match these filters.
+                      </div>
+                    ) : (
+                      supportTickets.map((t) => (
+                        <div
+                          key={t.ticketId}
+                          onClick={() => loadTicketDetails(t.ticketId)}
+                          className={`p-4 hover:bg-slate-50 transition cursor-pointer text-left ${
+                            selectedTicket?.ticketId === t.ticketId ? "bg-blue-50/50 hover:bg-blue-50/50 border-l-4 border-blue-500" : ""
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t.ticketId}</span>
+                            <span
+                              className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                t.priority === "Urgent"
+                                  ? "bg-rose-50 text-rose-500 border-rose-100"
+                                  : t.priority === "High"
+                                  ? "bg-orange-50 text-orange-500 border-orange-100"
+                                  : "bg-slate-50 text-slate-500 border-slate-100"
+                              }`}
+                            >
+                              {t.priority}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-extrabold text-slate-800 line-clamp-1 mb-1">{t.subject}</h4>
+                          <div className="flex items-center justify-between text-[9px] text-slate-400 font-semibold mt-2">
+                            <span>By: {t.userName}</span>
+                            <span className={`px-1.5 py-0.5 rounded font-black uppercase text-[8px] ${
+                              t.status === "Resolved"
+                                ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                                : t.status === "Closed"
+                                ? "bg-slate-100 text-slate-500"
+                                : t.status === "Waiting for Customer"
+                                ? "bg-amber-50 text-amber-600 border border-amber-100"
+                                : "bg-blue-50 text-blue-600 border border-blue-100"
+                            }`}>{t.status}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Details & Conversation Panel */}
+                <div className="w-2/3 flex flex-col bg-white">
+                  {selectedTicket ? (
+                    <div className="flex flex-col h-full">
+                      {/* Ticket Details Header */}
+                      <div className="p-5 border-b bg-slate-50/40 flex-shrink-0 flex items-start justify-between gap-4">
+                        <div className="text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-blue-600 tracking-wider uppercase">{selectedTicket.ticketId}</span>
+                            {selectedTicket.bookingId && (
+                              <span className="text-[9px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border">
+                                Booking: {selectedTicket.bookingId}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-sm font-black text-slate-900 mt-1 leading-snug">{selectedTicket.subject}</h3>
+                          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">
+                            Cat: {selectedTicket.category} • Priority: {selectedTicket.priority} • User: {selectedTicket.userName} ({selectedTicket.userEmail})
+                          </p>
+                        </div>
+
+                        {/* Dropdown controls (Assign & Status) */}
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                          <div className="flex items-center gap-2 text-xs font-bold">
+                            <span className="text-slate-400 w-16 text-right">Assignee:</span>
+                            <select
+                              value={selectedTicket.assignedTo || ""}
+                              onChange={(e) => handleTicketAssign(selectedTicket.ticketId, e.target.value)}
+                              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
+                            >
+                              <option value="">Unassigned</option>
+                              {supportStaff.map((staff) => (
+                                <option key={staff._id} value={staff._id}>
+                                  {staff.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-xs font-bold">
+                            <span className="text-slate-400 w-16 text-right">Status:</span>
+                            <select
+                              value={selectedTicket.status}
+                              onChange={(e) => handleTicketStatusChange(selectedTicket.ticketId, e.target.value)}
+                              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
+                            >
+                              <option value="Open">Open</option>
+                              <option value="Assigned">Assigned</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Waiting for Customer">Waiting for Customer</option>
+                              <option value="Resolved">Resolved</option>
+                              <option value="Closed">Closed</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Message Thread view */}
+                      <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/20">
+                        {/* Original ticket details card */}
+                        <div className="p-4 rounded-xl bg-slate-50 border text-left">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-250 text-slate-600">
+                              <User size={12} />
+                            </div>
+                            <div>
+                              <span className="text-[11px] font-black text-slate-800">{selectedTicket.userName}</span>
+                              <span className="text-[9px] text-slate-400 font-bold ml-2">CREATED TICKETS</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed font-medium white-space: pre-wrap;">
+                            {selectedTicket.description}
+                          </p>
+
+                          {/* Original attachments */}
+                          {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
+                            <div className="mt-3.5 grid grid-cols-2 gap-2">
+                              {selectedTicket.attachments.map((file, idx) => (
+                                <a
+                                  key={idx}
+                                  href={file.url}
+                                  download={file.name}
+                                  className="flex items-center gap-2 p-2 border bg-white hover:bg-slate-50 rounded-xl transition text-left"
+                                >
+                                  <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-bold text-slate-700 truncate">{file.name}</p>
+                                    <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">Download File</p>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Thread messages list */}
+                        {ticketMessages.map((msg, index) => {
+                          const isInternal = msg.senderRole === "internal";
+                          const isUser = msg.senderRole === "user";
+                          return (
+                            <div
+                              key={index}
+                              className={`p-4 rounded-xl border text-left ${
+                                isInternal
+                                  ? "bg-amber-50/80 border-amber-200 text-amber-905 shadow-xs"
+                                  : isUser
+                                  ? "bg-white border-slate-105"
+                                  : "bg-blue-50/30 border-blue-105"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className={`grid h-6 w-6 place-items-center rounded-full border ${
+                                      isUser
+                                        ? "bg-slate-150 border-slate-200 text-slate-600"
+                                        : isInternal
+                                        ? "bg-amber-200/50 border-amber-300 text-amber-700"
+                                        : "bg-blue-100 border-blue-200 text-blue-700"
+                                    }`}
+                                  >
+                                    {isUser ? <User size={12} /> : <LifeBuoy size={12} />}
+                                  </div>
+                                  <div>
+                                    <span className="text-[11px] font-black text-slate-800">{msg.senderId?.name || "Support desk"}</span>
+                                    <span
+                                      className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ml-2 ${
+                                        isInternal
+                                          ? "bg-amber-200 text-amber-800"
+                                          : isUser
+                                          ? "bg-slate-105 text-slate-600"
+                                          : "bg-blue-105 text-blue-800"
+                                      }`}
+                                    >
+                                      {isInternal ? "Internal Note" : isUser ? "Client" : "Support Desk"}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="text-[9px] text-slate-400 font-semibold">
+                                  {new Date(msg.createdAt).toLocaleDateString("en-IN", {
+                                    day: "numeric",
+                                    month: "short",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-650 leading-relaxed font-medium white-space: pre-wrap;">
+                                {msg.message}
+                              </p>
+
+                              {/* Message attachment */}
+                              {msg.attachment && msg.attachment.url && (
+                                <div className="mt-3.5">
+                                  <a
+                                    href={msg.attachment.url}
+                                    download={msg.attachment.name}
+                                    className="inline-flex items-center gap-2 p-2 border bg-white hover:bg-slate-50 rounded-xl transition text-left max-w-sm"
+                                  >
+                                    <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-[10px] font-bold text-slate-700 truncate">{msg.attachment.name}</p>
+                                      <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">Download File</p>
+                                    </div>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div ref={ticketMessagesEndRef} />
+                      </div>
+
+                      {/* Reply Form */}
+                      <form onSubmit={handleSendTicketReply} className="p-4 border-t bg-slate-50/50 flex-shrink-0 text-left">
+                        {ticketReplyAttachment && (
+                          <div className="mb-2 flex items-center justify-between text-xs px-2.5 py-1.5 bg-white rounded-xl border">
+                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
+                              <Paperclip size={14} className="text-pink-500" />
+                              {ticketReplyAttachment.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setTicketReplyAttachment(null)}
+                              className="text-slate-400 hover:text-slate-700"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <label className="grid h-9 w-9 place-items-center rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 cursor-pointer transition flex-shrink-0">
+                            <Paperclip size={16} />
+                            <input type="file" className="hidden" onChange={handleAdminFileChange} />
+                          </label>
+
+                          <input
+                            type="text"
+                            value={ticketReplyText}
+                            onChange={(e) => setTicketReplyText(e.target.value)}
+                            placeholder={isInternalNote ? "Write an internal team note..." : "Respond to the client..."}
+                            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 transition"
+                          />
+
+                          <button
+                            type="submit"
+                            disabled={replyLoading || (!ticketReplyText.trim() && !ticketReplyAttachment)}
+                            className={`flex items-center gap-1.5 px-4 rounded-xl text-xs font-black text-white disabled:opacity-45 transition flex-shrink-0 ${
+                              isInternalNote ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-750"
+                            }`}
+                          >
+                            {replyLoading ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <>
+                                <Send size={12} /> {isInternalNote ? "Add Note" : "Send Reply"}
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Internal Note Checkbox */}
+                        <div className="mt-3.5 flex items-center gap-2 text-xs font-bold text-slate-500 select-none">
+                          <input
+                            type="checkbox"
+                            id="internalNoteCheckbox"
+                            checked={isInternalNote}
+                            onChange={(e) => setIsInternalNote(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <label htmlFor="internalNoteCheckbox" className="cursor-pointer">
+                            Mark as Internal Note (Only visible to support agents)
+                          </label>
+                        </div>
+                      </form>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400 text-xs font-bold">
+                      <LifeBuoy className="h-12 w-12 text-slate-300 mb-3 animate-bounce" />
+                      Select a support ticket from the queue list to review thread.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
