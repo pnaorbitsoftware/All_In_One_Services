@@ -8,10 +8,21 @@ const supportTicketSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    ticketNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    role: {
+      type: String,
+      enum: ["user", "provider"],
+      required: true,
+      default: "user",
     },
     userName: {
       type: String,
@@ -24,44 +35,56 @@ const supportTicketSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    userPhone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     subject: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     description: {
       type: String,
       required: true,
       trim: true,
+      maxlength: 500,
     },
     category: {
       type: String,
       required: true,
       enum: [
-        "Booking Issue",
-        "Payment Issue",
-        "Provider Issue",
-        "Account Issue",
         "Technical Issue",
-        "General Inquiry",
+        "Payment Issue",
+        "Service Issue",
+        "Account Issue",
+        "Other",
       ],
     },
     priority: {
       type: String,
       required: true,
-      enum: ["Low", "Medium", "High", "Urgent"],
+      enum: ["Low", "Medium", "High"],
     },
     status: {
       type: String,
-      enum: [
-        "Open",
-        "Assigned",
-        "In Progress",
-        "Waiting for Customer",
-        "Resolved",
-        "Closed",
-      ],
+      enum: ["Open", "In Progress", "Resolved", "Closed"],
       default: "Open",
+    },
+    adminResponse: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    adminRespondedAt: {
+      type: Date,
+      default: null,
+    },
+    adminRespondedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
     attachments: [
       {
@@ -87,10 +110,11 @@ const supportTicketSchema = new mongoose.Schema(
 );
 
 supportTicketSchema.index({ userId: 1 });
-supportTicketSchema.index({ ticketId: 1 }, { unique: true });
+supportTicketSchema.index({ role: 1 });
 supportTicketSchema.index({ status: 1 });
 supportTicketSchema.index({ category: 1 });
 supportTicketSchema.index({ priority: 1 });
+supportTicketSchema.index({ createdAt: -1 });
 
 const SupportTicket = mongoose.model("SupportTicket", supportTicketSchema);
 

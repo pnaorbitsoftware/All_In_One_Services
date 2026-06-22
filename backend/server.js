@@ -14,7 +14,7 @@ import locationRoutes from "./src/routes/locationRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
 import providerRoutes from "./src/routes/providerRoutes.js";
 import supportRoutes from "./src/routes/supportRoutes.js";
-import { connectToDatabase, getDatabaseStatus, mongoDbName, mongoUri } from "./src/database/mongo.js";
+import { connectToDatabase, effectiveMongoUri, getDatabaseStatus, getSafeMongoUri, mongoDbName } from "./src/database/mongo.js";
 import setupDatabase from "./src/database/setupDatabase.js";
 import { responseTimeLogger } from "./src/middleware/performance.js";
 import { setupTrackingSocket } from "./src/socket/trackingSocket.js";
@@ -197,10 +197,13 @@ const runStartupMaintenance = async () => {
 const startServer = async () => {
   try {
     const connectedAt = Date.now();
+    console.log(
+      `MongoDB connection mode: ${effectiveMongoUri.startsWith("mongodb://") ? "direct hosts" : "SRV"}`
+    );
     await connectToDatabase();
 
     console.log(
-      `Connected to MongoDB: ${mongoUri}${mongoDbName} in ${Date.now() - connectedAt}ms`
+      `Connected to MongoDB: ${getSafeMongoUri()} ${mongoDbName} in ${Date.now() - connectedAt}ms`
     );
 
     const server = http.createServer(app);
@@ -230,6 +233,11 @@ const startServer = async () => {
     });
   } catch (error) {
     console.error(`MongoDB connection failed: ${error.message}`);
+    if (/IP.*whitelist|Atlas cluster/i.test(error.message)) {
+      console.error(
+        "Atlas action required: open MongoDB Atlas > Network Access and add your current IP address, or temporarily allow 0.0.0.0/0 for development."
+      );
+    }
   }
 };
 

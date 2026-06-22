@@ -24,6 +24,9 @@ import {
   Paperclip,
   AlertCircle,
   FileText,
+  Search,
+  Loader2,
+  User,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -58,11 +61,11 @@ export default function NewAdminPanel({
   const [ticketReplyAttachment, setTicketReplyAttachment] = useState(null);
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [replyLoading, setReplyLoading] = useState(false);
 
   // Filters for Helpdesk Queue
   const [ticketStatusFilter, setTicketStatusFilter] = useState("All");
+  const [ticketRoleFilter, setTicketRoleFilter] = useState("All");
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState("All");
   const [ticketPriorityFilter, setTicketPriorityFilter] = useState("All");
   const [ticketSearchQuery, setTicketSearchQuery] = useState("");
@@ -81,6 +84,7 @@ export default function NewAdminPanel({
       const token = localStorage.getItem("servicehub_token");
       const url = new URL(`${API_URL}/support/tickets`);
       url.searchParams.append("status", ticketStatusFilter);
+      url.searchParams.append("role", ticketRoleFilter);
       url.searchParams.append("category", ticketCategoryFilter);
       url.searchParams.append("priority", ticketPriorityFilter);
       url.searchParams.append("search", ticketSearchQuery);
@@ -101,7 +105,6 @@ export default function NewAdminPanel({
   };
 
   const fetchSupportAnalytics = async () => {
-    setAnalyticsLoading(true);
     try {
       const token = localStorage.getItem("servicehub_token");
       const res = await fetch(`${API_URL}/support/analytics`, {
@@ -113,8 +116,6 @@ export default function NewAdminPanel({
       }
     } catch (err) {
       console.error(err);
-    } finally {
-      setAnalyticsLoading(false);
     }
   };
 
@@ -273,11 +274,15 @@ export default function NewAdminPanel({
 
   useEffect(() => {
     if (activeTab === "support") {
-      fetchSupportTickets();
-      fetchSupportAnalytics();
-      fetchSupportStaff();
+      const timer = window.setTimeout(() => {
+        fetchSupportTickets();
+        fetchSupportAnalytics();
+        fetchSupportStaff();
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
-  }, [activeTab, ticketStatusFilter, ticketCategoryFilter, ticketPriorityFilter, ticketSearchQuery]);
+    return undefined;
+  }, [activeTab, ticketStatusFilter, ticketRoleFilter, ticketCategoryFilter, ticketPriorityFilter, ticketSearchQuery]);
 
 
 
@@ -1279,22 +1284,22 @@ export default function NewAdminPanel({
                     color: "text-blue-600 bg-blue-50",
                   },
                   {
+                    label: "In Progress",
+                    value: supportAnalytics?.inProgress ?? 0,
+                    icon: Clock,
+                    color: "text-amber-600 bg-amber-50",
+                  },
+                  {
                     label: "Resolved",
                     value: supportAnalytics?.resolved ?? 0,
                     icon: CheckCircle,
                     color: "text-emerald-600 bg-emerald-50",
                   },
                   {
-                    label: "Avg Resolution",
-                    value: supportAnalytics?.avgResolutionTime ?? "N/A",
-                    icon: Clock,
-                    color: "text-purple-600 bg-purple-50",
-                  },
-                  {
-                    label: "High/Urgent",
-                    value: supportAnalytics?.highPriority ?? 0,
+                    label: "Closed",
+                    value: supportAnalytics?.closed ?? 0,
                     icon: AlertCircle,
-                    color: "text-rose-600 bg-rose-50",
+                    color: "text-slate-600 bg-slate-100",
                   },
                 ].map((stat, idx) => (
                   <div key={idx} className="rounded-2xl p-5 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
@@ -1335,11 +1340,11 @@ export default function NewAdminPanel({
                         value={ticketSearchQuery}
                         onChange={(e) => setTicketSearchQuery(e.target.value)}
                         placeholder="Search ID, subject, email..."
-                        className="w-full rounded-xl border border-slate-200 bg-slate-55 pl-9 pr-3 py-2 text-[11px] text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition placeholder-slate-400 font-medium"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-[11px] text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition placeholder-slate-400 font-medium"
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <div className="grid grid-cols-4 gap-1 text-[10px]">
                       <select
                         value={ticketStatusFilter}
                         onChange={(e) => setTicketStatusFilter(e.target.value)}
@@ -1347,11 +1352,19 @@ export default function NewAdminPanel({
                       >
                         <option value="All">All Status</option>
                         <option value="Open">Open</option>
-                        <option value="Assigned">Assigned</option>
                         <option value="In Progress">In Progress</option>
-                        <option value="Waiting for Customer">Waiting</option>
                         <option value="Resolved">Resolved</option>
                         <option value="Closed">Closed</option>
+                      </select>
+
+                      <select
+                        value={ticketRoleFilter}
+                        onChange={(e) => setTicketRoleFilter(e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                      >
+                        <option value="All">All Roles</option>
+                        <option value="user">Users</option>
+                        <option value="provider">Providers</option>
                       </select>
 
                       <select
@@ -1360,12 +1373,11 @@ export default function NewAdminPanel({
                         className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
                       >
                         <option value="All">All Categories</option>
-                        <option value="Booking Issue">Booking</option>
                         <option value="Payment Issue">Payment</option>
-                        <option value="Provider Issue">Provider</option>
+                        <option value="Service Issue">Service</option>
                         <option value="Account Issue">Account</option>
                         <option value="Technical Issue">Technical</option>
-                        <option value="General Inquiry">General</option>
+                        <option value="Other">Other</option>
                       </select>
 
                       <select
@@ -1377,7 +1389,6 @@ export default function NewAdminPanel({
                         <option value="Low">Low</option>
                         <option value="Medium">Medium</option>
                         <option value="High">High</option>
-                        <option value="Urgent">Urgent</option>
                       </select>
                     </div>
                   </div>
@@ -1406,9 +1417,7 @@ export default function NewAdminPanel({
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t.ticketId}</span>
                             <span
                               className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                                t.priority === "Urgent"
-                                  ? "bg-rose-50 text-rose-500 border-rose-100"
-                                  : t.priority === "High"
+                                t.priority === "High"
                                   ? "bg-orange-50 text-orange-500 border-orange-100"
                                   : "bg-slate-50 text-slate-500 border-slate-100"
                               }`}
@@ -1416,7 +1425,7 @@ export default function NewAdminPanel({
                               {t.priority}
                             </span>
                           </div>
-                          <h4 className="text-xs font-extrabold text-slate-800 line-clamp-1 mb-1">{t.subject}</h4>
+                          <h4 className="text-xs font-extrabold text-slate-800 line-clamp-1 mb-1">{t.subject || t.category}</h4>
                           <div className="flex items-center justify-between text-[9px] text-slate-400 font-semibold mt-2">
                             <span>By: {t.userName}</span>
                             <span className={`px-1.5 py-0.5 rounded font-black uppercase text-[8px] ${
@@ -1424,8 +1433,6 @@ export default function NewAdminPanel({
                                 ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
                                 : t.status === "Closed"
                                 ? "bg-slate-100 text-slate-500"
-                                : t.status === "Waiting for Customer"
-                                ? "bg-amber-50 text-amber-600 border border-amber-100"
                                 : "bg-blue-50 text-blue-600 border border-blue-100"
                             }`}>{t.status}</span>
                           </div>
@@ -1450,9 +1457,9 @@ export default function NewAdminPanel({
                               </span>
                             )}
                           </div>
-                          <h3 className="text-sm font-black text-slate-900 mt-1 leading-snug">{selectedTicket.subject}</h3>
+                          <h3 className="text-sm font-black text-slate-900 mt-1 leading-snug">{selectedTicket.subject || selectedTicket.category}</h3>
                           <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">
-                            Cat: {selectedTicket.category} • Priority: {selectedTicket.priority} • User: {selectedTicket.userName} ({selectedTicket.userEmail})
+                            Cat: {selectedTicket.category} • Priority: {selectedTicket.priority} • Role: {selectedTicket.requesterRole || selectedTicket.role} • {selectedTicket.userName} ({selectedTicket.userEmail}) {selectedTicket.userPhone ? `• ${selectedTicket.userPhone}` : ""}
                           </p>
                         </div>
 
@@ -1482,9 +1489,7 @@ export default function NewAdminPanel({
                               className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
                             >
                               <option value="Open">Open</option>
-                              <option value="Assigned">Assigned</option>
                               <option value="In Progress">In Progress</option>
-                              <option value="Waiting for Customer">Waiting for Customer</option>
                               <option value="Resolved">Resolved</option>
                               <option value="Closed">Closed</option>
                             </select>
@@ -1497,7 +1502,7 @@ export default function NewAdminPanel({
                         {/* Original ticket details card */}
                         <div className="p-4 rounded-xl bg-slate-50 border text-left">
                           <div className="flex items-center gap-2 mb-2">
-                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-250 text-slate-600">
+                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-200 text-slate-600">
                               <User size={12} />
                             </div>
                             <div>
@@ -1534,29 +1539,30 @@ export default function NewAdminPanel({
                         {ticketMessages.map((msg, index) => {
                           const isInternal = msg.senderRole === "internal";
                           const isUser = msg.senderRole === "user";
+                          const isProvider = msg.senderRole === "provider";
                           return (
                             <div
                               key={index}
                               className={`p-4 rounded-xl border text-left ${
                                 isInternal
-                                  ? "bg-amber-50/80 border-amber-200 text-amber-905 shadow-xs"
-                                  : isUser
-                                  ? "bg-white border-slate-105"
-                                  : "bg-blue-50/30 border-blue-105"
+                                  ? "bg-amber-50/80 border-amber-200 text-amber-900 shadow-xs"
+                                  : isUser || isProvider
+                                  ? "bg-white border-slate-100"
+                                  : "bg-blue-50/30 border-blue-100"
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2 mb-2">
                                 <div className="flex items-center gap-2">
                                   <div
                                     className={`grid h-6 w-6 place-items-center rounded-full border ${
-                                      isUser
-                                        ? "bg-slate-150 border-slate-200 text-slate-600"
+                                      isUser || isProvider
+                                        ? "bg-slate-100 border-slate-200 text-slate-600"
                                         : isInternal
                                         ? "bg-amber-200/50 border-amber-300 text-amber-700"
                                         : "bg-blue-100 border-blue-200 text-blue-700"
                                     }`}
                                   >
-                                    {isUser ? <User size={12} /> : <LifeBuoy size={12} />}
+                                    {isUser || isProvider ? <User size={12} /> : <LifeBuoy size={12} />}
                                   </div>
                                   <div>
                                     <span className="text-[11px] font-black text-slate-800">{msg.senderId?.name || "Support desk"}</span>
@@ -1564,12 +1570,12 @@ export default function NewAdminPanel({
                                       className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ml-2 ${
                                         isInternal
                                           ? "bg-amber-200 text-amber-800"
-                                          : isUser
-                                          ? "bg-slate-105 text-slate-600"
-                                          : "bg-blue-105 text-blue-800"
+                                          : isUser || isProvider
+                                          ? "bg-slate-100 text-slate-600"
+                                          : "bg-blue-100 text-blue-800"
                                       }`}
                                     >
-                                      {isInternal ? "Internal Note" : isUser ? "Client" : "Support Desk"}
+                                      {isInternal ? "Internal Note" : isProvider ? "Provider" : isUser ? "User" : "Support Desk"}
                                     </span>
                                   </div>
                                 </div>
@@ -1583,7 +1589,7 @@ export default function NewAdminPanel({
                                 </span>
                               </div>
 
-                              <p className="text-xs text-slate-650 leading-relaxed font-medium white-space: pre-wrap;">
+                              <p className="whitespace-pre-wrap text-xs text-slate-600 leading-relaxed font-medium">
                                 {msg.message}
                               </p>
 
@@ -1645,7 +1651,7 @@ export default function NewAdminPanel({
                             type="submit"
                             disabled={replyLoading || (!ticketReplyText.trim() && !ticketReplyAttachment)}
                             className={`flex items-center gap-1.5 px-4 rounded-xl text-xs font-black text-white disabled:opacity-45 transition flex-shrink-0 ${
-                              isInternalNote ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-750"
+                              isInternalNote ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
                             }`}
                           >
                             {replyLoading ? (

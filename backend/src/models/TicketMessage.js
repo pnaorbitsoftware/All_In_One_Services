@@ -14,7 +14,7 @@ const ticketMessageSchema = new mongoose.Schema(
     },
     senderRole: {
       type: String,
-      enum: ["user", "admin", "internal"], // "internal" is for admin-only internal notes
+      enum: ["user", "provider", "admin", "internal"],
       required: true,
     },
     message: {

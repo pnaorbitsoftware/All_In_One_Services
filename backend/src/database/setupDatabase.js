@@ -2,7 +2,10 @@ import Booking from "../models/Booking.js";
 import Category from "../models/Category.js";
 import ChatMessage from "../models/ChatMessage.js";
 import ContactMessage from "../models/ContactMessage.js";
+import Notification from "../models/Notification.js";
 import SupportTicket from "../models/SupportTicket.js";
+import SupportCounter from "../models/SupportCounter.js";
+import SupportFaq from "../models/SupportFaq.js";
 import GpsHistory from "../models/GpsHistory.js";
 import Ledger from "../models/Ledger.js";
 import Payment from "../models/Payment.js";
@@ -32,6 +35,42 @@ const models = [
   Session,
   SiteContent,
   SupportTicket,
+  SupportCounter,
+  SupportFaq,
+  Notification,
+];
+
+const defaultSupportFaqs = [
+  {
+    question: "How do I reset my password?",
+    answer: "Open Login, choose Forgot password, verify the OTP sent to your registered email or phone, and create a new password.",
+    category: "Account",
+    sortOrder: 1,
+  },
+  {
+    question: "How do I track my service booking?",
+    answer: "Open your dashboard and select the active booking. Accepted jobs show the provider status, route updates, payment state, and service progress.",
+    category: "Service",
+    sortOrder: 2,
+  },
+  {
+    question: "How do I raise a payment or refund issue?",
+    answer: "Use Help & Support, choose Payment Issue, set the priority, and describe the charge or refund problem. Our support team will review it from the admin panel.",
+    category: "Payment",
+    sortOrder: 3,
+  },
+  {
+    question: "Can providers create support tickets?",
+    answer: "Yes. Logged-in providers can create tickets without entering name, email, or phone details manually.",
+    category: "Provider",
+    sortOrder: 4,
+  },
+  {
+    question: "Where can I see replies from support?",
+    answer: "Open My Support Tickets from the Help Center or your dashboard. Admin responses appear on each ticket with the latest status.",
+    category: "Support",
+    sortOrder: 5,
+  },
 ];
 
 export default async function setupDatabase() {
@@ -100,6 +139,27 @@ export default async function setupDatabase() {
         paidEarnings: 0,
       },
     }
+  );
+
+  await SupportTicket.updateMany(
+    { role: { $exists: false } },
+    { $set: { role: "user", userPhone: "" } }
+  );
+  await SupportTicket.updateMany(
+    { category: { $in: ["Booking Issue", "Provider Issue", "General Inquiry"] } },
+    { $set: { category: "Service Issue" } }
+  );
+  await SupportTicket.updateMany(
+    { priority: "Urgent" },
+    { $set: { priority: "High" } }
+  );
+  await SupportTicket.updateMany(
+    { status: { $in: ["Assigned", "Waiting for Customer"] } },
+    { $set: { status: "In Progress" } }
+  );
+  await SupportTicket.updateMany(
+    { ticketNumber: { $in: [null, ""] } },
+    [{ $set: { ticketNumber: "$ticketId" } }]
   );
 
   const adminEmail = process.env.ADMIN_EMAIL || "admin@servicehub.com";
@@ -182,6 +242,22 @@ export default async function setupDatabase() {
       updateOne: {
         filter: { sectionKey: content.sectionKey },
         update: { $set: content },
+        upsert: true,
+      },
+    }))
+  );
+
+  await SupportCounter.updateOne(
+    { key: "supportTicket" },
+    { $setOnInsert: { sequence: 100000 } },
+    { upsert: true }
+  );
+
+  await SupportFaq.bulkWrite(
+    defaultSupportFaqs.map((faq) => ({
+      updateOne: {
+        filter: { question: faq.question },
+        update: { $setOnInsert: faq },
         upsert: true,
       },
     }))

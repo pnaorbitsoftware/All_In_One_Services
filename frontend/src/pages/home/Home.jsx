@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import ModernHero from "../../components/redesign/ModernHero";
 import ModernPopularServices from "../../components/redesign/ModernPopularServices";
 import NewAdminPanel from "../../components/admin/NewAdminPanel";
-import HelpSupportCenter from "../../components/support/HelpSupportCenter";
+import HelpSupportCenter, { MySupportTicketsPanel } from "../../components/support/HelpSupportCenter";
 import {
   ArrowLeft,
   ArrowRight,
@@ -4041,6 +4041,7 @@ function ClientDashboard({
           </button>
         </div>
       </div>
+      <MySupportTicketsPanel />
       <AnimatePresence>
         {rejectTargetBooking && (
           <RejectEstimateModal
@@ -4669,6 +4670,7 @@ function ProviderDashboard({
               </div>
             </Panel>
           </div>
+          <MySupportTicketsPanel />
         </div>
         {isDashboardLocked && (
           <div className="absolute inset-x-0 top-6 z-20 flex justify-center px-4">
