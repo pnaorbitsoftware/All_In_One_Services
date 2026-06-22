@@ -162,6 +162,14 @@ const authFetch = async (path, options) => {
   throw lastError;
 };
 
+const readJsonSafely = async (response) => {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+};
+
 export default function AuthModal({
   mode,
   initialRole = "user",
@@ -335,7 +343,7 @@ export default function AuthModal({
   const handleRequestClose = (event) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    onClose();
+    onClose?.();
   };
 
   const handleBackdropClose = (event) => {
@@ -387,7 +395,7 @@ export default function AuthModal({
           otpChannel: form.resetOtpChannel,
         }),
       });
-      const data = await response.json();
+      const data = await readJsonSafely(response);
 
       if (!response.ok) {
         throw new Error(data.message || "OTP generation failed.");
@@ -429,7 +437,7 @@ export default function AuthModal({
           role: form.role,
         }),
       });
-      const data = await response.json();
+      const data = await readJsonSafely(response);
 
       if (!response.ok) {
         throw new Error(data.message || "OTP verification failed.");
@@ -471,7 +479,7 @@ export default function AuthModal({
             role: form.role,
           }),
         });
-        const data = await response.json();
+        const data = await readJsonSafely(response);
 
         if (!response.ok) {
           throw new Error(data.message || "Password reset failed.");
@@ -521,7 +529,7 @@ export default function AuthModal({
             role: form.role,
           }),
         });
-        const statusData = await statusResponse.json();
+        const statusData = await readJsonSafely(statusResponse);
 
         if (statusResponse.ok && !statusData.registered) {
           throw new Error(
@@ -538,7 +546,7 @@ export default function AuthModal({
         body: JSON.stringify(loginPayload),
       });
 
-      let data = await response.json();
+      let data = await readJsonSafely(response);
 
       if (
         mode === "login" &&
@@ -555,7 +563,7 @@ export default function AuthModal({
             role: "admin",
           }),
         });
-        data = await response.json();
+        data = await readJsonSafely(response);
       }
 
       if (
@@ -573,7 +581,7 @@ export default function AuthModal({
             role: "admin",
           }),
         });
-        data = await response.json();
+        data = await readJsonSafely(response);
       }
 
       if (!response.ok) {
@@ -589,10 +597,16 @@ export default function AuthModal({
         return;
       }
 
-      localStorage.setItem("servicehub_token", data.token);
-      localStorage.setItem("servicehub_user", JSON.stringify(data.user));
+      if (data.token) {
+        localStorage.setItem("servicehub_token", data.token);
+      }
+
+      if (data.user) {
+        localStorage.setItem("servicehub_user", JSON.stringify(data.user));
+      }
+
       onAuthSuccess?.(data.user);
-      onClose();
+      onClose?.();
     } catch (authError) {
       setError(
         authError.message === "Failed to fetch"
@@ -1178,7 +1192,7 @@ export default function AuthModal({
                 }));
                 return;
               }
-              onModeChange(isRegister ? "login" : "register");
+              onModeChange?.(isRegister ? "login" : "register");
             }}
           >
             {isPasswordReset
