@@ -4,6 +4,7 @@ import {
   isSmtpConfigured,
   smtpTransporter,
 } from "../config/brevo.js";
+export { emailConfig };
 import {
   bookingAcceptedTemplate,
   bookingConfirmationTemplate,

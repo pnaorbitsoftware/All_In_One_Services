@@ -1,8 +1,11 @@
 import jwt from "jsonwebtoken";
+import { createHash } from "node:crypto";
 
+import { jwtSecret } from "../config/auth.js";
+import Session from "../models/Session.js";
 import User from "../models/User.js";
 
-const jwtSecret = process.env.JWT_SECRET || "dev_servicehub_secret_change_me";
+const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 
 export default async function requireAuth(req, res, next) {
   try {
@@ -14,6 +17,18 @@ export default async function requireAuth(req, res, next) {
     }
 
     const decoded = jwt.verify(token, jwtSecret);
+    const session = await Session.findOne({
+      tokenHash: hashToken(token),
+      status: "active",
+      expiresAt: { $gt: new Date() },
+    })
+      .select("user")
+      .lean();
+
+    if (!session || String(session.user) !== String(decoded.userId)) {
+      return res.status(401).json({ message: "Session expired. Please log in again." });
+    }
+
     const user = await User.findById(decoded.userId)
       .select("_id name email phone address profileImage role")
       .lean();

@@ -115,8 +115,10 @@ router.get("/profile", requireAuth, requireProvider, async (req, res) => {
   }
 });
 
-router.get("/status", requireAuth, requireProvider, async (req, res) => {
+router.get("/availability", requireAuth, requireProvider, async (req, res) => {
   try {
+    console.log(req.method, req.originalUrl);
+    console.log(req.body);
     const provider = await Provider.findOne({ owner: req.user._id });
 
     if (!provider) {
@@ -129,8 +131,10 @@ router.get("/status", requireAuth, requireProvider, async (req, res) => {
   }
 });
 
-router.patch("/status", requireAuth, requireProvider, async (req, res) => {
+router.patch("/availability", requireAuth, requireProvider, async (req, res) => {
   try {
+    console.log(req.method, req.originalUrl);
+    console.log(req.body);
     const { isActive } = req.body;
 
     if (typeof isActive !== "boolean") {

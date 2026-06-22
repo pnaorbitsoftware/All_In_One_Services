@@ -2,6 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
+import { jwtSecret } from "../config/auth.js";
 import requireAuth from "../middleware/requireAuth.js";
 import Session from "../models/Session.js";
 import Provider from "../models/Provider.js";
@@ -16,7 +17,6 @@ import { sendWelcomeWhatsApp } from "../services/whatsappNotificationService.js"
 import { setJsonWithTtl } from "../utils/redis.js";
 
 const router = express.Router();
-const jwtSecret = process.env.JWT_SECRET || "dev_servicehub_secret_change_me";
 const passwordResetOtps = new Map();
 const registrationOtps = new Map();
 
@@ -45,21 +45,6 @@ const createSession = async (req, user, token) => {
   ).catch(() => {});
 
   return session;
-};
-
-const queueSession = (req, user, token) => {
-  const ip = req.ip;
-  const userAgent = req.get("user-agent") || "";
-  const sessionRequest = {
-    ip,
-    get: (header) => (String(header).toLowerCase() === "user-agent" ? userAgent : ""),
-  };
-
-  setImmediate(() => {
-    createSession(sessionRequest, user, token).catch((error) => {
-      console.warn(`Session persistence failed: ${error.message}`);
-    });
-  });
 };
 
 const sanitizeUser = (user) => ({
@@ -343,7 +328,7 @@ router.post("/register", async (req, res) => {
     }
 
     const token = createToken(user._id);
-    queueSession(req, user, token);
+    await createSession(req, user, token);
     sendWelcomeEmail({ to: normalizedEmail, name, role }).catch(() => {});
     sendWelcomeWhatsApp({ to: phone, name, role }).catch(() => {});
 
@@ -395,7 +380,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = createToken(user._id);
-    queueSession(req, user, token);
+    await createSession(req, user, token);
 
     res.json({ token, user: sanitizeUser(user) });
   } catch (error) {
@@ -618,28 +603,11 @@ router.post("/logout", async (req, res) => {
   }
 });
 
-router.get("/me", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+const getAuthenticatedProfile = (req, res) => {
+  res.json({ user: sanitizeUser(req.user) });
+};
 
-    if (!token) {
-      return res.status(401).json({ message: "Authentication required." });
-    }
-
-    const decoded = jwt.verify(token, jwtSecret);
-    const user = await User.findById(decoded.userId)
-      .select("_id name email phone address profileImage role")
-      .lean();
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    res.json({ user: sanitizeUser(user) });
-  } catch (error) {
-    res.status(401).json({ message: "Session expired. Please log in again." });
-  }
-});
+router.get("/profile", requireAuth, getAuthenticatedProfile);
+router.get("/me", requireAuth, getAuthenticatedProfile);
 
 export default router;
