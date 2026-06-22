@@ -24,6 +24,9 @@ import {
   Paperclip,
   AlertCircle,
   FileText,
+  Loader2,
+  Search,
+  User,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -59,7 +62,7 @@ export default function NewAdminPanel({
   const [ticketReplyAttachment, setTicketReplyAttachment] = useState(null);
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [, setAnalyticsLoading] = useState(false);
   const [replyLoading, setReplyLoading] = useState(false);
 
   // Filters for Helpdesk Queue
@@ -274,10 +277,16 @@ export default function NewAdminPanel({
 
   useEffect(() => {
     if (activeTab === "support") {
-      fetchSupportTickets();
-      fetchSupportAnalytics();
-      fetchSupportStaff();
+      const timerId = window.setTimeout(() => {
+        fetchSupportTickets();
+        fetchSupportAnalytics();
+        fetchSupportStaff();
+      }, 0);
+      return () => window.clearTimeout(timerId);
     }
+    return undefined;
+    // These request helpers intentionally use the current filter values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, ticketStatusFilter, ticketCategoryFilter, ticketPriorityFilter, ticketSearchQuery]);
 
 

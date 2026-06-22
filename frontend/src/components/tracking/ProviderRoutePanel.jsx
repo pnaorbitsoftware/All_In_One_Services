@@ -2,7 +2,6 @@ import { CheckCircle2, MapPin, MessageCircle, Phone, Play, Route, UserRound } fr
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import BookingChatBox from "./BookingChatBox";
-import GoogleRouteMap from "./GoogleRouteMap";
 import { geocodeWithGoogle } from "./googleMaps";
 import useTrackingSocket from "./useTrackingSocket";
 import {
@@ -59,7 +58,6 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
   const token = localStorage.getItem("servicehub_token");
   const [liveTracking, setLiveTracking] = useState(null);
   const [geocodedClientLocation, setGeocodedClientLocation] = useState(null);
-  const [routeSummary, setRouteSummary] = useState(null);
   const [liveSharing, setLiveSharing] = useState(false);
   const [locatingProvider, setLocatingProvider] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -141,7 +139,7 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
     [stopLiveSharing]
   );
 
-  const { connected, error, emitLocation, emitChatMessage } = useTrackingSocket({
+  const { connected, emitLocation, emitChatMessage } = useTrackingSocket({
     apiUrl,
     bookingId: bookingRoomId,
     role: "provider",
@@ -474,6 +472,9 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
         <div className="servicetrack-comms-row">
           <button type="button" onClick={callClient}><Phone size={17} /> Call client</button>
           <button type="button" onClick={messageClient}><MessageCircle size={17} /> Message</button>
+          <button type="button" onClick={openClientDirections} disabled={locatingProvider}>
+            <Route size={17} /> {locatingProvider ? "Locating..." : "Directions"}
+          </button>
         </div>
 
         <div>

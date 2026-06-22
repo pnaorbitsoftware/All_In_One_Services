@@ -32,8 +32,6 @@ import {
   Trash2,
   UserRound,
   UploadCloud,
-  Volume2,
-  VolumeX,
   Wallet,
   X,
   XCircle,
@@ -673,11 +671,6 @@ const parseMoneyValue = (value = "") => {
 };
 
 const INITIAL_DASHBOARD_TIME = Date.now();
-const INITIAL_CHAT_TIME_LABEL = new Intl.DateTimeFormat("en-IN", {
-  hour: "2-digit",
-  minute: "2-digit",
-}).format(new Date());
-
 const parseDurationValue = (value = "1 hour") => {
   const normalized = String(value).toLowerCase();
   if (normalized.includes("half")) return { amount: "4", unit: "hours" };
@@ -795,7 +788,6 @@ export default function Home() {
       document.removeEventListener("keydown", handleEsc);
     };
   }, [providerAccountOpen, providerAccountEditOpen]);
-  const [chatOpen, setChatOpen] = useState(false);
   const [providerVisibleCount, setProviderVisibleCount] = useState(4);
   const [providerClientMode, setProviderClientMode] = useState(false);
   const [selectedProviders, setSelectedProviders] = useState({});
@@ -838,7 +830,6 @@ export default function Home() {
     setProfileImageOpen(false);
     setProviderAccountOpen(false);
     setProviderAccountEditOpen(false);
-    setChatOpen(false);
   }, []);
 
   const clearSessionState = useCallback(
@@ -1509,30 +1500,6 @@ export default function Home() {
       }).catch(() => {});
     }
     clearSessionState({ message: `${roleLabel} logged out successfully.` });
-  };
-
-  const speakLizaIntro = () => {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(
-      "I am Liza, your ServiceHub chatbot.",
-    );
-    utterance.lang = "en-IN";
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const toggleChat = () => {
-    setChatOpen((current) => {
-      if (current) {
-        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-        return false;
-      }
-
-      speakLizaIntro();
-      return true;
-    });
   };
 
   const openBooking = (service) => {

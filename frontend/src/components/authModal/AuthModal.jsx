@@ -1141,8 +1141,6 @@ export default function AuthModal({
                     : isRegister
                       ? "Generate registered OTP on email"
                       : t("login")}
-            <button className="auth-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Please wait..." : isPasswordReset ? "Update password" : isRegister && registrationOtpRequired ? "Verify OTP and register" : isRegister ? "Login" : t("login")}
             </button>
           )}
         </form>

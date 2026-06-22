@@ -15,11 +15,9 @@ import {
   ShieldAlert,
   CreditCard,
   BookOpen,
-  UserCheck,
   History,
   User,
   Clock,
-  ArrowRight,
   HelpCircle,
   MessageCircle,
 } from "lucide-react";
@@ -76,12 +74,6 @@ export default function HelpSupportCenter({ user, onLogin }) {
   const token = localStorage.getItem("servicehub_token");
 
   useEffect(() => {
-    if (isOpen && token && user?.role === "user") {
-      fetchTickets();
-    }
-  }, [isOpen, token]);
-
-  useEffect(() => {
     if (activeScreen === "detail" && messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
@@ -103,6 +95,16 @@ export default function HelpSupportCenter({ user, onLogin }) {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && token && user?.role === "user") {
+      const timerId = window.setTimeout(() => fetchTickets(), 0);
+      return () => window.clearTimeout(timerId);
+    }
+    return undefined;
+    // Fetch when the support panel or authenticated user changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, token, user?.role]);
 
   const fetchTicketDetails = async (ticketId) => {
     setIsLoading(true);
