@@ -160,6 +160,11 @@ const providerSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    aadhaarBackDocumentName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     verificationRejectedReason: {
       type: String,
       trim: true,

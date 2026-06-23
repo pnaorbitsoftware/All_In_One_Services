@@ -337,6 +337,7 @@ router.post("/register", async (req, res) => {
         aadhaarFrontUrl,
         aadhaarBackUrl,
         aadhaarDocumentName: req.body.aadhaarDocumentName || "",
+        aadhaarBackDocumentName: req.body.aadhaarBackDocumentName || "",
         verificationStatus: "pending",
         requestedAt: new Date(),
         rating: 0,
