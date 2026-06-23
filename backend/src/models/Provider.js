@@ -24,6 +24,16 @@ const providerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    businessName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    ownerName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     category: {
       type: String,
       required: true,
@@ -127,7 +137,47 @@ const providerSchema = new mongoose.Schema(
       enum: ["pending", "approved", "rejected"],
       default: "approved",
     },
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    aadhaarNumberMasked: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    aadhaarFrontUrl: {
+      type: String,
+      default: "",
+    },
+    aadhaarBackUrl: {
+      type: String,
+      default: "",
+    },
+    aadhaarDocumentName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    verificationRejectedReason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    requestedAt: {
+      type: Date,
+      default: Date.now,
+    },
     approvedAt: {
+      type: Date,
+      default: null,
+    },
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+    suspendedAt: {
       type: Date,
       default: null,
     },
@@ -169,6 +219,10 @@ const providerSchema = new mongoose.Schema(
   },
   { collection: "providers", timestamps: true }
 );
+
+providerSchema.index({ createdAt: -1 });
+providerSchema.index({ approvalStatus: 1, createdAt: -1 });
+providerSchema.index({ isActive: 1, approvalStatus: 1, rating: -1, reviews: -1 });
 
 const Provider = mongoose.model("Provider", providerSchema);
 

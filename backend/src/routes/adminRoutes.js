@@ -16,6 +16,7 @@ import {
 } from "../services/mailService.js";
 import { buildStatusUpdateOperation } from "../services/bookingTrackingService.js";
 import { emitStatusChange } from "../socket/trackingSocket.js";
+import { invalidateCatalogCache } from "./catalogRoutes.js";
 import {
   sendBookingAcceptedWhatsApp,
   sendCancellationWhatsApp,
@@ -46,16 +47,22 @@ const requireAdmin = (req, res, next) => {
 router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const [users, providers, bookings, contactMessages] = await Promise.all([
-      User.find({ role: { $ne: "admin" } })
-        .select("-password")
-        .sort({ createdAt: -1 }),
-      Provider.find().sort({ createdAt: -1 }),
+      User.find({ role: "user" })
+        .select("name email phone address profileImage createdAt updatedAt")
+        .sort({ createdAt: -1 })
+        .lean(),
+      Provider.find()
+        .select("name businessName ownerName category customCategory phone email preferredWorkLocation location address rating reviews approvalStatus verificationStatus verificationRejectedReason aadhaarNumberMasked aadhaarFrontUrl aadhaarBackUrl aadhaarDocumentName isActive requestedAt approvedAt rejectedAt suspendedAt createdAt updatedAt totalEarnings pendingEarnings paidEarnings")
+        .sort({ createdAt: -1 })
+        .lean(),
       Booking.find()
-        .populate("user", "name email phone role")
-        .populate("assignedProvider")
-        .populate("requestedProvider")
-        .sort({ createdAt: -1 }),
-      ContactMessage.find().sort({ createdAt: -1 }),
+        .select("bookingId name phone userEmail service preferredDate preferredTime costEstimate status assignedProvider requestedProvider requestedProviderName assignedProviderName finalEstimateAmount providerPaymentReleased providerPaymentReleasedAt cancelledBy adminRejectedAt adminRejectionReason createdAt")
+        .sort({ createdAt: -1 })
+        .lean(),
+      ContactMessage.find()
+        .select("name email phone message status adminReply repliedAt createdAt")
+        .sort({ createdAt: -1 })
+        .lean(),
     ]);
 
     const totalCostEstimate = bookings.reduce(
@@ -63,9 +70,23 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
       0,
     );
 
+    const normalizedProviders = providers.map((provider) => ({
+      ...provider,
+      businessName: provider.businessName || provider.name || "Unnamed provider",
+      ownerName: provider.ownerName || "Not provided",
+      verificationStatus:
+        provider.verificationStatus ||
+        (provider.approvalStatus === "approved" ? "legacy_approved" : "pending"),
+      verificationRejectedReason: provider.verificationRejectedReason || "",
+      aadhaarNumberMasked: provider.aadhaarNumberMasked || "Not submitted",
+      aadhaarFrontUrl: provider.aadhaarFrontUrl || "",
+      aadhaarBackUrl: provider.aadhaarBackUrl || "",
+      aadhaarDocumentName: provider.aadhaarDocumentName || "",
+    }));
+
     res.json({
       stats: {
-        totalUsers: users.filter((user) => user.role === "user").length,
+        totalUsers: users.length,
         totalProviders: providers.length,
         totalBookings: bookings.length,
         pendingWork: bookings.filter(
@@ -89,7 +110,7 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
         totalCostEstimate,
       },
       users,
-      providers,
+      providers: normalizedProviders,
       bookings,
       contactMessages,
     });
@@ -232,19 +253,31 @@ router.patch(
           .json({ message: "Invalid provider approval status." });
       }
 
-      const provider = await Provider.findByIdAndUpdate(
-        req.params.providerId,
-        {
-          approvalStatus,
-          isActive: approvalStatus === "approved",
-          approvedAt: approvalStatus === "approved" ? new Date() : null,
-        },
-        { new: true },
-      );
+      const provider = await Provider.findById(req.params.providerId);
 
       if (!provider) {
         return res.status(404).json({ message: "Provider not found." });
       }
+
+      if (approvalStatus === "approved" && !provider.aadhaarFrontUrl) {
+        return res.status(400).json({
+          message: "Aadhaar document verification is required before approving this provider.",
+        });
+      }
+
+      provider.approvalStatus = approvalStatus;
+      provider.verificationStatus = approvalStatus === "approved" ? "approved" : "rejected";
+      provider.isActive = approvalStatus === "approved";
+      provider.approvedAt = approvalStatus === "approved" ? new Date() : null;
+      provider.rejectedAt = approvalStatus === "rejected" ? new Date() : provider.rejectedAt;
+      provider.suspendedAt = approvalStatus === "rejected" && provider.isActive === false ? new Date() : provider.suspendedAt;
+      provider.verificationRejectedReason =
+        approvalStatus === "rejected"
+          ? rejectionReason || "Provider profile was not approved by admin."
+          : "";
+      await provider.save();
+
+      invalidateCatalogCache();
 
       if (approvalStatus === "approved") {
         await sendProviderApprovalEmail({

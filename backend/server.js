@@ -8,7 +8,7 @@ import http from "node:http";
 import authRoutes from "./src/routes/authRoutes.js";
 import adminRoutes from "./src/routes/adminRoutes.js";
 import bookingRoutes from "./src/routes/bookingRoutes.js";
-import catalogRoutes from "./src/routes/catalogRoutes.js";
+import catalogRoutes, { warmCatalogCache } from "./src/routes/catalogRoutes.js";
 import contactRoutes from "./src/routes/contactRoutes.js";
 import locationRoutes from "./src/routes/locationRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
@@ -202,6 +202,14 @@ const startServer = async () => {
     console.log(
       `Connected to MongoDB database "${mongoDbName}" in ${Date.now() - connectedAt}ms`,
     );
+
+    const catalogWarmStartedAt = Date.now();
+    try {
+      await warmCatalogCache();
+      console.log(`Catalog cache warmed in ${Date.now() - catalogWarmStartedAt}ms`);
+    } catch (error) {
+      console.warn(`Catalog cache warmup skipped: ${error.message}`);
+    }
 
     const server = http.createServer(app);
     server.keepAliveTimeout = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS || 65000);

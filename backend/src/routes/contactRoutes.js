@@ -7,11 +7,7 @@ const router = express.Router();
 ===================================== */
 
 router.post("/", async (req, res) => {
-  console.log("CONTACT API HIT");
-
   try {
-    console.log("Request Body:", req.body);
-
     const { name, email, phone = "", message } = req.body;
 
     /* VALIDATION */
@@ -43,8 +39,6 @@ router.post("/", async (req, res) => {
       message,
     });
 
-    console.log("Saved Successfully:", contactMessage);
-
     /* SUCCESS RESPONSE */
 
     return res.status(201).json({
@@ -53,12 +47,11 @@ router.post("/", async (req, res) => {
       data: contactMessage,
     });
   } catch (error) {
-    console.error("Contact Route Error:", error);
+    console.error(`Contact message could not be saved: ${error.message}`);
 
     return res.status(500).json({
       success: false,
       message: "Message could not be saved. Please try again later.",
-      error: error.message,
     });
   }
 });

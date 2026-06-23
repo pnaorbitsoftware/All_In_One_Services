@@ -377,6 +377,11 @@ export default function ClientTrackingPanel({ booking, token, setStatusMessage, 
 
   return (
     <section className="servicetrack-panel client">
+      <div className="servicetrack-panel-header">
+        <span className="servicetrack-panel-dot client-dot" />
+        <span className="servicetrack-panel-label">Service journey</span>
+        <span className="servicetrack-live-status"><span />{connected ? "Live updates" : "Connecting"}</span>
+      </div>
       <div className="servicetrack-card-body">
         <div className="servicetrack-provider-row">
           <div className="servicetrack-avatar">{initialsFromName(providerName)}</div>
