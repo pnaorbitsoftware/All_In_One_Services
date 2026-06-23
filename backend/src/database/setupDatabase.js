@@ -176,7 +176,15 @@ export default async function setupDatabase() {
       },
     }))
   );
-
+await Provider.updateMany(
+  {},
+  {
+    $set: {
+      rating: 0,
+      reviews: 0,
+    },
+  }
+);
   await SiteContent.bulkWrite(
     defaultSiteContents.map((content) => ({
       updateOne: {

@@ -41,30 +41,36 @@ const canClientCancelBooking = (booking) => {
 const updateProviderReviewStats = async (providerId) => {
   if (!providerId) return;
 
-  const [stats] = await Booking.aggregate([
-    {
-      $match: {
-        status: "completed",
-        clientRating: { $gte: 1, $lte: 5 },
-        $or: [
-          { assignedProvider: providerId },
-          { requestedProvider: providerId },
-        ],
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        averageRating: { $avg: "$clientRating" },
-        reviewCount: { $sum: 1 },
-      },
-    },
-  ]);
-
-  await Provider.findByIdAndUpdate(providerId, {
-    rating: stats ? Number(stats.averageRating.toFixed(1)) : 0,
-    reviews: stats?.reviewCount || 0,
+  const reviews = await Booking.find({
+    status: "completed",
+    clientRating: { $gte: 1, $lte: 5 },
+    $or: [
+      { assignedProvider: providerId },
+      { requestedProvider: providerId },
+    ],
   });
+
+  const reviewCount = reviews.length;
+
+  const averageRating =
+    reviewCount > 0
+      ? reviews.reduce(
+          (sum, review) => sum + review.clientRating,
+          0
+        ) / reviewCount
+      : 0;
+
+  
+  const updatedProvider = await Provider.findByIdAndUpdate(
+    providerId,
+    {
+      rating: Number(averageRating.toFixed(1)),
+      reviews: reviewCount,
+    },
+    { new: true }
+  );
+
+  
 };
 
 const geocodeAddress = async (address) => {
@@ -336,12 +342,13 @@ router.patch("/:bookingId/review", requireAuth, async (req, res) => {
     if (review.length > 600) {
       return res.status(400).json({ message: "Review must be 600 characters or less." });
     }
-
+c
     const booking = await Booking.findOne({
       ...bookingLookup(req.params.bookingId),
       user: req.user._id,
       status: "completed",
     });
+   
 
     if (!booking) {
       return res.status(404).json({ message: "Completed booking not found." });
@@ -365,6 +372,32 @@ router.patch("/:bookingId/review", requireAuth, async (req, res) => {
     res.json({ message: "Review submitted successfully.", booking });
   } catch (error) {
     res.status(500).json({ message: "Review could not be submitted." });
+  }
+});
+
+router.get("/provider/:providerId/reviews", async (req, res) => {
+
+  try {
+    const reviews = await Booking.find({
+      $or: [
+        { assignedProvider: req.params.providerId },
+        { requestedProvider: req.params.providerId },
+      ],
+      clientRating: { $gte: 1 },
+      clientReview: { $ne: "" },
+    })
+      .select(
+        "clientRating clientReview userName reviewedAt service"
+      )
+      .sort({ reviewedAt: -1 });
+
+    res.json({ reviews });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: "Could not load reviews",
+    });
   }
 });
 
@@ -462,6 +495,8 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
     res.status(500).json({ message: "Booking could not be cancelled." });
   }
 });
+
+
 
 export default router;
 

@@ -1,13 +1,8 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
-
 export default function ModernNavbar({
   navigateHome,
   goMainHome,
   openClientAuth,
 }) {
-  const navigate = useNavigate();
-
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200">
       <nav className="mx-auto flex h-24 max-w-7xl items-center justify-between px-8">

@@ -42,13 +42,24 @@ export default function ModernProviders({ services, setSelectedService }) {
                     {service.name}
                   </h3>
 
-                  <span className="flex items-center gap-1 text-sm font-semibold">
-                    <Star
-                      size={14}
-                      className="fill-yellow-400 text-yellow-400"
-                    />
-                    {service.rating || 4.8}
-                  </span>
+                <span className="flex items-center gap-1 text-sm font-semibold">
+  {service.reviews > 0 ? (
+    <>
+      <Star
+        size={14}
+        className="fill-yellow-400 text-yellow-400"
+      />
+      {service.rating}
+      <span className="text-slate-500">
+        ({service.reviews})
+      </span>
+    </>
+  ) : (
+    <span className="text-green-600">
+      Provider
+    </span>
+  )}
+</span>
                 </div>
 
                 <p className="mt-2 text-sm text-slate-500">

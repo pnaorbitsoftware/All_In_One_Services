@@ -83,6 +83,7 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
   const paymentStatus = liveTracking?.paymentStatus || booking.paymentStatus || "unpaid";
   const hasSubmittedFinalEstimate = estimateStatus === "submitted" || estimateStatus === "accepted" || Boolean(liveTracking?.finalEstimateAmount || booking.finalEstimateAmount);
   const canCompleteAfterPayment = paymentStatus === "paid";
+  
   const canMarkArrived = !isClosed && ["en_route", "arrived", "job_started"].includes(normalizedStatus);
   const canStartJob = !isClosed && ["arrived", "job_started"].includes(normalizedStatus) && hasSubmittedFinalEstimate;
   const canFinishJob = !isClosed && normalizedStatus === "job_started" && canCompleteAfterPayment;

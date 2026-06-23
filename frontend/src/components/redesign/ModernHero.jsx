@@ -1,4 +1,3 @@
-import React from "react";
 import { Search, MapPin } from "lucide-react";
 
 export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
@@ -97,12 +96,12 @@ export default function ModernHero({ searchTerm, setSearchTerm, onSearch }) {
 
           {/* Right Side: Image with Floating & Scale Micro-interaction */}
           <div className="relative justify-self-center lg:justify-self-end w-full max-w-lg lg:max-w-none group">
-            <img
-              src="https://www.shutterstock.com/image-photo/image-this-style-skilled-trades-260nw-2730120451.jpg"
-              alt="Professional workers vector"
-              className="w-full object-cover rounded-[32px] shadow-2xl transition-all duration-500 ease-in-out group-hover:scale-[1.02] group-hover:shadow-blue-100/50"
-              style={{ height: "450px" }}
-            />
+           <img
+  src="/images/hero.png"
+  alt="ServiceHub India"
+  className="w-full object-cover rounded-[32px] shadow-2xl transition-all duration-500 ease-in-out group-hover:scale-[1.02] group-hover:shadow-blue-100/50"
+  style={{ height: "420px" }}
+/>
           </div>
         </div>
       </div>

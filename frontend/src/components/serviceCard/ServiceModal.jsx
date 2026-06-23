@@ -1,19 +1,61 @@
+
 import "./ServiceModal.css";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { BriefcaseBusiness, CalendarCheck, Check, Clock, IndianRupee, MapPin, Star, X } from "lucide-react";
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-const reviewSamples = [
-  "Clean work and on-time arrival.",
-  "Polite provider, fair pricing.",
-  "Quick response and neat finishing.",
-];
 
-export default function ServiceModal({ service, onBook, onClose, canBook = true }) {
+
+export default function ServiceModal({
+  service,
+  onBook,
+  onClose,
+  canBook = true,
+}) {
+  const [providerReviews, setProviderReviews] = useState([]);
+  const [showAllReviews, setShowAllReviews] = useState(false);
+
+
+  useEffect(() => {
+
+
+  if (!service?.providerId) {
+   
+    return;
+  }
+
+  fetch(`${API_URL}/providers/${service.providerId}/reviews`)
+    .then((res) => {
+      console.log("API STATUS =>", res.status);
+      return res.json();
+    })
+    .then((data) => {
+
+      setProviderReviews(data.reviews || []);
+    })
+    .catch((err) => {
+      console.log("FETCH ERROR =>", err);
+      setProviderReviews([]);
+    });
+}, [service]);
   if (!service) return null;
 
   const Icon = service.icon || BriefcaseBusiness;
   const features = service.features?.length ? service.features : [service.category, "On-site visit", "Work inspection"];
+const averageRating =
+  providerReviews.length > 0
+    ? (
+        providerReviews.reduce(
+          (sum, review) => sum + review.clientRating,
+          0
+        ) / providerReviews.length
+      ).toFixed(1)
+    : "0.0";
 
+  const totalReviews =
+  providerReviews.length || service.reviews || 0;
   return (
     <motion.div
       className="service-modal-backdrop"
@@ -57,7 +99,11 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
               <div className="modal-stat">
                 <Star size={18} />
                 <span>Rating</span>
-                <strong>{service.rating || 0} ({service.reviews || 0})</strong>
+<strong>
+  {totalReviews >= 3
+    ? `${averageRating} (${totalReviews})`
+    : "New Provider"}
+</strong>
               </div>
               <div className="modal-stat">
                 <Clock size={18} />
@@ -95,16 +141,63 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
               </div>
             </div>
 
-            <div className="modal-section compact-reviews">
-              <div>
-                <h3>Reviews</h3>
-                <span><Star size={13} /> {service.rating || 0} from {service.reviews || 0} customers</span>
-              </div>
-              <div className="review-chip-list">
-                {reviewSamples.map((review) => (
-                  <span key={review}>{review}</span>
-                ))}
-              </div>
+        <div className="modal-section compact-reviews">
+  <div>
+    <h3>
+      Reviews ({providerReviews.length})
+    </h3>
+
+<span>
+  {totalReviews >= 3 ? (
+    <>
+      <Star size={13} />
+{averageRating} from {totalReviews} customers
+    </>
+  ) : (
+    "New Provider"
+  )}
+</span>
+  </div>
+             
+<div className="review-chip-list">
+  {providerReviews.length > 0 ? (
+(showAllReviews
+  ? providerReviews
+  : providerReviews.slice(0, 3)
+).map((review, index) => (
+      <div key={index} className="review-card">
+        <div className="review-user">
+  👤 {review.userName || "Verified Customer"}
+</div>
+
+      <div style={{ color: "#f59e0b", fontSize: "14px" }}>
+  {"★".repeat(review.clientRating)}
+</div>
+
+        <p>{review.clientReview}</p>
+
+        <small>
+          {review.reviewedAt
+            ? new Date(review.reviewedAt).toLocaleDateString()
+            : ""}
+        </small>
+      </div>
+    ))
+  ) : (
+    <span>No reviews yet</span>
+  )}
+</div>
+{providerReviews.length > 3 && (
+  <button
+    type="button"
+    className="view-all-reviews-btn"
+    onClick={() => setShowAllReviews(!showAllReviews)}
+  >
+    {showAllReviews
+      ? "Show Less"
+      : `View All ${providerReviews.length} Reviews`}
+  </button>
+)}
             </div>
           </div>
         </div>
@@ -120,4 +213,6 @@ export default function ServiceModal({ service, onBook, onClose, canBook = true 
       </motion.div>
     </motion.div>
   );
+
 }
+

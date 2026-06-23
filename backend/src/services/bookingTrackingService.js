@@ -46,6 +46,8 @@ export const assertStatusTransition = (currentStatus = "pending", nextStatus) =>
 
 export const buildStatusUpdateOperation = ({ booking, status, set = {} }) => {
   const normalizedStatus = normalizeBookingStatus(status);
+
+
   assertStatusTransition(booking?.status, normalizedStatus);
 
   const updateOperation = {

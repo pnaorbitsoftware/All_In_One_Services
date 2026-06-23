@@ -88,7 +88,10 @@ export default function ClientTrackingPanel({ booking, token, setStatusMessage, 
   const provider = tracking?.provider || booking.assignedProvider || booking.requestedProvider || {};
   const providerName = tracking?.providerName || booking.assignedProviderName || booking.requestedProviderName || provider.name || "Professional assigned soon";
   const providerPhone = provider.phone || booking.assignedProvider?.phone || booking.requestedProvider?.phone || "";
-  const providerRating = Number(provider.rating || 4.8).toFixed(1);
+ const providerRating =
+  provider.reviews > 0
+    ? Number(provider.rating).toFixed(1)
+    : "New Provider";
   const providerBookingsCount = provider.totalBookings || provider.bookingsCount || provider.reviews || 0;
   const remainingEta = Number.isFinite(Number(eta))
     ? Math.max(0, Number(eta) - Math.floor(((now || etaReceivedAt) - etaReceivedAt) / 60000))

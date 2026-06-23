@@ -117,8 +117,7 @@ router.get("/profile", requireAuth, requireProvider, async (req, res) => {
 
 router.get("/availability", requireAuth, requireProvider, async (req, res) => {
   try {
-    console.log(req.method, req.originalUrl);
-    console.log(req.body);
+    
     const provider = await Provider.findOne({ owner: req.user._id });
 
     if (!provider) {
@@ -421,9 +420,9 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       }
     }
 
-    if (status === "completed") {
+if (status === "completed") {
       if (existingBooking.status !== "job_started") {
-        return res.status(400).json({ message: "Start the job before marking the work completed." });
+       return res.status(400).json({ message: "Start the job before marking the work completed." });
       }
 
       if (existingBooking.paymentStatus !== "paid") {
@@ -481,6 +480,28 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
     }
 
     res.status(500).json({ message: "Booking status could not be updated." });
+  }
+});
+router.get("/:providerId/reviews", async (req, res) => {
+  try {
+    const reviews = await Booking.find({
+      $or: [
+        { assignedProvider: req.params.providerId },
+        { requestedProvider: req.params.providerId },
+      ],
+      clientRating: { $gte: 1 },
+      clientReview: { $ne: "" },
+    })
+      .select(
+        "clientRating clientReview reviewedAt userName"
+      )
+      .sort({ reviewedAt: -1 });
+
+    res.json({ reviews });
+  } catch (error) {
+    res.status(500).json({
+      message: "Unable to fetch reviews",
+    });
   }
 });
 

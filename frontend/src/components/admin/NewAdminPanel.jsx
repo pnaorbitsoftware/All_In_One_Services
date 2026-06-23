@@ -29,7 +29,6 @@ export default function NewAdminPanel({
   setAdminData,
   refreshAdminContactMessages,
   setStatusMessage,
-  adminEmail,
   refreshAdminPayments,
   setIsAdminMode,
 }) {
@@ -119,8 +118,10 @@ export default function NewAdminPanel({
       if (setStatusMessage) setStatusMessage("Reply processed successfully!");
       setReplyText("");
       setSelectedMessage(null);
-    } catch (err) {
-      if (setStatusMessage) setStatusMessage("Error syncing response.");
+    } catch {
+      if (setStatusMessage) {
+        setStatusMessage("Error syncing response.");
+      }
     }
   };
 
@@ -1253,7 +1254,7 @@ export default function NewAdminPanel({
                     Trust Rating
                   </p>
                   <p className="text-base font-black text-slate-800">
-                    ⭐ {activeDrawerProvider.rating || "5.0"}
+                   ⭐ {Number(activeDrawerProvider.rating || 0).toFixed(1)}
                   </p>
                 </div>
                 <div>
