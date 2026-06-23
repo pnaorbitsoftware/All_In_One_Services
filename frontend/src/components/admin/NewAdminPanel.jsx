@@ -59,6 +59,18 @@ const matchesSearch = (query, ...values) => {
   );
 };
 
+const isImageDocument = (url = "") =>
+  /^data:image\//i.test(url) || /\.(png|jpe?g|webp)(\?|#|$)/i.test(url);
+
+const documentLabel = (fallback, url, empty = "Not uploaded") => {
+  if (fallback) return fallback;
+  if (!url) return empty;
+  if (/^data:application\/pdf/i.test(url) || /\.pdf(\?|#|$)/i.test(url)) {
+    return "Aadhaar PDF uploaded";
+  }
+  return "Aadhaar image uploaded";
+};
+
 export default function NewAdminPanel({
   adminData,
   updateProviderApproval,
@@ -1298,6 +1310,9 @@ export default function NewAdminPanel({
                       <th className="p-4 min-w-[110px] whitespace-nowrap">
                         Trust Metric
                       </th>
+                      <th className="p-4 min-w-[160px] whitespace-nowrap">
+                        KYC / Aadhaar
+                      </th>
                       <th className="p-4 min-w-[120px] whitespace-nowrap">
                         Verification
                       </th>
@@ -1355,6 +1370,27 @@ export default function NewAdminPanel({
                           </td>
                           <td className="p-4 font-bold text-amber-500 whitespace-nowrap">
                             ⭐ {provider.rating || 0}
+                          </td>
+                          <td className="p-4 whitespace-nowrap">
+                            <div className="space-y-1">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
+                                  provider.aadhaarFrontUrl
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                }`}
+                              >
+                                {provider.aadhaarFrontUrl ? (
+                                  <CheckCircle size={12} />
+                                ) : (
+                                  <AlertCircle size={12} />
+                                )}
+                                {provider.aadhaarFrontUrl ? "Uploaded" : "Missing"}
+                              </span>
+                              <p className="text-[11px] font-bold text-slate-500">
+                                {provider.aadhaarNumberMasked || "Not submitted"}
+                              </p>
+                            </div>
                           </td>
                           <td className="p-4 whitespace-nowrap">
                             <span
@@ -2680,35 +2716,93 @@ export default function NewAdminPanel({
                   </span>
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-100 bg-white p-4">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  Aadhaar verification
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Aadhaar verification
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-600">
+                      {activeDrawerProvider.aadhaarNumberMasked || "Aadhaar number not submitted"}
+                    </p>
+                  </div>
                   <span className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase text-indigo-700">
                     {activeDrawerProvider.verificationStatus || "pending"}
                   </span>
-                  {activeDrawerProvider.aadhaarFrontUrl && (
-                    <a
-                      href={activeDrawerProvider.aadhaarFrontUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-black uppercase text-white"
-                    >
-                      View front/PDF
-                    </a>
-                  )}
-                  {activeDrawerProvider.aadhaarBackUrl && (
-                    <a
-                      href={activeDrawerProvider.aadhaarBackUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700"
-                    >
-                      View back
-                    </a>
-                  )}
                 </div>
+
+                <div className="mt-4 grid gap-3">
+                  {[
+                    {
+                      label: "Front / PDF",
+                      url: activeDrawerProvider.aadhaarFrontUrl,
+                      name: activeDrawerProvider.aadhaarDocumentName,
+                      required: true,
+                    },
+                    {
+                      label: "Back image",
+                      url: activeDrawerProvider.aadhaarBackUrl,
+                      name: activeDrawerProvider.aadhaarBackDocumentName,
+                      required: false,
+                    },
+                  ].map((document) => (
+                    <div
+                      key={document.label}
+                      className={`rounded-xl border p-3 ${
+                        document.url
+                          ? "border-emerald-200 bg-emerald-50/60"
+                          : "border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            {document.label}
+                          </p>
+                          <p className="mt-1 truncate text-xs font-bold text-slate-800">
+                            {documentLabel(document.name, document.url)}
+                          </p>
+                        </div>
+                        {document.url ? (
+                          <a
+                            href={document.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-950 px-3 py-2 text-[11px] font-black uppercase text-white hover:bg-slate-800"
+                          >
+                            <Eye size={13} />
+                            Open
+                          </a>
+                        ) : (
+                          <span className="shrink-0 rounded-lg bg-white px-3 py-2 text-[11px] font-black uppercase text-slate-400">
+                            {document.required ? "Required" : "Optional"}
+                          </span>
+                        )}
+                      </div>
+                      {document.url && isImageDocument(document.url) && (
+                        <a
+                          href={document.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 block overflow-hidden rounded-lg border border-white bg-white shadow-sm"
+                        >
+                          <img
+                            src={document.url}
+                            alt={`${activeDrawerProvider.name || "Provider"} ${document.label}`}
+                            className="h-40 w-full object-cover"
+                          />
+                        </a>
+                      )}
+                      {!document.url && document.required && (
+                        <p className="mt-2 flex items-center gap-1 text-[11px] font-bold text-rose-600">
+                          <AlertCircle size={12} />
+                          Cannot approve without Aadhaar front or PDF.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
                 {activeDrawerProvider.verificationRejectedReason && (
                   <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs font-bold text-rose-700">
                     {activeDrawerProvider.verificationRejectedReason}

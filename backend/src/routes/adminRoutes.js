@@ -52,7 +52,7 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
         .sort({ createdAt: -1 })
         .lean(),
       Provider.find()
-        .select("name businessName ownerName category customCategory phone email preferredWorkLocation location address rating reviews approvalStatus verificationStatus verificationRejectedReason aadhaarNumberMasked aadhaarFrontUrl aadhaarBackUrl aadhaarDocumentName isActive requestedAt approvedAt rejectedAt suspendedAt createdAt updatedAt totalEarnings pendingEarnings paidEarnings")
+        .select("name businessName ownerName category customCategory phone email preferredWorkLocation location address rating reviews approvalStatus verificationStatus verificationRejectedReason aadhaarNumberMasked aadhaarFrontUrl aadhaarBackUrl aadhaarDocumentName aadhaarBackDocumentName isActive requestedAt approvedAt rejectedAt suspendedAt createdAt updatedAt totalEarnings pendingEarnings paidEarnings")
         .sort({ createdAt: -1 })
         .lean(),
       Booking.find()
@@ -82,6 +82,7 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
       aadhaarFrontUrl: provider.aadhaarFrontUrl || "",
       aadhaarBackUrl: provider.aadhaarBackUrl || "",
       aadhaarDocumentName: provider.aadhaarDocumentName || "",
+      aadhaarBackDocumentName: provider.aadhaarBackDocumentName || "",
     }));
 
     res.json({
