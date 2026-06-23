@@ -86,10 +86,10 @@ const supportTicketSchema = new mongoose.Schema(
   { collection: "supporttickets", timestamps: true }
 );
 
-supportTicketSchema.index({ userId: 1 });
-supportTicketSchema.index({ status: 1 });
-supportTicketSchema.index({ category: 1 });
-supportTicketSchema.index({ priority: 1 });
+supportTicketSchema.index({ userId: 1, createdAt: -1 });
+supportTicketSchema.index({ status: 1, createdAt: -1 });
+supportTicketSchema.index({ category: 1, createdAt: -1 });
+supportTicketSchema.index({ priority: 1, createdAt: -1 });
 
 const SupportTicket = mongoose.model("SupportTicket", supportTicketSchema);
 

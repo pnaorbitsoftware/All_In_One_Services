@@ -35,6 +35,8 @@ const serviceSchema = new mongoose.Schema(
   { collection: "services", timestamps: true }
 );
 
+serviceSchema.index({ isActive: 1, title: 1 });
+
 const Service = mongoose.model("Service", serviceSchema);
 
 export default Service;

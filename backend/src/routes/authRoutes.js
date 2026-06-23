@@ -300,6 +300,23 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Invalid registration OTP." });
     }
 
+    let aadhaarDigits = "";
+    let aadhaarFrontUrl = "";
+    let aadhaarBackUrl = "";
+    if (role === "provider") {
+      aadhaarDigits = String(req.body.aadhaarNumber || "").replace(/\D/g, "");
+      aadhaarFrontUrl = req.body.aadhaarFrontUrl || req.body.aadhaarDocumentUrl || "";
+      aadhaarBackUrl = req.body.aadhaarBackUrl || "";
+
+      if (aadhaarDigits.length !== 12) {
+        return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required for provider registration." });
+      }
+
+      if (!aadhaarFrontUrl) {
+        return res.status(400).json({ message: "Aadhaar front image or PDF upload is required for provider registration." });
+      }
+    }
+
     const user = await User.create({ name, email: normalizedEmail, password, role, phone, address: role === "user" ? address : "" });
     registrationOtps.delete(registrationKey);
 
@@ -308,12 +325,20 @@ router.post("/register", async (req, res) => {
         owner: user._id,
         providerCode: `${slugify(providerName)}-${Date.now()}`,
         name: providerName,
+        businessName: providerName,
+        ownerName: name,
         email: normalizedEmail,
         category: providerCategory,
         customCategory: normalizedCategory === "Other" ? providerCategory : "",
         location,
         preferredWorkLocation,
         phone,
+        aadhaarNumberMasked: `XXXX XXXX ${aadhaarDigits.slice(-4)}`,
+        aadhaarFrontUrl,
+        aadhaarBackUrl,
+        aadhaarDocumentName: req.body.aadhaarDocumentName || "",
+        verificationStatus: "pending",
+        requestedAt: new Date(),
         rating: 0,
         reviews: 0,
         responseTime: responseTime || "",

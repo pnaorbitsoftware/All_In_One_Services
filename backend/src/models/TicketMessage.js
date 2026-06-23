@@ -30,8 +30,7 @@ const ticketMessageSchema = new mongoose.Schema(
   { collection: "ticketmessages", timestamps: true }
 );
 
-ticketMessageSchema.index({ ticketId: 1 });
-ticketMessageSchema.index({ createdAt: 1 });
+ticketMessageSchema.index({ ticketId: 1, createdAt: 1 });
 
 const TicketMessage = mongoose.model("TicketMessage", ticketMessageSchema);
 

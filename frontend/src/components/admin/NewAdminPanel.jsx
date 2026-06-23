@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { releaseProviderPayment } from "../../api/payments";
 import {
   LayoutDashboard,
@@ -6,7 +6,6 @@ import {
   Users,
   CreditCard,
   MessageSquare,
-  History,
   BarChart3,
   Menu,
   X,
@@ -19,7 +18,6 @@ import {
   Eye,
   Send,
   LogOut,
-  FolderOpen,
   LifeBuoy,
   Paperclip,
   AlertCircle,
@@ -27,13 +25,42 @@ import {
   Loader2,
   Search,
   User,
+  RefreshCw,
+  Inbox,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+const normalizeText = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+const formatCurrency = (value) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
+const formatDateTime = (value) => {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
+const matchesSearch = (query, ...values) => {
+  const cleanQuery = normalizeText(query);
+  return (
+    !cleanQuery ||
+    values.some((value) => normalizeText(value).includes(cleanQuery))
+  );
+};
+
 export default function NewAdminPanel({
   adminData,
-  paymentData,
   updateProviderApproval,
   updateBookingRequest,
   setAdminData,
@@ -49,7 +76,6 @@ export default function NewAdminPanel({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [replyText, setReplyText] = useState("");
-  const [historyFilter, setHistoryFilter] = useState("all_bookings");
   const [activeDrawerProvider, setActiveDrawerProvider] = useState(null);
 
   // Helpdesk Ticketing States
@@ -70,6 +96,18 @@ export default function NewAdminPanel({
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState("All");
   const [ticketPriorityFilter, setTicketPriorityFilter] = useState("All");
   const [ticketSearchQuery, setTicketSearchQuery] = useState("");
+
+  // Operational list controls
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [bookingStatusFilter, setBookingStatusFilter] = useState("all");
+  const [bookingServiceFilter, setBookingServiceFilter] = useState("all");
+  const [providerSearch, setProviderSearch] = useState("");
+  const [providerStatusFilter, setProviderStatusFilter] = useState("all");
+  const [providerCategoryFilter, setProviderCategoryFilter] = useState("all");
+  const [clientSearch, setClientSearch] = useState("");
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
+  const [messageSearch, setMessageSearch] = useState("");
 
   const ticketMessagesEndRef = useRef(null);
 
@@ -138,6 +176,7 @@ export default function NewAdminPanel({
   };
 
   const loadTicketDetails = async (ticketId) => {
+    if (selectedTicket?.ticketId === ticketId) return;
     try {
       const token = localStorage.getItem("servicehub_token");
       const res = await fetch(`${API_URL}/support/tickets/${ticketId}`, {
@@ -227,7 +266,9 @@ export default function NewAdminPanel({
       "text/plain",
     ];
     if (!allowedTypes.includes(file.type)) {
-      setStatusMessage?.("Unsupported file type. Use Images, PDF, Word, or TXT.");
+      setStatusMessage?.(
+        "Unsupported file type. Use Images, PDF, Word, or TXT.",
+      );
       return;
     }
 
@@ -245,24 +286,29 @@ export default function NewAdminPanel({
     setReplyLoading(true);
     try {
       const token = localStorage.getItem("servicehub_token");
-      const res = await fetch(`${API_URL}/support/tickets/${selectedTicket.ticketId}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        `${API_URL}/support/tickets/${selectedTicket.ticketId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            message: ticketReplyText,
+            attachment: ticketReplyAttachment,
+            isInternal: isInternalNote,
+          }),
         },
-        body: JSON.stringify({
-          message: ticketReplyText,
-          attachment: ticketReplyAttachment,
-          isInternal: isInternalNote,
-        }),
-      });
+      );
       const data = await res.json();
       if (res.ok && data.success) {
-        setTicketMessages(prev => [...prev, data.data]);
+        setTicketMessages((prev) => [...prev, data.data]);
         setTicketReplyText("");
         setTicketReplyAttachment(null);
-        setStatusMessage?.(isInternalNote ? "Internal note added." : "Reply dispatched to user.");
+        setStatusMessage?.(
+          isInternalNote ? "Internal note added." : "Reply dispatched to user.",
+        );
         fetchSupportTickets();
       } else {
         setStatusMessage?.(data.message || "Failed to submit response.");
@@ -278,18 +324,31 @@ export default function NewAdminPanel({
   useEffect(() => {
     if (activeTab === "support") {
       const timerId = window.setTimeout(() => {
-        fetchSupportTickets();
         fetchSupportAnalytics();
         fetchSupportStaff();
       }, 0);
       return () => window.clearTimeout(timerId);
     }
     return undefined;
-    // These request helpers intentionally use the current filter values.
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "support") {
+      const timerId = window.setTimeout(
+        () => fetchSupportTickets(),
+        ticketSearchQuery.trim() ? 300 : 0,
+      );
+      return () => window.clearTimeout(timerId);
+    }
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, ticketStatusFilter, ticketCategoryFilter, ticketPriorityFilter, ticketSearchQuery]);
-
-
+  }, [
+    activeTab,
+    ticketStatusFilter,
+    ticketCategoryFilter,
+    ticketPriorityFilter,
+    ticketSearchQuery,
+  ]);
 
   // Handle logout
   const handleLogout = () => {
@@ -300,10 +359,12 @@ export default function NewAdminPanel({
   const handleReleasePayment = async (bookingId) => {
     try {
       await releaseProviderPayment(bookingId);
-      refreshAdminPayments?.();
-      window.location.reload();
+      await refreshAdminPayments?.();
+      setStatusMessage?.("Provider payout released successfully.");
     } catch (error) {
-      alert(error.message);
+      setStatusMessage?.(
+        error.message || "Provider payout could not be released.",
+      );
     }
   };
 
@@ -311,8 +372,40 @@ export default function NewAdminPanel({
   const stats = adminData?.stats || {};
   const bookingCount = adminData?.bookings?.length || 0;
   const providerCount = adminData?.providers?.length || 0;
-  const totalRevenue =
-    paymentData?.totalRevenue || stats.totalCostEstimate || 3588;
+  const totalUsersCount = Math.max(
+    Number(stats.totalUsers) || 0,
+    (adminData?.users || []).filter((account) => account.role === "user")
+      .length,
+  );
+  const calculatedPendingBookings = (adminData?.bookings || []).filter(
+    (booking) =>
+      !["completed", "cancelled", "rejected"].includes(
+        normalizeText(booking.status),
+      ),
+  ).length;
+  const pendingBookingsCount = Math.max(
+    Number(stats.pendingWork) || 0,
+    calculatedPendingBookings,
+  );
+  const calculatedCompletedWork = (adminData?.bookings || []).filter(
+    (booking) => normalizeText(booking.status) === "completed",
+  ).length;
+  const completedWorkCount = Math.max(
+    Number(stats.completedWork) || 0,
+    calculatedCompletedWork,
+  );
+  const calculatedRevenue = (adminData?.bookings || []).reduce(
+    (total, booking) =>
+      total +
+      (Number(
+        booking.finalEstimateAmount || booking.amount || booking.costEstimate,
+      ) || 0),
+    0,
+  );
+  const totalRevenue = Math.max(
+    Number(stats.totalCostEstimate) || 0,
+    calculatedRevenue,
+  );
   const avgTicketSize =
     bookingCount > 0 ? (totalRevenue / bookingCount).toFixed(2) : 0;
   const completedBookingsCount = (adminData?.bookings || []).filter(
@@ -329,6 +422,155 @@ export default function NewAdminPanel({
     providerCount > 0
       ? ((approvedProvidersCount / providerCount) * 100).toFixed(1)
       : 0;
+
+  const bookingServices = useMemo(
+    () =>
+      [
+        ...new Set(
+          (adminData?.bookings || [])
+            .map((booking) => booking.service)
+            .filter(Boolean),
+        ),
+      ].sort(),
+    [adminData?.bookings],
+  );
+  const providerCategories = useMemo(
+    () =>
+      [
+        ...new Set(
+          (adminData?.providers || [])
+            .map((provider) => provider.category || provider.customCategory)
+            .filter(Boolean),
+        ),
+      ].sort(),
+    [adminData?.providers],
+  );
+  const filteredBookings = (adminData?.bookings || []).filter((booking) => {
+    const status = normalizeText(booking.status || "pending");
+    return (
+      (bookingStatusFilter === "all" || status === bookingStatusFilter) &&
+      (bookingServiceFilter === "all" ||
+        booking.service === bookingServiceFilter) &&
+      matchesSearch(
+        bookingSearch,
+        booking._id,
+        booking.bookingId,
+        booking.name,
+        booking.phone,
+        booking.service,
+        booking.assignedProviderName,
+        booking.requestedProviderName,
+      )
+    );
+  });
+  const filteredProviders = (adminData?.providers || []).filter((provider) => {
+    const status = normalizeText(provider.approvalStatus || "pending");
+    const category = provider.category || provider.customCategory || "";
+    return (
+      (providerStatusFilter === "all" || status === providerStatusFilter) &&
+      (providerCategoryFilter === "all" ||
+        category === providerCategoryFilter) &&
+      matchesSearch(
+        providerSearch,
+        provider.name,
+        provider.businessName,
+        provider.phone,
+        provider.email,
+        category,
+        provider.preferredWorkLocation,
+      )
+    );
+  });
+  const payoutBookings = (adminData?.bookings || []).filter((booking) => {
+    if (normalizeText(booking.status) !== "completed") return false;
+    const releaseState = booking.providerPaymentReleased
+      ? "released"
+      : "pending";
+    return (
+      (paymentStatusFilter === "all" || paymentStatusFilter === releaseState) &&
+      matchesSearch(
+        paymentSearch,
+        booking._id,
+        booking.name,
+        booking.service,
+        booking.assignedProviderName,
+        booking.requestedProviderName,
+      )
+    );
+  });
+  const filteredClients = (adminData?.users || []).filter((client) =>
+    matchesSearch(
+      clientSearch,
+      client.name,
+      client.email,
+      client.phone,
+      client.address,
+    ),
+  );
+  const getClientBookingStats = (client) => {
+    const clientBookings = (adminData?.bookings || []).filter(
+      (booking) =>
+        normalizeText(booking.userEmail) === normalizeText(client.email) ||
+        normalizeText(booking.phone) === normalizeText(client.phone) ||
+        normalizeText(booking.name) === normalizeText(client.name),
+    );
+    return {
+      total: clientBookings.length,
+      active: clientBookings.filter(
+        (booking) =>
+          !["completed", "cancelled"].includes(normalizeText(booking.status)),
+      ).length,
+      completed: clientBookings.filter(
+        (booking) => normalizeText(booking.status) === "completed",
+      ).length,
+      cancelled: clientBookings.filter(
+        (booking) => normalizeText(booking.status) === "cancelled",
+      ).length,
+      spend: clientBookings.reduce(
+        (total, booking) =>
+          total +
+          (Number(
+            booking.finalEstimateAmount || booking.amount || booking.costEstimate,
+          ) || 0),
+        0,
+      ),
+    };
+  };
+  const allCompletedPayouts = (adminData?.bookings || []).filter(
+    (booking) => normalizeText(booking.status) === "completed",
+  );
+  const pendingPayoutValue = allCompletedPayouts
+    .filter((booking) => !booking.providerPaymentReleased)
+    .reduce(
+      (total, booking) =>
+        total +
+        (Number(booking.finalEstimateAmount || booking.amount) || 0) * 0.8,
+      0,
+    );
+  const filteredMessages = (adminData?.contactMessages || []).filter(
+    (message) =>
+      matchesSearch(
+        messageSearch,
+        message.name,
+        message.email,
+        message.phone,
+        message.subject,
+        message.message,
+        message.adminReply,
+      ),
+  );
+  const visibleSupportSummary = {
+    total: supportTickets.length,
+    open: supportTickets.filter(
+      (ticket) => !["Resolved", "Closed"].includes(ticket.status),
+    ).length,
+    resolved: supportTickets.filter((ticket) =>
+      ["Resolved", "Closed"].includes(ticket.status),
+    ).length,
+    highPriority: supportTickets.filter((ticket) =>
+      ["High", "Urgent"].includes(ticket.priority),
+    ).length,
+  };
 
   // Calculate top services
   const calculateTopServices = () => {
@@ -347,85 +589,161 @@ export default function NewAdminPanel({
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
     .slice(0, 4);
 
-  // Menu items
+  // Menu items - Removed "history" tab
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "bookings", label: "Bookings Queue", icon: CalendarDays },
-    { id: "providers", label: "Providers Network", icon: Users },
-    { id: "payments", label: "Settlements", icon: CreditCard },
-    { id: "messages", label: "CRM Inbox", icon: MessageSquare },
-    { id: "support", label: "Helpdesk Tickets", icon: LifeBuoy },
-    { id: "analytics", label: "Analytics Dashboard", icon: BarChart3 },
-    { id: "history", label: "Archive Vault", icon: History },
+    {
+      id: "dashboard",
+      label: "Dashboard",
+      title: "Operations Overview",
+      description: "Live marketplace health and today's operational priorities",
+      icon: LayoutDashboard,
+    },
+    {
+      id: "bookings",
+      label: "Bookings Queue",
+      title: "Booking Operations",
+      description: "Assign providers and manage every service request",
+      icon: CalendarDays,
+    },
+    {
+      id: "providers",
+      label: "Providers Network",
+      title: "Provider Network",
+      description: "Review, approve and manage service professionals",
+      icon: Users,
+    },
+    {
+      id: "clients",
+      label: "Client Network",
+      title: "Client Network",
+      description: "Review client accounts, spend and booking history",
+      icon: User,
+    },
+    {
+      id: "payments",
+      label: "Settlements",
+      title: "Payments & Settlements",
+      description: "Track collections, provider payouts and platform revenue",
+      icon: CreditCard,
+    },
+    {
+      id: "messages",
+      label: "CRM Inbox",
+      title: "Customer Inbox",
+      description: "Read and respond to customer enquiries",
+      icon: MessageSquare,
+    },
+    {
+      id: "support",
+      label: "Help & Support",
+      title: "Support Desk",
+      description: "Triage, assign and resolve customer tickets",
+      icon: LifeBuoy,
+    },
+    {
+      id: "analytics",
+      label: "Analytics",
+      title: "Business Analytics",
+      description: "Marketplace performance and provider insights",
+      icon: BarChart3,
+    },
   ];
+  const activeMenuItem =
+    menuItems.find((item) => item.id === activeTab) || menuItems[0];
 
   // Handle send reply
   const handleSendReply = async (messageId) => {
     if (!replyText.trim()) return;
     try {
-      if (setAdminData && adminData) {
-        const updatedMessages = (adminData.contactMessages || []).map((msg) => {
-          if (msg._id === messageId) {
-            return {
-              ...msg,
-              replyLog: replyText,
-              repliedAt: new Date().toISOString(),
-            };
-          }
-          return msg;
-        });
-        setAdminData({ ...adminData, contactMessages: updatedMessages });
-        if (setStatusMessage) setStatusMessage("Reply processed successfully!");
-        setReplyText("");
-        setSelectedMessage(null);
-      }
+      const token = localStorage.getItem("servicehub_token");
+      const response = await fetch(
+        `${API_URL}/admin/contact-messages/${messageId}/reply`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reply: replyText.trim() }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.message || "Reply could not be sent.");
+
+      const savedMessage = data.contactMessage;
+      setAdminData?.((current) => ({
+        ...current,
+        contactMessages: (current?.contactMessages || []).map((message) =>
+          message._id === messageId ? savedMessage : message,
+        ),
+      }));
+      setSelectedMessage(savedMessage);
+      setStatusMessage?.("Reply emailed to the customer and saved.");
+      setReplyText("");
     } catch (err) {
       console.error(err);
-      if (setStatusMessage) {
-        setStatusMessage("Error syncing response.");
-      }
+      setStatusMessage?.(err.message || "Reply could not be sent.");
     }
   };
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-slate-100 flex overflow-hidden z-50 font-sans text-slate-800">
+    <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-[#f4f7fb] font-sans text-slate-800">
       {/* SIDEBAR */}
       <aside
-        className={`bg-slate-950 text-white transition-all duration-300 flex flex-col h-full flex-shrink-0 z-30 shadow-xl ${sidebarOpen ? "w-72" : "w-20"}`}
+        className={`z-30 flex h-full flex-shrink-0 flex-col bg-[#071126] text-white shadow-2xl shadow-slate-950/20 transition-all duration-300 ${sidebarOpen ? "w-64" : "w-[76px]"}`}
       >
-        <div className="flex h-20 items-center justify-between border-b border-slate-800 px-5 flex-shrink-0">
+        <div className="flex h-[88px] flex-shrink-0 items-center justify-between border-b border-white/10 px-5">
           {sidebarOpen && (
-            <div>
-              <h2 className="text-xl font-bold tracking-wide text-blue-500">
-                ServiceHub
-              </h2>
-              <p className="text-[10px] uppercase tracking-widest text-slate-400">
-                Admin Console
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-600/20">
+                <LayoutDashboard size={19} />
+              </div>
+              <div>
+                <h2 className="text-lg font-black tracking-tight text-white">
+                  ServiceHub
+                </h2>
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-blue-300">
+                  Admin workspace
+                </p>
+              </div>
             </div>
           )}
           <button
+            type="button"
+            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="hover:bg-slate-800 p-2 rounded-xl transition"
+            className="rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
 
-        <div className="p-4 flex-1 overflow-y-auto space-y-1.5">
+        <div className="flex-1 space-y-1 overflow-y-auto p-3">
+          {sidebarOpen && (
+            <p className="px-3 pb-2 pt-3 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Workspace
+            </p>
+          )}
           {menuItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.id}
+                type="button"
+                data-testid={`admin-nav-${item.id}`}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left font-semibold text-sm transition-all duration-200 ${
+                title={!sidebarOpen ? item.label : undefined}
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[13px] font-bold transition-all duration-200 ${
                   activeTab === item.id
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-slate-400 hover:bg-slate-900 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25"
+                    : "text-slate-400 hover:bg-white/[0.07] hover:text-white"
                 }`}
               >
-                <Icon size={18} className="flex-shrink-0" />
+                <Icon
+                  size={18}
+                  className={`flex-shrink-0 ${activeTab === item.id ? "text-white" : "text-slate-500 group-hover:text-blue-300"}`}
+                />
                 {sidebarOpen && <span className="truncate">{item.label}</span>}
               </button>
             );
@@ -433,42 +751,54 @@ export default function NewAdminPanel({
         </div>
 
         {/* Logout Button */}
-        <div className="mt-auto border-t border-slate-700 pt-4 p-4">
+        <div className="mt-auto border-t border-white/10 p-3">
           <button
+            type="button"
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-3 rounded-xl bg-red-600 px-4 py-3 text-white font-semibold transition hover:bg-red-700"
+            className="flex w-full items-center justify-center gap-3 rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-300 transition hover:bg-rose-500 hover:text-white"
           >
-            <span>🚪</span>
+            <LogOut size={17} />
             {sidebarOpen && <span className="truncate">Logout</span>}
           </button>
         </div>
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#f4f7fb]">
         {/* TOP BAR */}
-        <div className="h-20 border-b bg-white px-8 flex items-center justify-between flex-shrink-0 shadow-sm z-10">
+        <div className="z-10 flex min-h-[88px] flex-shrink-0 items-center justify-between border-b border-slate-200/80 bg-white px-5 py-4 shadow-sm shadow-slate-200/30 sm:px-7 lg:px-9">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight capitalize">
-              {activeTab} Control Hub
+            <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
+              administration
+            </div>
+            <h1 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+              {activeMenuItem.title}
             </h1>
-            <p className="text-xs text-slate-500">
-              Enterprise Operations Management
+            <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
+              {activeMenuItem.description}
             </p>
           </div>
-          {setIsAdminMode && (
-            <button
-              onClick={() => setIsAdminMode(false)}
-              className="flex items-center gap-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all"
-            >
-              <LogOut size={14} />
-              Exit Admin Mode
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 md:flex">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Systems
+              operational
+            </div>
+            {setIsAdminMode && (
+              <button
+                type="button"
+                onClick={() => setIsAdminMode(false)}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 sm:px-4"
+              >
+                <LogOut size={14} />
+                <span className="hidden sm:inline">Exit Admin</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* SCROLLABLE CONTENT */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+        <div className="flex-1 space-y-7 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {/* DASHBOARD TAB */}
           {activeTab === "dashboard" && (
             <>
@@ -479,7 +809,7 @@ export default function NewAdminPanel({
                       Total Users
                     </p>
                     <h3 className="mt-2 text-2xl font-black text-slate-900">
-                      {stats.totalUsers || 0}
+                      {totalUsersCount}
                     </h3>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -493,7 +823,10 @@ export default function NewAdminPanel({
                       Active Providers
                     </p>
                     <h3 className="mt-2 text-2xl font-black text-slate-900">
-                      {stats.totalProviders || 0}
+                      {Math.max(
+                        Number(stats.totalProviders) || 0,
+                        providerCount,
+                      )}
                     </h3>
                   </div>
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
@@ -507,7 +840,7 @@ export default function NewAdminPanel({
                       Total Bookings
                     </p>
                     <h3 className="mt-2 text-2xl font-black text-slate-900">
-                      {stats.totalBookings || 0}
+                      {Math.max(Number(stats.totalBookings) || 0, bookingCount)}
                     </h3>
                   </div>
                   <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
@@ -521,7 +854,7 @@ export default function NewAdminPanel({
                       Pending Work Queue
                     </p>
                     <h3 className="mt-2 text-2xl font-black text-slate-900">
-                      {stats.pendingWork || 0}
+                      {pendingBookingsCount}
                     </h3>
                   </div>
                   <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
@@ -535,7 +868,7 @@ export default function NewAdminPanel({
                       Completed Deliveries
                     </p>
                     <h3 className="mt-2 text-2xl font-black text-slate-900">
-                      {stats.completedWork || 0}
+                      {completedWorkCount}
                     </h3>
                   </div>
                   <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -626,14 +959,67 @@ export default function NewAdminPanel({
 
           {/* BOOKINGS QUEUE TAB */}
           {activeTab === "bookings" && (
-            <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
-              <div className="p-6 border-b flex items-center justify-between bg-slate-50/50">
-                <h2 className="text-xl font-bold text-slate-900">
-                  Active Bookings Queue
-                </h2>
-                <span className="bg-slate-200/80 text-slate-700 px-3 py-1 rounded-lg text-xs font-bold">
-                  Live Items: {bookingCount}
-                </span>
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+              <div className="border-b border-slate-200 bg-white p-5 lg:p-6">
+                <div className="flex flex-col justify-between gap-4 2xl:flex-row 2xl:items-center">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-black text-slate-950">
+                        Active bookings
+                      </h2>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                        {filteredBookings.length} of {bookingCount}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Search, assign and update incoming service requests.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <label className="relative min-w-[260px] flex-1">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={bookingSearch}
+                        onChange={(event) =>
+                          setBookingSearch(event.target.value)
+                        }
+                        placeholder="Search booking, customer or phone"
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                      />
+                    </label>
+                    <select
+                      aria-label="Filter bookings by service"
+                      value={bookingServiceFilter}
+                      onChange={(event) =>
+                        setBookingServiceFilter(event.target.value)
+                      }
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                    >
+                      <option value="all">All services</option>
+                      {bookingServices.map((service) => (
+                        <option key={service} value={service}>
+                          {service}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Filter bookings by status"
+                      value={bookingStatusFilter}
+                      onChange={(event) =>
+                        setBookingStatusFilter(event.target.value)
+                      }
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="accepted">Accepted</option>
+                      <option value="job_started">In progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
@@ -672,7 +1058,7 @@ export default function NewAdminPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
-                    {(adminData?.bookings || []).map((booking) => {
+                    {filteredBookings.map((booking) => {
                       const cleanStatus =
                         booking.status?.toLowerCase() || "pending";
                       return (
@@ -791,7 +1177,7 @@ export default function NewAdminPanel({
                               )}
                               {cleanStatus === "completed" && (
                                 <span className="text-xs text-slate-400 font-medium italic">
-                                  Archived Stack
+                                  Completed
                                 </span>
                               )}
                             </div>
@@ -799,6 +1185,30 @@ export default function NewAdminPanel({
                         </tr>
                       );
                     })}
+                    {filteredBookings.length === 0 && (
+                      <tr>
+                        <td colSpan="10" className="px-6 py-16 text-center">
+                          <Inbox
+                            className="mx-auto mb-3 text-slate-300"
+                            size={30}
+                          />
+                          <p className="text-sm font-bold text-slate-700">
+                            No bookings match these filters
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBookingSearch("");
+                              setBookingStatusFilter("all");
+                              setBookingServiceFilter("all");
+                            }}
+                            className="mt-2 text-xs font-bold text-blue-600 hover:underline"
+                          >
+                            Clear filters
+                          </button>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -807,14 +1217,64 @@ export default function NewAdminPanel({
 
           {/* PROVIDERS NETWORK TAB */}
           {activeTab === "providers" && (
-            <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
-              <div className="p-6 border-b flex items-center justify-between bg-slate-50/50">
-                <h2 className="text-xl font-bold text-slate-900">
-                  Provider Control Matrix
-                </h2>
-                <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">
-                  Total Network: {providerCount}
-                </span>
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+              <div className="border-b border-slate-200 bg-white p-5 lg:p-6">
+                <div className="flex flex-col justify-between gap-4 2xl:flex-row 2xl:items-center">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-black text-slate-950">
+                        Provider directory
+                      </h2>
+                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                        {filteredProviders.length} of {providerCount}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Review profiles, verification and network access.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <label className="relative min-w-[250px] flex-1">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={providerSearch}
+                        onChange={(event) =>
+                          setProviderSearch(event.target.value)
+                        }
+                        placeholder="Search name, phone or location"
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                      />
+                    </label>
+                    <select
+                      aria-label="Filter providers by category"
+                      value={providerCategoryFilter}
+                      onChange={(event) =>
+                        setProviderCategoryFilter(event.target.value)
+                      }
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                    >
+                      <option value="all">All categories</option>
+                      {providerCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Filter providers by verification"
+                      value={providerStatusFilter}
+                      onChange={(event) =>
+                        setProviderStatusFilter(event.target.value)
+                      }
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Suspended</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
@@ -824,7 +1284,7 @@ export default function NewAdminPanel({
                         Photo
                       </th>
                       <th className="p-4 min-w-[150px] whitespace-nowrap">
-                        Operator Name
+                        Provider Business Name
                       </th>
                       <th className="p-4 min-w-[160px] whitespace-nowrap">
                         Core Category
@@ -847,7 +1307,7 @@ export default function NewAdminPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
-                    {(adminData?.providers || []).map((provider) => {
+                    {filteredProviders.map((provider) => {
                       const cleanAppStatus =
                         provider.approvalStatus?.toLowerCase() || "pending";
                       return (
@@ -857,21 +1317,30 @@ export default function NewAdminPanel({
                         >
                           <td className="p-4 pl-6 whitespace-nowrap">
                             <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 flex items-center justify-center bg-slate-50 flex-shrink-0">
-                              <img
-                                src={
-                                  provider.profileImage ||
-                                  `https://ui-avatars.com/api/?name=${encodeURIComponent(provider.name || "Pro")}&background=random`
-                                }
-                                className="h-full w-full object-cover"
-                                alt="Pro"
-                                onError={(e) => {
-                                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(provider.name || "Pro")}&background=random`;
-                                }}
-                              />
+                              {provider.profileImage ? (
+                                <img
+                                  src={provider.profileImage}
+                                  className="h-full w-full object-cover"
+                                  alt={`${provider.name || "Provider"} profile`}
+                                />
+                              ) : (
+                                <span className="text-xs font-black uppercase text-blue-700">
+                                  {String(provider.name || "PR")
+                                    .split(/\s+/)
+                                    .slice(0, 2)
+                                    .map((part) => part[0])
+                                    .join("")}
+                                </span>
+                              )}
                             </div>
                           </td>
-                          <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
-                            {provider.name}
+                          <td className="p-4 whitespace-nowrap">
+                            <p className="font-bold text-slate-900">
+                              {provider.businessName || provider.name}
+                            </p>
+                            <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                              Owner: {provider.ownerName || provider.name || "-"}
+                            </p>
                           </td>
                           <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
                             {provider.category ||
@@ -948,6 +1417,130 @@ export default function NewAdminPanel({
                         </tr>
                       );
                     })}
+                    {filteredProviders.length === 0 && (
+                      <tr>
+                        <td colSpan="8" className="px-6 py-16 text-center">
+                          <Users
+                            className="mx-auto mb-3 text-slate-300"
+                            size={30}
+                          />
+                          <p className="text-sm font-bold text-slate-700">
+                            No providers match these filters
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProviderSearch("");
+                              setProviderStatusFilter("all");
+                              setProviderCategoryFilter("all");
+                            }}
+                            className="mt-2 text-xs font-bold text-blue-600 hover:underline"
+                          >
+                            Clear filters
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* CLIENT NETWORK TAB */}
+          {activeTab === "clients" && (
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+              <div className="border-b border-slate-200 bg-white p-5 lg:p-6">
+                <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-black text-slate-950">
+                        Client directory
+                      </h2>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                        {filteredClients.length} of {adminData?.users?.length || 0}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Registered clients with booking, cancellation and spend summary.
+                    </p>
+                  </div>
+                  <label className="relative min-w-[280px]">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={clientSearch}
+                      onChange={(event) => setClientSearch(event.target.value)}
+                      placeholder="Search client name, phone or email"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    <tr>
+                      <th className="px-5 py-3.5">Client</th>
+                      <th className="px-5 py-3.5">Phone</th>
+                      <th className="px-5 py-3.5">Address</th>
+                      <th className="px-5 py-3.5 text-center">Bookings</th>
+                      <th className="px-5 py-3.5 text-center">Active</th>
+                      <th className="px-5 py-3.5 text-center">Completed</th>
+                      <th className="px-5 py-3.5 text-center">Cancelled</th>
+                      <th className="px-5 py-3.5 text-right">Total spend</th>
+                      <th className="px-5 py-3.5">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredClients.map((client) => {
+                      const clientStats = getClientBookingStats(client);
+                      return (
+                        <tr key={client._id} className="transition hover:bg-slate-50/80">
+                          <td className="px-5 py-4">
+                            <p className="font-black text-slate-900">
+                              {client.name || "Client"}
+                            </p>
+                            <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                              {client.email || "No email"}
+                            </p>
+                          </td>
+                          <td className="px-5 py-4 font-mono text-xs text-slate-600">
+                            {client.phone || "-"}
+                          </td>
+                          <td className="max-w-[260px] px-5 py-4 text-xs font-semibold text-slate-500">
+                            {client.address || "Not added"}
+                          </td>
+                          <td className="px-5 py-4 text-center font-black text-slate-900">
+                            {clientStats.total}
+                          </td>
+                          <td className="px-5 py-4 text-center font-bold text-blue-600">
+                            {clientStats.active}
+                          </td>
+                          <td className="px-5 py-4 text-center font-bold text-emerald-600">
+                            {clientStats.completed}
+                          </td>
+                          <td className="px-5 py-4 text-center font-bold text-rose-600">
+                            {clientStats.cancelled}
+                          </td>
+                          <td className="px-5 py-4 text-right font-black text-slate-900">
+                            {formatCurrency(clientStats.spend)}
+                          </td>
+                          <td className="px-5 py-4 text-xs font-semibold text-slate-500">
+                            {formatDateTime(client.createdAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filteredClients.length === 0 && (
+                      <tr>
+                        <td colSpan="9" className="px-6 py-16 text-center">
+                          <User className="mx-auto mb-3 text-slate-300" size={30} />
+                          <p className="text-sm font-bold text-slate-700">
+                            No clients match these filters
+                          </p>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -957,15 +1550,21 @@ export default function NewAdminPanel({
           {/* PAYMENTS TAB - UPDATED WITH PROVIDER PAYOUT SUMMARY */}
           {activeTab === "payments" && (
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-slate-900">
-                  Settlements Ledger
-                </h2>
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div>
+                  <h2 className="text-lg font-black text-slate-950">
+                    Settlement overview
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Reconcile completed jobs and release provider earnings.
+                  </p>
+                </div>
                 <button
+                  type="button"
                   onClick={refreshAdminPayments}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-700 transition shadow-xs"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
                 >
-                  Force Sync Logs
+                  <RefreshCw size={14} /> Sync payment data
                 </button>
               </div>
               <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
@@ -974,7 +1573,7 @@ export default function NewAdminPanel({
                     Gross Capital Pipeline
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-slate-950">
-                    ₹{totalRevenue}
+                    {formatCurrency(totalRevenue)}
                   </h3>
                 </div>
                 <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
@@ -982,7 +1581,7 @@ export default function NewAdminPanel({
                     Provider Share (80%)
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-emerald-600">
-                    ₹{(totalRevenue * 0.8).toFixed(0)}
+                    {formatCurrency(totalRevenue * 0.8)}
                   </h3>
                 </div>
                 <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
@@ -990,7 +1589,7 @@ export default function NewAdminPanel({
                     Platform overhead (20%)
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-blue-600">
-                    ₹{(totalRevenue * 0.2).toFixed(0)}
+                    {formatCurrency(totalRevenue * 0.2)}
                   </h3>
                 </div>
                 <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
@@ -998,12 +1597,12 @@ export default function NewAdminPanel({
                     Escrow Clearing
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-amber-500">
-                    ₹0
+                    {formatCurrency(pendingPayoutValue)}
                   </h3>
                 </div>
               </div>
 
-              {/* Provider Payout Summary - Replaced Audit Trail Ledger */}
+              {/* Provider Payout Summary */}
               <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
                 <div className="p-5 border-b bg-slate-50/50">
                   <h3 className="font-bold text-slate-900 text-sm">
@@ -1055,10 +1654,143 @@ export default function NewAdminPanel({
                         Platform Earnings
                       </p>
                       <h3 className="text-xl font-bold text-purple-600">
-                        ₹{(totalRevenue * 0.2).toFixed(0)}
+                        {formatCurrency(totalRevenue * 0.2)}
                       </h3>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/40">
+                <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 lg:flex-row lg:items-center">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">
+                      Provider payout ledger
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Completed bookings eligible for settlement.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <label className="relative min-w-[250px]">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={paymentSearch}
+                        onChange={(event) =>
+                          setPaymentSearch(event.target.value)
+                        }
+                        placeholder="Search customer or service"
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white"
+                      />
+                    </label>
+                    <select
+                      aria-label="Filter payouts by status"
+                      value={paymentStatusFilter}
+                      onChange={(event) =>
+                        setPaymentStatusFilter(event.target.value)
+                      }
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                    >
+                      <option value="all">All payouts</option>
+                      <option value="pending">Pending release</option>
+                      <option value="released">Released</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <tr>
+                        <th className="px-5 py-3.5">Customer / booking</th>
+                        <th className="px-5 py-3.5">Provider</th>
+                        <th className="px-5 py-3.5">Service</th>
+                        <th className="px-5 py-3.5 text-right">Gross</th>
+                        <th className="px-5 py-3.5 text-right">
+                          Provider share
+                        </th>
+                        <th className="px-5 py-3.5 text-center">Status</th>
+                        <th className="px-5 py-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {payoutBookings.map((booking) => {
+                        const grossAmount =
+                          Number(
+                            booking.finalEstimateAmount || booking.amount,
+                          ) || 0;
+                        return (
+                          <tr
+                            key={booking._id}
+                            className="transition hover:bg-slate-50/80"
+                          >
+                            <td className="px-5 py-4">
+                              <p className="font-bold text-slate-900">
+                                {booking.name || "Unknown customer"}
+                              </p>
+                              <p className="mt-0.5 font-mono text-[10px] text-slate-400">
+                                #
+                                {String(
+                                  booking.bookingId || booking._id || "",
+                                ).slice(-8)}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4 font-semibold text-slate-600">
+                              {booking.assignedProviderName ||
+                                booking.requestedProviderName ||
+                                "Unassigned"}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                                {booking.service || "Service"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-right font-bold text-slate-700">
+                              {formatCurrency(grossAmount)}
+                            </td>
+                            <td className="px-5 py-4 text-right font-black text-slate-950">
+                              {formatCurrency(grossAmount * 0.8)}
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[10px] font-black ${booking.providerPaymentReleased ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                              >
+                                {booking.providerPaymentReleased
+                                  ? "Released"
+                                  : "Pending"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              {booking.providerPaymentReleased ? (
+                                <span className="text-xs font-bold text-slate-400">
+                                  Complete
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleReleasePayment(booking._id)
+                                  }
+                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+                                >
+                                  Release payout
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {payoutBookings.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan="7"
+                            className="px-6 py-14 text-center text-sm font-semibold text-slate-400"
+                          >
+                            No completed payouts match these filters.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -1066,38 +1798,68 @@ export default function NewAdminPanel({
 
           {/* MESSAGES CRM INBOX */}
           {activeTab === "messages" && (
-            <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden flex h-[580px]">
-              <div className="w-1/3 border-r flex flex-col bg-slate-50/40 flex-shrink-0">
-                <div className="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
-                  <h3 className="font-bold text-slate-900 text-sm">
-                    CRM Inbound Feed
-                  </h3>
-                  <button
-                    onClick={refreshAdminContactMessages}
-                    className="text-xs text-blue-600 font-bold hover:underline"
-                  >
-                    Sync
-                  </button>
+            <div className="flex h-[680px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+              <div className="flex w-[360px] flex-shrink-0 flex-col border-r border-slate-200 bg-slate-50/40 xl:w-[400px]">
+                <div className="flex-shrink-0 space-y-3 border-b border-slate-200 bg-white p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-950">
+                        Customer enquiries
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        {filteredMessages.length} conversations
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Refresh customer messages"
+                      onClick={refreshAdminContactMessages}
+                      className="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 text-blue-600 transition hover:bg-blue-50"
+                    >
+                      <RefreshCw size={15} />
+                    </button>
+                  </div>
+                  <label className="relative block">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={messageSearch}
+                      onChange={(event) => setMessageSearch(event.target.value)}
+                      placeholder="Search name, email or message"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white"
+                    />
+                  </label>
                 </div>
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-                  {(adminData?.contactMessages || []).length === 0 ? (
+                  {filteredMessages.length === 0 ? (
                     <div className="p-8 text-center text-slate-400 text-xs font-medium">
-                      No Live Feedback Feed
+                      No customer enquiries match your search.
                     </div>
                   ) : (
-                    (adminData?.contactMessages || []).map((msg) => (
-                      <div
+                    filteredMessages.map((msg) => (
+                      <button
+                        type="button"
                         key={msg._id}
                         onClick={() => setSelectedMessage(msg)}
-                        className={`p-4 cursor-pointer transition-all ${selectedMessage?._id === msg._id ? "bg-blue-50/60 border-l-4 border-blue-600" : "bg-white hover:bg-slate-50/50"}`}
+                        className={`w-full p-5 text-left transition-all ${selectedMessage?._id === msg._id ? "border-l-4 border-blue-600 bg-blue-50/70" : "border-l-4 border-transparent bg-white hover:bg-slate-50"}`}
                       >
-                        <h4 className="font-bold text-sm text-slate-900 truncate">
-                          {msg.name}
-                        </h4>
-                        <p className="text-xs text-slate-500 truncate mt-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <h4 className="truncate text-sm font-black text-slate-900">
+                            {msg.name || "Unknown customer"}
+                          </h4>
+                          {msg.repliedAt && (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700">
+                              REPLIED
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-500">
+                          {msg.subject ? `${msg.subject}: ` : ""}
                           {msg.message}
                         </p>
-                      </div>
+                        <p className="mt-2 truncate text-[10px] font-semibold text-slate-400">
+                          {msg.email || msg.phone || "No contact details"}
+                        </p>
+                      </button>
                     ))
                   )}
                 </div>
@@ -1119,10 +1881,10 @@ export default function NewAdminPanel({
                           {selectedMessage.message}
                         </p>
                       </div>
-                      {selectedMessage.replyLog && (
+                      {selectedMessage.adminReply && (
                         <div className="bg-emerald-50/60 p-5 rounded-2xl border border-emerald-100 max-w-xl ml-auto">
                           <p className="text-slate-900 text-sm font-medium whitespace-pre-line">
-                            {selectedMessage.replyLog}
+                            {selectedMessage.adminReply}
                           </p>
                         </div>
                       )}
@@ -1144,10 +1906,19 @@ export default function NewAdminPanel({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                    <MessageSquare size={36} className="mb-2 stroke-1" />
-                    <p className="text-xs font-bold uppercase tracking-wider">
-                      CRM Terminal Empty
+                  <div className="flex flex-1 flex-col items-center justify-center px-8 text-center text-slate-400">
+                    <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-slate-100">
+                      <MessageSquare
+                        size={26}
+                        className="stroke-1 text-slate-400"
+                      />
+                    </div>
+                    <p className="text-sm font-black text-slate-700">
+                      Select a conversation
+                    </p>
+                    <p className="mt-1 max-w-xs text-xs leading-5 text-slate-400">
+                      Choose a customer enquiry from the inbox to read and
+                      respond.
                     </p>
                   </div>
                 )}
@@ -1277,19 +2048,28 @@ export default function NewAdminPanel({
                 {[
                   {
                     label: "Total Tickets",
-                    value: supportAnalytics?.total ?? 0,
+                    value: Math.max(
+                      Number(supportAnalytics?.total) || 0,
+                      visibleSupportSummary.total,
+                    ),
                     icon: LifeBuoy,
                     color: "text-slate-600 bg-slate-100",
                   },
                   {
                     label: "Open Tickets",
-                    value: supportAnalytics?.open ?? 0,
+                    value: Math.max(
+                      Number(supportAnalytics?.open) || 0,
+                      visibleSupportSummary.open,
+                    ),
                     icon: AlertCircle,
                     color: "text-blue-600 bg-blue-50",
                   },
                   {
                     label: "Resolved",
-                    value: supportAnalytics?.resolved ?? 0,
+                    value: Math.max(
+                      Number(supportAnalytics?.resolved) || 0,
+                      visibleSupportSummary.resolved,
+                    ),
                     icon: CheckCircle,
                     color: "text-emerald-600 bg-emerald-50",
                   },
@@ -1301,15 +2081,25 @@ export default function NewAdminPanel({
                   },
                   {
                     label: "High/Urgent",
-                    value: supportAnalytics?.highPriority ?? 0,
+                    value: Math.max(
+                      Number(supportAnalytics?.highPriority) || 0,
+                      visibleSupportSummary.highPriority,
+                    ),
                     icon: AlertCircle,
                     color: "text-rose-600 bg-rose-50",
                   },
                 ].map((stat, idx) => (
-                  <div key={idx} className="rounded-2xl p-5 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                  <div
+                    key={idx}
+                    className="rounded-2xl p-5 bg-white border border-slate-100 shadow-xs flex items-center justify-between"
+                  >
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{stat.label}</p>
-                      <h3 className="mt-1.5 text-xl font-black text-slate-900">{stat.value}</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {stat.label}
+                      </p>
+                      <h3 className="mt-1.5 text-xl font-black text-slate-900">
+                        {stat.value}
+                      </h3>
                     </div>
                     <div className={`p-2.5 rounded-lg ${stat.color}`}>
                       <stat.icon size={20} />
@@ -1319,21 +2109,28 @@ export default function NewAdminPanel({
               </div>
 
               {/* Main Ticket Interface */}
-              <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden flex h-[620px]">
+              <div className="flex h-[700px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
                 {/* Left Ticket Queue Sidebar */}
-                <div className="w-1/3 border-r flex flex-col bg-slate-50/30 flex-shrink-0">
+                <div className="flex w-[390px] flex-shrink-0 flex-col border-r border-slate-200 bg-slate-50/30 xl:w-[430px]">
                   {/* Search & Filters */}
-                  <div className="p-4 border-b bg-white space-y-3 flex-shrink-0">
+                  <div className="flex-shrink-0 space-y-3 border-b border-slate-200 bg-white p-5">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-slate-900 text-sm">Helpdesk Queue</h3>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-950">
+                          Helpdesk queue
+                        </h3>
+                        <p className="mt-0.5 text-[11px] text-slate-500">
+                          {supportTickets.length} tickets in this view
+                        </p>
+                      </div>
                       <button
                         onClick={() => {
                           fetchSupportTickets();
                           fetchSupportAnalytics();
                         }}
-                        className="text-[11px] text-blue-600 font-bold hover:underline"
+                        className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100"
                       >
-                        Sync Queue
+                        <RefreshCw size={12} /> Sync
                       </button>
                     </div>
 
@@ -1343,16 +2140,16 @@ export default function NewAdminPanel({
                         type="text"
                         value={ticketSearchQuery}
                         onChange={(e) => setTicketSearchQuery(e.target.value)}
-                        placeholder="Search ID, subject, email..."
-                        className="w-full rounded-xl border border-slate-200 bg-slate-55 pl-9 pr-3 py-2 text-[11px] text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition placeholder-slate-400 font-medium"
+                        placeholder="Search ticket, subject, user or email"
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <div className="grid grid-cols-3 gap-2 text-[11px]">
                       <select
                         value={ticketStatusFilter}
                         onChange={(e) => setTicketStatusFilter(e.target.value)}
-                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                        className="h-9 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 font-bold text-slate-700 outline-none focus:border-blue-400"
                       >
                         <option value="All">All Status</option>
                         <option value="Open">Open</option>
@@ -1365,10 +2162,12 @@ export default function NewAdminPanel({
 
                       <select
                         value={ticketCategoryFilter}
-                        onChange={(e) => setTicketCategoryFilter(e.target.value)}
-                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                        onChange={(e) =>
+                          setTicketCategoryFilter(e.target.value)
+                        }
+                        className="h-9 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 font-bold text-slate-700 outline-none focus:border-blue-400"
                       >
-                        <option value="All">All Categories</option>
+                        <option value="All">All types</option>
                         <option value="Booking Issue">Booking</option>
                         <option value="Payment Issue">Payment</option>
                         <option value="Provider Issue">Provider</option>
@@ -1379,8 +2178,10 @@ export default function NewAdminPanel({
 
                       <select
                         value={ticketPriorityFilter}
-                        onChange={(e) => setTicketPriorityFilter(e.target.value)}
-                        className="rounded-lg border border-slate-200 bg-slate-50 p-1 font-bold text-slate-700 outline-none"
+                        onChange={(e) =>
+                          setTicketPriorityFilter(e.target.value)
+                        }
+                        className="h-9 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 font-bold text-slate-700 outline-none focus:border-blue-400"
                       >
                         <option value="All">All Priority</option>
                         <option value="Low">Low</option>
@@ -1404,74 +2205,99 @@ export default function NewAdminPanel({
                       </div>
                     ) : (
                       supportTickets.map((t) => (
-                        <div
+                        <button
+                          type="button"
                           key={t.ticketId}
                           onClick={() => loadTicketDetails(t.ticketId)}
-                          className={`p-4 hover:bg-slate-50 transition cursor-pointer text-left ${
-                            selectedTicket?.ticketId === t.ticketId ? "bg-blue-50/50 hover:bg-blue-50/50 border-l-4 border-blue-500" : ""
+                          className={`w-full border-l-4 p-5 text-left transition hover:bg-slate-50 ${
+                            selectedTicket?.ticketId === t.ticketId
+                              ? "border-blue-500 bg-blue-50/60 hover:bg-blue-50/60"
+                              : "border-transparent bg-white"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t.ticketId}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              {t.ticketId}
+                            </span>
                             <span
-                              className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                              className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
                                 t.priority === "Urgent"
                                   ? "bg-rose-50 text-rose-500 border-rose-100"
                                   : t.priority === "High"
-                                  ? "bg-orange-50 text-orange-500 border-orange-100"
-                                  : "bg-slate-50 text-slate-500 border-slate-100"
+                                    ? "bg-orange-50 text-orange-500 border-orange-100"
+                                    : "bg-slate-50 text-slate-500 border-slate-100"
                               }`}
                             >
                               {t.priority}
                             </span>
                           </div>
-                          <h4 className="text-xs font-extrabold text-slate-800 line-clamp-1 mb-1">{t.subject}</h4>
-                          <div className="flex items-center justify-between text-[9px] text-slate-400 font-semibold mt-2">
+                          <h4 className="mb-1 line-clamp-2 text-sm font-black leading-5 text-slate-900">
+                            {t.subject}
+                          </h4>
+                          <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-slate-500">
                             <span>By: {t.userName}</span>
-                            <span className={`px-1.5 py-0.5 rounded font-black uppercase text-[8px] ${
-                              t.status === "Resolved"
-                                ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                                : t.status === "Closed"
-                                ? "bg-slate-100 text-slate-500"
-                                : t.status === "Waiting for Customer"
-                                ? "bg-amber-50 text-amber-600 border border-amber-100"
-                                : "bg-blue-50 text-blue-600 border border-blue-100"
-                            }`}>{t.status}</span>
+                            <span
+                              className={`rounded px-2 py-1 text-[9px] font-black uppercase ${
+                                t.status === "Resolved"
+                                  ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                                  : t.status === "Closed"
+                                    ? "bg-slate-100 text-slate-500"
+                                    : t.status === "Waiting for Customer"
+                                      ? "bg-amber-50 text-amber-600 border border-amber-100"
+                                      : "bg-blue-50 text-blue-600 border border-blue-100"
+                              }`}
+                            >
+                              {t.status}
+                            </span>
                           </div>
-                        </div>
+                        </button>
                       ))
                     )}
                   </div>
                 </div>
 
                 {/* Right Details & Conversation Panel */}
-                <div className="w-2/3 flex flex-col bg-white">
+                <div className="flex min-w-0 flex-1 flex-col bg-white">
                   {selectedTicket ? (
                     <div className="flex flex-col h-full">
                       {/* Ticket Details Header */}
                       <div className="p-5 border-b bg-slate-50/40 flex-shrink-0 flex items-start justify-between gap-4">
                         <div className="text-left">
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black text-blue-600 tracking-wider uppercase">{selectedTicket.ticketId}</span>
+                            <span className="text-[10px] font-black text-blue-600 tracking-wider uppercase">
+                              {selectedTicket.ticketId}
+                            </span>
                             {selectedTicket.bookingId && (
                               <span className="text-[9px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border">
                                 Booking: {selectedTicket.bookingId}
                               </span>
                             )}
                           </div>
-                          <h3 className="text-sm font-black text-slate-900 mt-1 leading-snug">{selectedTicket.subject}</h3>
-                          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">
-                            Cat: {selectedTicket.category} • Priority: {selectedTicket.priority} • User: {selectedTicket.userName} ({selectedTicket.userEmail})
+                          <h3 className="mt-1.5 text-base font-black leading-snug text-slate-950">
+                            {selectedTicket.subject}
+                          </h3>
+                          <p className="mt-1.5 text-[11px] font-semibold text-slate-500">
+                            {selectedTicket.category} •{" "}
+                            {selectedTicket.priority} priority •{" "}
+                            {selectedTicket.userName} (
+                            {selectedTicket.userEmail})
                           </p>
                         </div>
 
                         {/* Dropdown controls (Assign & Status) */}
                         <div className="flex flex-col gap-2 flex-shrink-0">
                           <div className="flex items-center gap-2 text-xs font-bold">
-                            <span className="text-slate-400 w-16 text-right">Assignee:</span>
+                            <span className="text-slate-400 w-16 text-right">
+                              Assignee:
+                            </span>
                             <select
                               value={selectedTicket.assignedTo || ""}
-                              onChange={(e) => handleTicketAssign(selectedTicket.ticketId, e.target.value)}
+                              onChange={(e) =>
+                                handleTicketAssign(
+                                  selectedTicket.ticketId,
+                                  e.target.value,
+                                )
+                              }
                               className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
                             >
                               <option value="">Unassigned</option>
@@ -1484,16 +2310,25 @@ export default function NewAdminPanel({
                           </div>
 
                           <div className="flex items-center gap-2 text-xs font-bold">
-                            <span className="text-slate-400 w-16 text-right">Status:</span>
+                            <span className="text-slate-400 w-16 text-right">
+                              Status:
+                            </span>
                             <select
                               value={selectedTicket.status}
-                              onChange={(e) => handleTicketStatusChange(selectedTicket.ticketId, e.target.value)}
+                              onChange={(e) =>
+                                handleTicketStatusChange(
+                                  selectedTicket.ticketId,
+                                  e.target.value,
+                                )
+                              }
                               className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
                             >
                               <option value="Open">Open</option>
                               <option value="Assigned">Assigned</option>
                               <option value="In Progress">In Progress</option>
-                              <option value="Waiting for Customer">Waiting for Customer</option>
+                              <option value="Waiting for Customer">
+                                Waiting for Customer
+                              </option>
                               <option value="Resolved">Resolved</option>
                               <option value="Closed">Closed</option>
                             </select>
@@ -1506,37 +2341,46 @@ export default function NewAdminPanel({
                         {/* Original ticket details card */}
                         <div className="p-4 rounded-xl bg-slate-50 border text-left">
                           <div className="flex items-center gap-2 mb-2">
-                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-250 text-slate-600">
+                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-200 text-slate-600">
                               <User size={12} />
                             </div>
                             <div>
-                              <span className="text-[11px] font-black text-slate-800">{selectedTicket.userName}</span>
-                              <span className="text-[9px] text-slate-400 font-bold ml-2">CREATED TICKETS</span>
+                              <span className="text-[11px] font-black text-slate-800">
+                                {selectedTicket.userName}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-bold ml-2">
+                                CREATED TICKETS
+                              </span>
                             </div>
                           </div>
-                          <p className="text-xs text-slate-600 leading-relaxed font-medium white-space: pre-wrap;">
+                          <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600">
                             {selectedTicket.description}
                           </p>
 
                           {/* Original attachments */}
-                          {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
-                            <div className="mt-3.5 grid grid-cols-2 gap-2">
-                              {selectedTicket.attachments.map((file, idx) => (
-                                <a
-                                  key={idx}
-                                  href={file.url}
-                                  download={file.name}
-                                  className="flex items-center gap-2 p-2 border bg-white hover:bg-slate-50 rounded-xl transition text-left"
-                                >
-                                  <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-[10px] font-bold text-slate-700 truncate">{file.name}</p>
-                                    <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">Download File</p>
-                                  </div>
-                                </a>
-                              ))}
-                            </div>
-                          )}
+                          {selectedTicket.attachments &&
+                            selectedTicket.attachments.length > 0 && (
+                              <div className="mt-3.5 grid grid-cols-2 gap-2">
+                                {selectedTicket.attachments.map((file, idx) => (
+                                  <a
+                                    key={idx}
+                                    href={file.url}
+                                    download={file.name}
+                                    className="flex items-center gap-2 p-2 border bg-white hover:bg-slate-50 rounded-xl transition text-left"
+                                  >
+                                    <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-[10px] font-bold text-slate-700 truncate">
+                                        {file.name}
+                                      </p>
+                                      <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">
+                                        Download File
+                                      </p>
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                         </div>
 
                         {/* Thread messages list */}
@@ -1548,10 +2392,10 @@ export default function NewAdminPanel({
                               key={index}
                               className={`p-4 rounded-xl border text-left ${
                                 isInternal
-                                  ? "bg-amber-50/80 border-amber-200 text-amber-905 shadow-xs"
+                                  ? "bg-amber-50/80 border-amber-200 text-amber-900 shadow-sm"
                                   : isUser
-                                  ? "bg-white border-slate-105"
-                                  : "bg-blue-50/30 border-blue-105"
+                                    ? "bg-white border-slate-100"
+                                    : "bg-blue-50/30 border-blue-100"
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2 mb-2">
@@ -1559,40 +2403,53 @@ export default function NewAdminPanel({
                                   <div
                                     className={`grid h-6 w-6 place-items-center rounded-full border ${
                                       isUser
-                                        ? "bg-slate-150 border-slate-200 text-slate-600"
+                                        ? "bg-slate-100 border-slate-200 text-slate-600"
                                         : isInternal
-                                        ? "bg-amber-200/50 border-amber-300 text-amber-700"
-                                        : "bg-blue-100 border-blue-200 text-blue-700"
+                                          ? "bg-amber-200/50 border-amber-300 text-amber-700"
+                                          : "bg-blue-100 border-blue-200 text-blue-700"
                                     }`}
                                   >
-                                    {isUser ? <User size={12} /> : <LifeBuoy size={12} />}
+                                    {isUser ? (
+                                      <User size={12} />
+                                    ) : (
+                                      <LifeBuoy size={12} />
+                                    )}
                                   </div>
                                   <div>
-                                    <span className="text-[11px] font-black text-slate-800">{msg.senderId?.name || "Support desk"}</span>
+                                    <span className="text-[11px] font-black text-slate-800">
+                                      {msg.senderId?.name || "Support desk"}
+                                    </span>
                                     <span
                                       className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ml-2 ${
                                         isInternal
                                           ? "bg-amber-200 text-amber-800"
                                           : isUser
-                                          ? "bg-slate-105 text-slate-600"
-                                          : "bg-blue-105 text-blue-800"
+                                            ? "bg-slate-100 text-slate-600"
+                                            : "bg-blue-100 text-blue-800"
                                       }`}
                                     >
-                                      {isInternal ? "Internal Note" : isUser ? "Client" : "Support Desk"}
+                                      {isInternal
+                                        ? "Internal Note"
+                                        : isUser
+                                          ? "Client"
+                                          : "Support Desk"}
                                     </span>
                                   </div>
                                 </div>
                                 <span className="text-[9px] text-slate-400 font-semibold">
-                                  {new Date(msg.createdAt).toLocaleDateString("en-IN", {
-                                    day: "numeric",
-                                    month: "short",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
+                                  {new Date(msg.createdAt).toLocaleDateString(
+                                    "en-IN",
+                                    {
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
                                 </span>
                               </div>
 
-                              <p className="text-xs text-slate-650 leading-relaxed font-medium white-space: pre-wrap;">
+                              <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600">
                                 {msg.message}
                               </p>
 
@@ -1606,8 +2463,12 @@ export default function NewAdminPanel({
                                   >
                                     <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
                                     <div className="min-w-0 flex-1">
-                                      <p className="text-[10px] font-bold text-slate-700 truncate">{msg.attachment.name}</p>
-                                      <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">Download File</p>
+                                      <p className="text-[10px] font-bold text-slate-700 truncate">
+                                        {msg.attachment.name}
+                                      </p>
+                                      <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">
+                                        Download File
+                                      </p>
                                     </div>
                                   </a>
                                 </div>
@@ -1619,7 +2480,10 @@ export default function NewAdminPanel({
                       </div>
 
                       {/* Reply Form */}
-                      <form onSubmit={handleSendTicketReply} className="p-4 border-t bg-slate-50/50 flex-shrink-0 text-left">
+                      <form
+                        onSubmit={handleSendTicketReply}
+                        className="p-4 border-t bg-slate-50/50 flex-shrink-0 text-left"
+                      >
                         {ticketReplyAttachment && (
                           <div className="mb-2 flex items-center justify-between text-xs px-2.5 py-1.5 bg-white rounded-xl border">
                             <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
@@ -1639,29 +2503,44 @@ export default function NewAdminPanel({
                         <div className="flex gap-2">
                           <label className="grid h-9 w-9 place-items-center rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 cursor-pointer transition flex-shrink-0">
                             <Paperclip size={16} />
-                            <input type="file" className="hidden" onChange={handleAdminFileChange} />
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={handleAdminFileChange}
+                            />
                           </label>
 
                           <input
                             type="text"
                             value={ticketReplyText}
                             onChange={(e) => setTicketReplyText(e.target.value)}
-                            placeholder={isInternalNote ? "Write an internal team note..." : "Respond to the client..."}
+                            placeholder={
+                              isInternalNote
+                                ? "Write an internal team note..."
+                                : "Respond to the client..."
+                            }
                             className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 transition"
                           />
 
                           <button
                             type="submit"
-                            disabled={replyLoading || (!ticketReplyText.trim() && !ticketReplyAttachment)}
+                            disabled={
+                              replyLoading ||
+                              (!ticketReplyText.trim() &&
+                                !ticketReplyAttachment)
+                            }
                             className={`flex items-center gap-1.5 px-4 rounded-xl text-xs font-black text-white disabled:opacity-45 transition flex-shrink-0 ${
-                              isInternalNote ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-750"
+                              isInternalNote
+                                ? "bg-amber-500 hover:bg-amber-600"
+                                : "bg-blue-600 hover:bg-blue-700"
                             }`}
                           >
                             {replyLoading ? (
                               <Loader2 size={14} className="animate-spin" />
                             ) : (
                               <>
-                                <Send size={12} /> {isInternalNote ? "Add Note" : "Send Reply"}
+                                <Send size={12} />{" "}
+                                {isInternalNote ? "Add Note" : "Send Reply"}
                               </>
                             )}
                           </button>
@@ -1673,199 +2552,36 @@ export default function NewAdminPanel({
                             type="checkbox"
                             id="internalNoteCheckbox"
                             checked={isInternalNote}
-                            onChange={(e) => setIsInternalNote(e.target.checked)}
+                            onChange={(e) =>
+                              setIsInternalNote(e.target.checked)
+                            }
                             className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           />
-                          <label htmlFor="internalNoteCheckbox" className="cursor-pointer">
-                            Mark as Internal Note (Only visible to support agents)
+                          <label
+                            htmlFor="internalNoteCheckbox"
+                            className="cursor-pointer"
+                          >
+                            Mark as Internal Note (Only visible to support
+                            agents)
                           </label>
                         </div>
                       </form>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400 text-xs font-bold">
-                      <LifeBuoy className="h-12 w-12 text-slate-300 mb-3 animate-bounce" />
-                      Select a support ticket from the queue list to review thread.
+                    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+                      <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-blue-400">
+                        <LifeBuoy className="h-8 w-8" />
+                      </div>
+                      <p className="text-sm font-black text-slate-700">
+                        Select a support ticket
+                      </p>
+                      <p className="mt-1 max-w-sm text-xs font-medium leading-5 text-slate-400">
+                        Open a ticket from the queue to review the full
+                        conversation, assign an agent and update its status.
+                      </p>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* HISTORY ARCHIVE TAB */}
-          {activeTab === "history" && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center flex-shrink-0">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-                    Encrypted Data Archive
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Historical immutable audit logs
-                  </p>
-                </div>
-                <div className="flex gap-1 bg-slate-200 p-1 rounded-xl text-xs font-bold shadow-xs">
-                  <button
-                    onClick={() => setHistoryFilter("all_bookings")}
-                    className={`px-4 py-2 rounded-lg transition-all duration-200 ${historyFilter === "all_bookings" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-                  >
-                    Completed
-                  </button>
-                  <button
-                    onClick={() => setHistoryFilter("cancelled_bookings")}
-                    className={`px-4 py-2 rounded-lg transition-all duration-200 ${historyFilter === "cancelled_bookings" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-                  >
-                    Cancelled
-                  </button>
-                </div>
-              </div>
-              <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100 min-h-[300px]">
-                {historyFilter === "all_bookings" && (
-                  <div className="overflow-x-auto">
-                    <h3 className="font-bold text-sm mb-5 text-emerald-700 flex items-center gap-2 tracking-wide uppercase">
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                      Archive Stack: Settled Deliveries
-                    </h3>
-                    {!adminData?.bookings ||
-                    adminData.bookings.filter(
-                      (b) => b.status?.toLowerCase() === "completed",
-                    ).length === 0 ? (
-                      <div className="text-center py-16 text-slate-400 flex flex-col items-center justify-center gap-3">
-                        <FolderOpen
-                          size={36}
-                          className="stroke-1 text-slate-300"
-                        />
-                        <p className="text-xs font-bold uppercase tracking-wider">
-                          No Settled Records in Vault
-                        </p>
-                      </div>
-                    ) : (
-                      <table className="w-full text-left border-collapse text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-                            <th className="p-4 pl-5 min-w-[200px] whitespace-nowrap">
-                              Customer
-                            </th>
-                            <th className="p-4 min-w-[25px] whitespace-nowrap">
-                              Service Sector
-                            </th>
-                            <th className="p-4 pr-5 text-right min-w-[150px] whitespace-nowrap">
-                              Pipeline Amount
-                            </th>
-                            <th className="p-4 text-center whitespace-nowrap">
-                              Payment Status
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {adminData.bookings
-                            .filter(
-                              (b) => b.status?.toLowerCase() === "completed",
-                            )
-                            .map((b) => (
-                              <tr
-                                key={b._id}
-                                className="hover:bg-slate-50/60 transition-colors"
-                              >
-                                <td className="p-4 pl-5 font-bold text-slate-900 whitespace-nowrap">
-                                  {b.name || "Anonymous User"}
-                                </td>
-                                <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
-                                  <span className="bg-slate-100 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700">
-                                    {b.service || "General Service"}
-                                  </span>
-                                </td>
-                                <td className="p-4 pr-5 font-extrabold text-slate-900 text-right whitespace-nowrap">
-                                  ₹{b.finalEstimateAmount || b.amount || 0}
-                                </td>
-                                <td className="p-4 text-center">
-                                  {b.providerPaymentReleased ? (
-                                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-lg text-xs font-bold">
-                                      Paid
-                                    </span>
-                                  ) : (
-                                    <button
-                                      onClick={() =>
-                                        handleReleasePayment(b._id)
-                                      }
-                                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-xs font-bold transition"
-                                    >
-                                      Release
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                )}
-                {historyFilter === "cancelled_bookings" && (
-                  <div className="overflow-x-auto">
-                    <h3 className="font-bold text-sm mb-5 text-rose-700 flex items-center gap-2 tracking-wide uppercase">
-                      <span className="h-2.5 w-2.5 rounded-full bg-rose-500 inline-block"></span>
-                      Archive Stack: Terminated Requests
-                    </h3>
-                    {!adminData?.bookings ||
-                    adminData.bookings.filter(
-                      (b) =>
-                        b.status?.toLowerCase() === "cancelled" ||
-                        b.status?.toLowerCase() === "rejected",
-                    ).length === 0 ? (
-                      <div className="text-center py-16 text-slate-400 flex flex-col items-center justify-center gap-3">
-                        <FolderOpen
-                          size={36}
-                          className="stroke-1 text-slate-300"
-                        />
-                        <p className="text-xs font-bold uppercase tracking-wider">
-                          No Terminated Logs in Vault
-                        </p>
-                      </div>
-                    ) : (
-                      <table className="w-full text-left border-collapse text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-                            <th className="p-4 pl-5 min-w-[200px] whitespace-nowrap">
-                              Customer
-                            </th>
-                            <th className="p-4 min-w-[25px] whitespace-nowrap">
-                              Service Sector
-                            </th>
-                            <th className="p-4 pr-5 text-right min-w-[150px] whitespace-nowrap">
-                              Pipeline Amount
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {adminData.bookings
-                            .filter(
-                              (b) =>
-                                b.status?.toLowerCase() === "cancelled" ||
-                                b.status?.toLowerCase() === "rejected",
-                            )
-                            .map((b) => (
-                              <tr
-                                key={b._id}
-                                className="hover:bg-slate-50/60 transition-colors"
-                              >
-                                <td className="p-4 pl-5 font-bold text-slate-400 line-through whitespace-nowrap">
-                                  {b.name || "Anonymous User"}
-                                </td>
-                                <td className="p-4 text-slate-500 font-medium whitespace-nowrap">
-                                  {b.service || "General Service"}
-                                </td>
-                                <td className="p-4 pr-5 font-bold text-rose-600 text-right whitespace-nowrap">
-                                  ₹{b.finalEstimateAmount || b.amount || 0}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -1880,7 +2596,7 @@ export default function NewAdminPanel({
         />
       )}
 
-      {/* OPERATOR DETAIL DRAWER */}
+      {/* PROVIDER DETAIL DRAWER */}
       <div
         className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col transform transition-transform duration-300 ease-in-out ${activeDrawerProvider ? "translate-x-0" : "translate-x-full"}`}
       >
@@ -1888,7 +2604,7 @@ export default function NewAdminPanel({
           <>
             <div className="flex items-center justify-between border-b pb-4 mb-6">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                Operator Profile Card
+                Provider profile details
               </h3>
               <button
                 onClick={() => setActiveDrawerProvider(null)}
@@ -1898,32 +2614,54 @@ export default function NewAdminPanel({
               </button>
             </div>
             <div className="flex flex-col items-center text-center space-y-3 border-b pb-6 mb-6">
-              <img
-                src={
-                  activeDrawerProvider.profileImage ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(activeDrawerProvider.name || "Pro")}&background=random`
-                }
-                className="w-20 h-20 rounded-full object-cover border-2 border-blue-500 p-0.5 shadow-md"
-                alt="Profile"
-              />
+              <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-full border-2 border-blue-500 bg-blue-50 p-0.5 shadow-md">
+                {activeDrawerProvider.profileImage ? (
+                  <img
+                    src={activeDrawerProvider.profileImage}
+                    className="h-full w-full rounded-full object-cover"
+                    alt={`${activeDrawerProvider.name || "Provider"} profile`}
+                  />
+                ) : (
+                  <span className="text-xl font-black uppercase text-blue-700">
+                    {String(activeDrawerProvider.name || "PR")
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((part) => part[0])
+                      .join("")}
+                  </span>
+                )}
+              </div>
               <h4 className="text-base font-bold text-slate-900">
-                {activeDrawerProvider.name}
+                {activeDrawerProvider.businessName || activeDrawerProvider.name}
               </h4>
               <p className="text-xs text-blue-600 font-bold uppercase">
                 {activeDrawerProvider.category || "Verified Node"}
               </p>
+              <p className="text-xs font-semibold text-slate-500">
+                Owner: {activeDrawerProvider.ownerName || activeDrawerProvider.name || "Not added"}
+              </p>
             </div>
             <div className="space-y-4 flex-1 text-sm">
-              <p className="font-semibold text-slate-800">
-                📞 {activeDrawerProvider.phone || "No Records"}
-              </p>
-              <p className="font-semibold text-slate-800">
-                📧 {activeDrawerProvider.email || "No Email Attached"}
-              </p>
-              <p className="font-medium text-slate-700 capitalize">
-                📍 Hub:{" "}
-                {activeDrawerProvider.preferredWorkLocation || "MIDC Region"}
-              </p>
+              <div className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                {[
+                  ["Business name", activeDrawerProvider.businessName || activeDrawerProvider.name],
+                  ["Owner full name", activeDrawerProvider.ownerName || activeDrawerProvider.name],
+                  ["Phone", activeDrawerProvider.phone || "No records"],
+                  ["Email", activeDrawerProvider.email || "No email attached"],
+                  ["Location hub", activeDrawerProvider.preferredWorkLocation || activeDrawerProvider.location || "Not added"],
+                  ["Full address", activeDrawerProvider.address || activeDrawerProvider.location || "Not added"],
+                  ["Aadhaar", activeDrawerProvider.aadhaarNumberMasked || "Not uploaded"],
+                ].map(([label, value]) => (
+                  <div key={label} className="grid grid-cols-[120px_1fr] gap-3">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      {label}
+                    </span>
+                    <span className="break-words font-bold text-slate-800">
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between">
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase font-bold">
@@ -1942,6 +2680,53 @@ export default function NewAdminPanel({
                   </span>
                 </div>
               </div>
+              <div className="rounded-xl border border-slate-100 bg-white p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Aadhaar verification
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase text-indigo-700">
+                    {activeDrawerProvider.verificationStatus || "pending"}
+                  </span>
+                  {activeDrawerProvider.aadhaarFrontUrl && (
+                    <a
+                      href={activeDrawerProvider.aadhaarFrontUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-black uppercase text-white"
+                    >
+                      View front/PDF
+                    </a>
+                  )}
+                  {activeDrawerProvider.aadhaarBackUrl && (
+                    <a
+                      href={activeDrawerProvider.aadhaarBackUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700"
+                    >
+                      View back
+                    </a>
+                  )}
+                </div>
+                {activeDrawerProvider.verificationRejectedReason && (
+                  <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs font-bold text-rose-700">
+                    {activeDrawerProvider.verificationRejectedReason}
+                  </p>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Timeline
+                </p>
+                <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+                  <span>Requested: {formatDateTime(activeDrawerProvider.requestedAt || activeDrawerProvider.createdAt)}</span>
+                  <span>Approved: {formatDateTime(activeDrawerProvider.approvedAt)}</span>
+                  <span>Rejected: {formatDateTime(activeDrawerProvider.rejectedAt)}</span>
+                  <span>Suspended: {formatDateTime(activeDrawerProvider.suspendedAt)}</span>
+                  <span>Last updated: {formatDateTime(activeDrawerProvider.updatedAt)}</span>
+                </div>
+              </div>
             </div>
             <div className="pt-6 border-t flex gap-3">
               <button
@@ -1951,16 +2736,20 @@ export default function NewAdminPanel({
                 }}
                 className="flex-1 rounded-xl bg-green-600 py-3 text-xs font-bold text-white uppercase tracking-wider hover:bg-green-700 transition"
               >
-                Whitelist
+                Approve
               </button>
               <button
                 onClick={() => {
-                  updateProviderApproval(activeDrawerProvider._id, "rejected");
+                  const rejectionReason = window.prompt(
+                    "Reason for rejection or suspension",
+                    activeDrawerProvider.verificationRejectedReason || "",
+                  );
+                  updateProviderApproval(activeDrawerProvider._id, "rejected", rejectionReason || "");
                   setActiveDrawerProvider(null);
                 }}
                 className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold text-white uppercase tracking-wider hover:bg-red-700 transition"
               >
-                Blacklist
+                Reject / Suspend
               </button>
             </div>
           </>

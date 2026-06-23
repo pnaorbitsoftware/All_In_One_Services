@@ -417,8 +417,8 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
     <section className="servicetrack-panel provider">
       <div className="servicetrack-panel-header">
         <span className="servicetrack-panel-dot provider-dot" />
-        <span className="servicetrack-panel-label">Provider App</span>
-        <span className="servicetrack-live-status"><span />{connected ? "Live tracking" : "Connecting"}</span>
+        <span className="servicetrack-panel-label">Job workflow</span>
+        <span className="servicetrack-live-status"><span />{connected ? "Live updates" : "Connecting"}</span>
       </div>
 
       <div className="servicetrack-card-body">
@@ -438,7 +438,7 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
         </div>
 
         <div>
-          <p className="servicetrack-section-title">Update job status</p>
+          <p className="servicetrack-section-title">Next action</p>
           <div className="servicetrack-status-grid">
             <button type="button" onClick={startLiveSharing} disabled={isClosed || liveSharing || ["arrived", "job_started", "completed"].includes(normalizedStatus)} data-active={normalizedStatus === "en_route"}>
               <Play size={17} />
