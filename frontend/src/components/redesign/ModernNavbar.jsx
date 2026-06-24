@@ -181,6 +181,7 @@ const ModernNavbar = ({
         <div className="hidden flex-none items-center gap-2 lg:flex xl:gap-3">
           <button
             type="button"
+            aria-label={isDark ? "Use light theme" : "Use dark theme"}
             onClick={() => setTheme(isDark ? "light" : "dark")}
             className={`grid h-11 w-11 place-items-center rounded-full border shadow-sm transition hover:-translate-y-0.5 ${isDark ? "border-black bg-black text-white" : "border-slate-200 bg-white text-slate-950"}`}
           >
@@ -409,6 +410,7 @@ const ModernNavbar = ({
               <div ref={moreMenuRef} className="relative">
                 <button
                   type="button"
+                  aria-label="Select language"
                   onClick={() => setMoreMenuOpen(!moreMenuOpen)}
                   className="grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-slate-900 dark:text-white"
                 >
@@ -446,6 +448,7 @@ const ModernNavbar = ({
         <div className="flex items-center gap-2 lg:hidden">
           <button
             type="button"
+            aria-label={isDark ? "Use light theme" : "Use dark theme"}
             onClick={() => setTheme(isDark ? "light" : "dark")}
             className={`grid h-10 w-10 place-items-center rounded-full border shadow-sm ${isDark ? "border-slate-800 bg-black text-white" : "border-slate-200 bg-white text-slate-950"}`}
           >
@@ -453,6 +456,9 @@ const ModernNavbar = ({
           </button>
           <button
             type="button"
+            aria-label={
+              mobileNavOpen ? "Close navigation menu" : "Open navigation menu"
+            }
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
             className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-900 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-white"
           >

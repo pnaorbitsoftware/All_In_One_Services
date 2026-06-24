@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
 import { jwtSecret } from "../config/auth.js";
-import requireAuth from "../middleware/requireAuth.js";
+import requireAuth, { invalidateAuthToken, invalidateAuthUser } from "../middleware/requireAuth.js";
 import Session from "../models/Session.js";
 import Provider from "../models/Provider.js";
 import User from "../models/User.js";
@@ -61,6 +61,12 @@ const isValidProfileImage = (value) => {
   if (value === "") return true;
   return /^data:image\/(png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i.test(value);
 };
+
+const identityDocumentPattern = /^data:(?:image\/(?:png|jpe?g|webp)|application\/pdf);base64,[a-z0-9+/=\s]+$/i;
+const maxIdentityDocumentLength = 3_000_000;
+
+const isValidIdentityDocument = (value) =>
+  identityDocumentPattern.test(value) && value.length <= maxIdentityDocumentLength;
 
 const slugify = (value) =>
   value
@@ -155,10 +161,8 @@ router.post("/registration-status", async (req, res) => {
       return res.status(400).json({ message: "Invalid account type." });
     }
 
-    const user = await User.findOne({ email, role }).select("_id role").lean();
-    const accountForEmail = user
-      ? user
-      : await User.findOne({ email }).select("_id role").lean();
+    const accountForEmail = await User.findOne({ email }).select("_id role").lean();
+    const user = accountForEmail?.role === role ? accountForEmail : null;
 
     if (!user && role === "user" && accountForEmail?.role === "admin") {
       return res.json({
@@ -314,6 +318,14 @@ router.post("/register", async (req, res) => {
 
       if (!aadhaarFrontUrl) {
         return res.status(400).json({ message: "Aadhaar front image or PDF upload is required for provider registration." });
+      }
+
+      if (!isValidIdentityDocument(aadhaarFrontUrl)) {
+        return res.status(400).json({ message: "Aadhaar front document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
+      }
+
+      if (aadhaarBackUrl && !isValidIdentityDocument(aadhaarBackUrl)) {
+        return res.status(400).json({ message: "Aadhaar back document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
       }
     }
 
@@ -603,6 +615,7 @@ router.post("/reset-password", async (req, res) => {
     user.password = password;
     await user.save();
     await Session.deleteMany({ user: user._id });
+    invalidateAuthUser(user._id);
     passwordResetOtps.delete(resetKey);
 
     res.json({ message: "Password updated successfully. Please login with your new password." });
@@ -617,6 +630,7 @@ router.post("/logout", async (req, res) => {
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
     if (token) {
+      invalidateAuthToken(token);
       await Session.updateOne(
         { tokenHash: hashToken(token), status: "active" },
         { $set: { status: "revoked" } }

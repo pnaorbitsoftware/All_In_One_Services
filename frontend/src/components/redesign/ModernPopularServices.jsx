@@ -71,20 +71,20 @@ export default function ModernPopularServices({ openPopularService }) {
   };
 
   return (
-    <section className="bg-white py-12 overflow-hidden">
+    <section className="overflow-hidden bg-white py-12 transition-colors dark:bg-slate-950">
       <div className="mx-auto max-w-[1400px] px-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
-            <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 inline-block">
+            <span className="inline-block rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
               Popular Services
             </span>
 
-            <h2 className="mt-5 text-4xl font-extrabold text-slate-900">
+            <h2 className="mt-5 text-4xl font-extrabold text-slate-900 dark:text-white">
               Home services for every need
             </h2>
 
-            <p className="mt-4 text-slate-600">
+            <p className="mt-4 text-slate-600 dark:text-slate-300">
               Trusted professionals ready to help.
             </p>
           </div>
@@ -119,7 +119,7 @@ export default function ModernPopularServices({ openPopularService }) {
                 variants={cardHoverVariants}
                 whileHover="hover"
                 whileTap="tap"
-                className="w-[240px] flex-shrink-0 overflow-hidden rounded-[28px] border border-slate-200 bg-white text-left shadow-sm relative group"
+                className="group relative w-[240px] flex-shrink-0 overflow-hidden rounded-[28px] border border-slate-200 bg-white text-left shadow-sm dark:border-white/10 dark:bg-slate-900"
               >
                 <div className="relative overflow-hidden">
                   <img
@@ -140,11 +140,11 @@ export default function ModernPopularServices({ openPopularService }) {
                     <BriefcaseBusiness size={22} />
                   </div>
 
-                  <h3 className="mt-3 text-xl font-bold text-slate-900">
+                  <h3 className="mt-3 text-xl font-bold text-slate-900 dark:text-white">
                     {service.title}
                   </h3>
 
-                  <p className="mt-2 text-slate-600 text-sm">{service.note}</p>
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{service.note}</p>
 
                   <div className="mt-4 h-0.5 w-0 bg-blue-600 rounded-full transition-all duration-500 group-hover:w-full" />
                 </div>
@@ -154,25 +154,25 @@ export default function ModernPopularServices({ openPopularService }) {
         </div>
 
         {/* Stats */}
-        <div className="mt-12 grid grid-cols-2 gap-6 rounded-[32px] border border-slate-200 bg-slate-50 p-10 md:grid-cols-4">
+        <div className="mt-12 grid grid-cols-2 gap-6 rounded-[32px] border border-slate-200 bg-slate-50 p-10 dark:border-white/10 dark:bg-white/5 md:grid-cols-4">
           <div className="text-center">
             <h3 className="text-3xl font-extrabold text-blue-600">10k+</h3>
-            <p className="mt-2 text-slate-600">Happy Customers</p>
+            <p className="mt-2 text-slate-600 dark:text-slate-300">Happy Customers</p>
           </div>
 
           <div className="text-center">
             <h3 className="text-3xl font-extrabold text-blue-600">4.8★</h3>
-            <p className="mt-2 text-slate-600">Average Rating</p>
+            <p className="mt-2 text-slate-600 dark:text-slate-300">Average Rating</p>
           </div>
 
           <div className="text-center">
             <h3 className="text-3xl font-extrabold text-blue-600">500+</h3>
-            <p className="mt-2 text-slate-600">Verified Experts</p>
+            <p className="mt-2 text-slate-600 dark:text-slate-300">Verified Experts</p>
           </div>
 
           <div className="text-center">
             <h3 className="text-3xl font-extrabold text-blue-600">24/7</h3>
-            <p className="mt-2 text-slate-600">Support</p>
+            <p className="mt-2 text-slate-600 dark:text-slate-300">Support</p>
           </div>
         </div>
       </div>

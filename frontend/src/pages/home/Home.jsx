@@ -82,6 +82,11 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 let catalogRequestPromise = null;
+let clientBookingsRequestActive = false;
+let providerDashboardRequestActive = false;
+let adminDashboardRequestActive = false;
+let providerEarningsLastFetchedAt = 0;
+const providerActionsInFlight = new Set();
 const fetchCatalogSnapshot = () => {
   if (!catalogRequestPromise) {
     catalogRequestPromise = fetch(`${API_URL}/catalog`)
@@ -95,8 +100,9 @@ const fetchCatalogSnapshot = () => {
 const AUTH_API_URLS = [
   ...new Set([
     API_URL,
-    "http://localhost:5000/api",
-    "http://localhost:5001/api",
+    ...(import.meta.env.DEV
+      ? ["http://localhost:5000/api", "http://localhost:5001/api"]
+      : []),
   ]),
 ];
 const SERVICEHUB_ICON = "/servicehub-icon.png";
@@ -1049,8 +1055,9 @@ export default function Home() {
 
   const refreshClientBookings = useCallback(async () => {
     const currentToken = localStorage.getItem("servicehub_token");
-    if (!currentToken) return;
+    if (!currentToken || clientBookingsRequestActive) return;
 
+    clientBookingsRequestActive = true;
     try {
       const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
         headers: { Authorization: `Bearer ${currentToken}` },
@@ -1059,36 +1066,31 @@ export default function Home() {
       setBookings(data.bookings || []);
     } catch {
       setBookings([]);
+    } finally {
+      clientBookingsRequestActive = false;
     }
   }, []);
 
   useEffect(() => {
-    if (!user || !token || !["user", "provider"].includes(user.role))
-      return undefined;
+    const shouldRefreshClient =
+      Boolean(token) &&
+      activeView === "client" &&
+      (user?.role === "user" || (user?.role === "provider" && providerClientMode));
+    if (!shouldRefreshClient) return undefined;
 
-    let stopped = false;
-    const loadClientBookings = async () => {
-      try {
-        const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = response.ok ? await response.json() : { bookings: [] };
-        if (!stopped) setBookings(data.bookings || []);
-      } catch {
-        if (!stopped) setBookings([]);
-      }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshClientBookings();
     };
 
-    loadClientBookings();
-    const intervalId = window.setInterval(
-      loadClientBookings,
-      activeView === "client" ? 5000 : 15000,
-    );
+    const initialTimer = window.setTimeout(refreshClientBookings, 0);
+    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
-      stopped = true;
+      window.clearTimeout(initialTimer);
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [activeView, user, token]);
+  }, [activeView, providerClientMode, refreshClientBookings, user?.role, token]);
 
   const marketplaceServices = useMemo(() => {
     const fallback = services.map((service) => ({
@@ -1220,7 +1222,8 @@ export default function Home() {
       return;
     }
     const currentToken = localStorage.getItem("servicehub_token");
-    if (!currentToken) return;
+    if (!currentToken || providerDashboardRequestActive) return;
+    providerDashboardRequestActive = true;
     try {
       setProviderClientMode(false);
       const response = await authenticatedFetch(
@@ -1243,9 +1246,12 @@ export default function Home() {
         !nextProviderDashboard.dashboardLocked &&
         nextProviderDashboard.provider?.approvalStatus === "approved"
       ) {
-        getProviderEarnings()
-          .then(setProviderEarnings)
-          .catch(() => setProviderEarnings(null));
+        if (Date.now() - providerEarningsLastFetchedAt >= 60_000) {
+          providerEarningsLastFetchedAt = Date.now();
+          getProviderEarnings()
+            .then(setProviderEarnings)
+            .catch(() => setProviderEarnings(null));
+        }
       } else {
         setProviderEarnings(null);
       }
@@ -1288,6 +1294,8 @@ export default function Home() {
       }
       setStatusMessage(error.message);
       setActiveView("provider");
+    } finally {
+      providerDashboardRequestActive = false;
     }
   }, [user]);
 
@@ -1318,16 +1326,17 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const isWaitingForApproval =
-      activeView === "provider" &&
-      user?.role === "provider" &&
-      providerProfile?.approvalStatus &&
-      providerProfile.approvalStatus !== "approved";
+    if (activeView !== "provider" || user?.role !== "provider") return undefined;
 
-    if (!isWaitingForApproval) return undefined;
-
-    const intervalId = window.setInterval(loadProviderDashboard, 10000);
-    return () => window.clearInterval(intervalId);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadProviderDashboard();
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [
     activeView,
     loadProviderDashboard,
@@ -1429,6 +1438,8 @@ export default function Home() {
   };
 
   const loadAdminDashboard = useCallback(async () => {
+    if (adminDashboardRequestActive) return;
+    adminDashboardRequestActive = true;
     try {
       if (user?.role !== "admin") throw new Error("Admin access required.");
       const currentToken = localStorage.getItem("servicehub_token");
@@ -1454,6 +1465,8 @@ export default function Home() {
       setActiveView("admin");
     } catch (error) {
       setStatusMessage(error.message);
+    } finally {
+      adminDashboardRequestActive = false;
     }
   }, [user]);
 
@@ -1497,21 +1510,18 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (activeView !== "admin") return undefined;
+    if (activeView !== "admin" || user?.role !== "admin") return undefined;
 
-    const initialRefresh = window.setTimeout(
-      () => refreshAdminContactMessages({ silent: true }),
-      0,
-    );
-    const timer = window.setInterval(
-      () => refreshAdminContactMessages({ silent: true }),
-      30000,
-    );
-    return () => {
-      window.clearTimeout(initialRefresh);
-      window.clearInterval(timer);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadAdminDashboard();
     };
-  }, [activeView]);
+    const timer = window.setInterval(refreshWhenVisible, 120_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [activeView, loadAdminDashboard, user?.role]);
 
   const refreshAfterAction = ({
     client = false,
@@ -1521,11 +1531,6 @@ export default function Home() {
     if (client) refreshClientBookings();
     if (provider) loadProviderDashboard();
     if (admin) loadAdminDashboard();
-
-    window.setTimeout(() => {
-      if (client) refreshClientBookings();
-      if (provider) loadProviderDashboard();
-    }, 900);
   };
 
   const handleLogout = () => {
@@ -1842,6 +1847,8 @@ export default function Home() {
   };
 
   const acceptProviderRequest = async (bookingId) => {
+    if (providerActionsInFlight.has(`accept:${bookingId}`)) return;
+    providerActionsInFlight.add(`accept:${bookingId}`);
     try {
       const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/accept`,
@@ -1866,9 +1873,10 @@ export default function Home() {
         bookings: [data.booking, ...(current?.bookings || [])],
       }));
       setStatusMessage("Request accepted. The client has been notified.");
-      refreshAfterAction({ provider: true });
     } catch (error) {
       setStatusMessage(error.message);
+    } finally {
+      providerActionsInFlight.delete(`accept:${bookingId}`);
     }
   };
 
@@ -1877,6 +1885,9 @@ export default function Home() {
     status,
     cancellationReason = "",
   ) => {
+    const actionKey = `status:${bookingId}`;
+    if (providerActionsInFlight.has(actionKey)) return false;
+    providerActionsInFlight.add(actionKey);
     try {
       const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/status`,
@@ -1906,11 +1917,12 @@ export default function Home() {
           ? "Booking marked work completed."
           : `Booking marked ${status}.`,
       );
-      refreshAfterAction({ provider: true });
       return data.booking;
     } catch (error) {
       setStatusMessage(error.message);
       return false;
+    } finally {
+      providerActionsInFlight.delete(actionKey);
     }
   };
 
@@ -3201,24 +3213,28 @@ function ClientDashboard({
       value: bookingSections[0].bookings.length,
       copy: "Waiting for provider response.",
       tone: "from-amber-50 to-white text-amber-700",
+      icon: Clock,
     },
     {
       title: "Active",
       value: bookingSections[1].bookings.length,
       copy: "Provider accepted and live work.",
       tone: "from-blue-50 to-white text-blue-700",
+      icon: CheckCircle,
     },
     {
       title: "Completed",
       value: bookingSections[2].bookings.length,
       copy: "Finished service records.",
       tone: "from-emerald-50 to-white text-emerald-700",
+      icon: CheckCircle,
     },
     {
       title: "Cancelled",
       value: bookingSections[3].bookings.length,
       copy: "Cancelled request records.",
       tone: "from-rose-50 to-white text-rose-700",
+      icon: XCircle,
     },
   ];
   const clientSidebarItems = [
@@ -3373,15 +3389,20 @@ function ClientDashboard({
       <motion.div className="client-booking-drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setSelectedBooking(null)}>
         <motion.aside className="client-booking-drawer" initial={{ x: 36, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 36, opacity: 0 }} role="dialog" aria-modal="true" aria-label="Booking details">
           <header>
-            <div><span>Booking details</span><h2>{booking.service}</h2><p>#{booking.bookingId || booking._id}</p></div>
+            <div><span>ServiceHub booking</span><h2>Booking Details</h2><p>#{booking.bookingId || booking._id}</p></div>
             <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details"><X size={20} /></button>
           </header>
           <div className="client-booking-drawer-body">
+            <section className="client-booking-provider">
+              <div className="client-booking-provider-avatar" aria-hidden="true"><UserRound size={24} /></div>
+              <div><span>Assigned professional</span><strong>{providerName}</strong><small>{provider?.phone || "Contact available after acceptance"}</small></div>
+              <StatusBadge status={booking.status} />
+            </section>
             <div className="client-booking-summary">
-              <div><span>Status</span><StatusBadge status={booking.status} /></div>
-              <div><span>Provider</span><strong>{providerName}</strong><small>{provider?.phone || "Contact available after acceptance"}</small></div>
+              <div><span>Service</span><strong>{booking.service}</strong></div>
               <div><span>Scheduled</span><strong>{formatBookingDate(booking.preferredDate)}</strong><small>{formatBookingTime(booking.preferredTime)}</small></div>
               <div><span>Estimate</span><strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong><small>{booking.paymentStatus || "unpaid"}</small></div>
+              <div><span>Payment status</span><PaymentStatusBadge status={booking.paymentStatus || "unpaid"} /></div>
             </div>
             {booking.status !== "cancelled" && <section className="client-booking-section"><h3>Service progress</h3><ClientJobProgress booking={booking} /></section>}
             <section className="client-booking-section client-booking-address"><h3>Service information</h3><p><MapPin size={16} /> {booking.address}</p><p><MessageCircle size={16} /> {booking.problemDescription || "No problem description"}</p></section>
@@ -3593,7 +3614,7 @@ function ClientDashboard({
         <button
           type="button"
           onClick={onBrowseServices}
-          className="rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
+          className="client-browse-button rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
         >
           {t("browseServices")}
         </button>
@@ -3609,7 +3630,7 @@ function ClientDashboard({
           </>
         )}
       </div>
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="client-stats-grid grid gap-5 lg:grid-cols-3">
         <StatCard
           icon={CalendarCheck}
           label="My bookings"
@@ -3649,6 +3670,9 @@ function ClientDashboard({
             }}
             className={`dashboard-status-card rounded-2xl border border-slate-200 bg-gradient-to-br ${block.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:from-white/10 dark:to-white/5`}
           >
+            <span className={`dashboard-status-icon dashboard-status-icon-${block.title.toLowerCase()}`} aria-hidden="true">
+              <block.icon size={20} />
+            </span>
             <p className="text-3xl font-black text-slate-950 dark:text-white">
               {block.value}
             </p>
@@ -3657,13 +3681,13 @@ function ClientDashboard({
               {block.copy}
             </p>
             {block.title === "Cancelled" && (
-              <span className="mt-3 inline-flex rounded-full bg-rose-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15">
-                Cancelled services
+              <span className="dashboard-status-link mt-3 inline-flex rounded-full bg-rose-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15">
+                View Cancelled
               </span>
             )}
             {block.title === "Completed" && (
-              <span className="mt-3 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-600/15">
-                Completed services
+              <span className="dashboard-status-link mt-3 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-600/15">
+                View Completed
               </span>
             )}
           </button>
@@ -5890,6 +5914,9 @@ function StatusBadge({ status = "pending" }) {
 function EmptyState({ title, copy }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-white/15">
+      <span className="dashboard-empty-icon" aria-hidden="true">
+        <ListChecks size={30} />
+      </span>
       <p className="font-black">{title}</p>
       <p className="mt-2 text-sm text-slate-500">{copy}</p>
     </div>

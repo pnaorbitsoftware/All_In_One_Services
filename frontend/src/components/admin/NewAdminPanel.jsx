@@ -71,6 +71,36 @@ const documentLabel = (fallback, url, empty = "Not uploaded") => {
   return "Aadhaar image uploaded";
 };
 
+const openDocumentInNewTab = async ({ providerId, side, onError }) => {
+  const previewWindow = window.open("", "_blank");
+  if (!previewWindow) {
+    onError?.("Allow pop-ups to open the Aadhaar document.");
+    return;
+  }
+
+  previewWindow.opener = null;
+  previewWindow.document.title = "Loading Aadhaar document...";
+
+  try {
+    const token = localStorage.getItem("servicehub_token");
+    const response = await fetch(`${API_URL}/admin/providers/${providerId}/aadhaar/${side}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Aadhaar document could not be loaded.");
+    }
+
+    const previewUrl = URL.createObjectURL(await response.blob());
+    previewWindow.location.replace(previewUrl);
+    window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+  } catch (error) {
+    previewWindow.close();
+    onError?.(error.message || "Aadhaar document could not be loaded.");
+  }
+};
+
 export default function NewAdminPanel({
   adminData,
   updateProviderApproval,
@@ -129,8 +159,8 @@ export default function NewAdminPanel({
     }
   }, [ticketMessages, activeTab]);
 
-  const fetchSupportTickets = async () => {
-    setSupportLoading(true);
+  const fetchSupportTickets = async ({ silent = false } = {}) => {
+    if (!silent) setSupportLoading(true);
     try {
       const token = localStorage.getItem("servicehub_token");
       const url = new URL(`${API_URL}/support/tickets`);
@@ -150,7 +180,7 @@ export default function NewAdminPanel({
       console.error(err);
       setStatusMessage?.("Could not fetch support tickets.");
     } finally {
-      setSupportLoading(false);
+      if (!silent) setSupportLoading(false);
     }
   };
 
@@ -187,8 +217,8 @@ export default function NewAdminPanel({
     }
   };
 
-  const loadTicketDetails = async (ticketId) => {
-    if (selectedTicket?.ticketId === ticketId) return;
+  const loadTicketDetails = async (ticketId, { force = false } = {}) => {
+    if (selectedTicket?.ticketId === ticketId && !force) return;
     try {
       const token = localStorage.getItem("servicehub_token");
       const res = await fetch(`${API_URL}/support/tickets/${ticketId}`, {
@@ -361,6 +391,26 @@ export default function NewAdminPanel({
     ticketPriorityFilter,
     ticketSearchQuery,
   ]);
+
+  useEffect(() => {
+    if (activeTab !== "support") return undefined;
+
+    const refreshSupport = () => {
+      if (document.visibilityState !== "visible") return;
+      fetchSupportTickets({ silent: true });
+      if (selectedTicket?.ticketId) {
+        loadTicketDetails(selectedTicket.ticketId, { force: true });
+      }
+    };
+    const timerId = window.setInterval(refreshSupport, 15000);
+    document.addEventListener("visibilitychange", refreshSupport);
+    return () => {
+      window.clearInterval(timerId);
+      document.removeEventListener("visibilitychange", refreshSupport);
+    };
+    // Keep only the active support workspace live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedTicket?.ticketId]);
 
   // Handle logout
   const handleLogout = () => {
@@ -700,7 +750,7 @@ export default function NewAdminPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-[#f4f7fb] font-sans text-slate-800">
+    <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-[#f4f7fb] font-sans text-slate-800 dark:bg-slate-950 dark:text-slate-100">
       {/* SIDEBAR */}
       <aside
         className={`z-30 flex h-full flex-shrink-0 flex-col bg-[#071126] text-white shadow-2xl shadow-slate-950/20 transition-all duration-300 ${sidebarOpen ? "w-64" : "w-[76px]"}`}
@@ -725,7 +775,7 @@ export default function NewAdminPanel({
             type="button"
             aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
+            className="rounded-xl p-2 text-slate-400 dark:text-slate-500 transition hover:bg-white/10 hover:text-white"
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -733,7 +783,7 @@ export default function NewAdminPanel({
 
         <div className="flex-1 space-y-1 overflow-y-auto p-3">
           {sidebarOpen && (
-            <p className="px-3 pb-2 pt-3 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">
+            <p className="px-3 pb-2 pt-3 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               Workspace
             </p>
           )}
@@ -749,12 +799,12 @@ export default function NewAdminPanel({
                 className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[13px] font-bold transition-all duration-200 ${
                   activeTab === item.id
                     ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25"
-                    : "text-slate-400 hover:bg-white/[0.07] hover:text-white"
+                    : "text-slate-400 dark:text-slate-500 hover:bg-white/[0.07] hover:text-white"
                 }`}
               >
                 <Icon
                   size={18}
-                  className={`flex-shrink-0 ${activeTab === item.id ? "text-white" : "text-slate-500 group-hover:text-blue-300"}`}
+                  className={`flex-shrink-0 ${activeTab === item.id ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-blue-300"}`}
                 />
                 {sidebarOpen && <span className="truncate">{item.label}</span>}
               </button>
@@ -776,18 +826,18 @@ export default function NewAdminPanel({
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#f4f7fb]">
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#f4f7fb] dark:bg-slate-950">
         {/* TOP BAR */}
-        <div className="z-10 flex min-h-[88px] flex-shrink-0 items-center justify-between border-b border-slate-200/80 bg-white px-5 py-4 shadow-sm shadow-slate-200/30 sm:px-7 lg:px-9">
+        <div className="z-10 flex min-h-[88px] flex-shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 px-5 py-4 shadow-sm shadow-slate-200/30 dark:shadow-black/20 sm:px-7 lg:px-9">
           <div>
             <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
               administration
             </div>
-            <h1 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+            <h1 className="text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">
               {activeMenuItem.title}
             </h1>
-            <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
+            <p className="mt-0.5 hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
               {activeMenuItem.description}
             </p>
           </div>
@@ -800,7 +850,7 @@ export default function NewAdminPanel({
               <button
                 type="button"
                 onClick={() => setIsAdminMode(false)}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 sm:px-4"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 shadow-sm transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 sm:px-4"
               >
                 <LogOut size={14} />
                 <span className="hidden sm:inline">Exit Admin</span>
@@ -815,12 +865,12 @@ export default function NewAdminPanel({
           {activeTab === "dashboard" && (
             <>
               <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                <div className="rounded-2xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 shadow-xs flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Total Users
                     </p>
-                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                    <h3 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
                       {totalUsersCount}
                     </h3>
                   </div>
@@ -829,12 +879,12 @@ export default function NewAdminPanel({
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                <div className="rounded-2xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 shadow-xs flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Active Providers
                     </p>
-                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                    <h3 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
                       {Math.max(
                         Number(stats.totalProviders) || 0,
                         providerCount,
@@ -846,12 +896,12 @@ export default function NewAdminPanel({
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                <div className="rounded-2xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 shadow-xs flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Total Bookings
                     </p>
-                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                    <h3 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
                       {Math.max(Number(stats.totalBookings) || 0, bookingCount)}
                     </h3>
                   </div>
@@ -860,12 +910,12 @@ export default function NewAdminPanel({
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                <div className="rounded-2xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 shadow-xs flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Pending Work Queue
                     </p>
-                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                    <h3 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
                       {pendingBookingsCount}
                     </h3>
                   </div>
@@ -874,12 +924,12 @@ export default function NewAdminPanel({
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-6 bg-white border border-slate-100 shadow-xs flex items-center justify-between">
+                <div className="rounded-2xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 shadow-xs flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Completed Deliveries
                     </p>
-                    <h3 className="mt-2 text-2xl font-black text-slate-900">
+                    <h3 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
                       {completedWorkCount}
                     </h3>
                   </div>
@@ -905,8 +955,8 @@ export default function NewAdminPanel({
 
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* Recent Providers */}
-                <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100">
-                  <h2 className="mb-4 text-lg font-bold text-slate-900">
+                <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-xs border border-slate-100 dark:border-white/10">
+                  <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">
                     Recent Onboarded Providers
                   </h2>
                   <div className="divide-y divide-slate-100">
@@ -918,10 +968,10 @@ export default function NewAdminPanel({
                           className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0"
                         >
                           <div>
-                            <p className="font-bold text-slate-900 text-sm">
+                            <p className="font-bold text-slate-900 dark:text-white text-sm">
                               {provider.name}
                             </p>
-                            <p className="text-xs text-slate-500 mt-0.5">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                               {provider.category ||
                                 provider.customCategory ||
                                 "-"}
@@ -938,8 +988,8 @@ export default function NewAdminPanel({
                 </div>
 
                 {/* Recent Bookings */}
-                <div className="rounded-2xl bg-white p-6 shadow-xs border border-slate-100">
-                  <h2 className="mb-4 text-lg font-bold text-slate-900">
+                <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-xs border border-slate-100 dark:border-white/10">
+                  <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">
                     Recent Service Requests
                   </h2>
                   <div className="divide-y divide-slate-100">
@@ -949,10 +999,10 @@ export default function NewAdminPanel({
                         className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0"
                       >
                         <div>
-                          <p className="font-bold text-slate-900 text-sm">
+                          <p className="font-bold text-slate-900 dark:text-white text-sm">
                             {booking.name}
                           </p>
-                          <p className="text-xs text-slate-500 mt-0.5">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {booking.service}
                           </p>
                         </div>
@@ -971,32 +1021,32 @@ export default function NewAdminPanel({
 
           {/* BOOKINGS QUEUE TAB */}
           {activeTab === "bookings" && (
-            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
-              <div className="border-b border-slate-200 bg-white p-5 lg:p-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm shadow-slate-200/50 dark:shadow-black/20">
+              <div className="border-b border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-5 lg:p-6">
                 <div className="flex flex-col justify-between gap-4 2xl:flex-row 2xl:items-center">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-slate-950">
+                      <h2 className="text-lg font-black text-slate-950 dark:text-white">
                         Active bookings
                       </h2>
                       <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
                         {filteredBookings.length} of {bookingCount}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Search, assign and update incoming service requests.
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <label className="relative min-w-[260px] flex-1">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                       <input
                         value={bookingSearch}
                         onChange={(event) =>
                           setBookingSearch(event.target.value)
                         }
                         placeholder="Search booking, customer or phone"
-                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                        className="h-10 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-blue-50"
                       />
                     </label>
                     <select
@@ -1005,7 +1055,7 @@ export default function NewAdminPanel({
                       onChange={(event) =>
                         setBookingServiceFilter(event.target.value)
                       }
-                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:border-blue-400"
                     >
                       <option value="all">All services</option>
                       {bookingServices.map((service) => (
@@ -1020,7 +1070,7 @@ export default function NewAdminPanel({
                       onChange={(event) =>
                         setBookingStatusFilter(event.target.value)
                       }
-                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:border-blue-400"
                     >
                       <option value="all">All statuses</option>
                       <option value="pending">Pending</option>
@@ -1036,7 +1086,7 @@ export default function NewAdminPanel({
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b bg-slate-50 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                    <tr className="border-b bg-slate-50 dark:bg-slate-950/60 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                       <th className="p-4 pl-6 min-w-[100px] whitespace-nowrap">
                         Booking ID
                       </th>
@@ -1076,23 +1126,23 @@ export default function NewAdminPanel({
                       return (
                         <tr
                           key={booking._id}
-                          className="hover:bg-slate-50/80 transition-colors"
+                          className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
                         >
-                          <td className="p-4 pl-6 font-mono text-xs text-slate-400 whitespace-nowrap">
+                          <td className="p-4 pl-6 font-mono text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
                             {booking._id ? booking._id.slice(-6) : "-"}
                           </td>
-                          <td className="p-4 font-bold text-slate-900 whitespace-nowrap">
+                          <td className="p-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
                             {booking.name || "-"}
                           </td>
-                          <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
+                          <td className="p-4 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
                             {booking.phone || "-"}
                           </td>
                           <td className="p-4 whitespace-nowrap">
-                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-lg">
+                            <span className="inline-block bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-100 text-xs font-semibold px-2.5 py-1 rounded-lg">
                               {booking.service || "-"}
                             </span>
                           </td>
-                          <td className="p-4 text-slate-700 font-semibold whitespace-nowrap">
+                          <td className="p-4 text-slate-700 dark:text-slate-200 font-semibold whitespace-nowrap">
                             {booking.assignedProviderName ||
                               booking.requestedProviderName ||
                               "Not Assigned"}
@@ -1107,7 +1157,7 @@ export default function NewAdminPanel({
                                 }))
                               }
                               disabled={cleanStatus === "completed"}
-                              className="w-full rounded-lg border border-slate-300 px-2 py-2 text-xs bg-white disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-700"
+                              className="w-full rounded-lg border border-slate-300 dark:border-white/10 px-2 py-2 text-xs bg-white dark:bg-slate-900 disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200"
                             >
                               <option value="">Select Provider</option>
                               {(adminData?.providers || [])
@@ -1137,7 +1187,7 @@ export default function NewAdminPanel({
                               {booking.status || "pending"}
                             </span>
                           </td>
-                          <td className="p-4 text-slate-500 text-xs font-medium whitespace-nowrap">
+                          <td className="p-4 text-slate-500 dark:text-slate-400 text-xs font-medium whitespace-nowrap">
                             {booking.preferredDate
                               ? new Date(
                                   booking.preferredDate,
@@ -1188,7 +1238,7 @@ export default function NewAdminPanel({
                                 </button>
                               )}
                               {cleanStatus === "completed" && (
-                                <span className="text-xs text-slate-400 font-medium italic">
+                                <span className="text-xs text-slate-400 dark:text-slate-500 font-medium italic">
                                   Completed
                                 </span>
                               )}
@@ -1204,7 +1254,7 @@ export default function NewAdminPanel({
                             className="mx-auto mb-3 text-slate-300"
                             size={30}
                           />
-                          <p className="text-sm font-bold text-slate-700">
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
                             No bookings match these filters
                           </p>
                           <button
@@ -1229,32 +1279,32 @@ export default function NewAdminPanel({
 
           {/* PROVIDERS NETWORK TAB */}
           {activeTab === "providers" && (
-            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
-              <div className="border-b border-slate-200 bg-white p-5 lg:p-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm shadow-slate-200/50 dark:shadow-black/20">
+              <div className="border-b border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-5 lg:p-6">
                 <div className="flex flex-col justify-between gap-4 2xl:flex-row 2xl:items-center">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-slate-950">
+                      <h2 className="text-lg font-black text-slate-950 dark:text-white">
                         Provider directory
                       </h2>
                       <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
                         {filteredProviders.length} of {providerCount}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Review profiles, verification and network access.
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <label className="relative min-w-[250px] flex-1">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                       <input
                         value={providerSearch}
                         onChange={(event) =>
                           setProviderSearch(event.target.value)
                         }
                         placeholder="Search name, phone or location"
-                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                        className="h-10 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-blue-50"
                       />
                     </label>
                     <select
@@ -1263,7 +1313,7 @@ export default function NewAdminPanel({
                       onChange={(event) =>
                         setProviderCategoryFilter(event.target.value)
                       }
-                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:border-blue-400"
                     >
                       <option value="all">All categories</option>
                       {providerCategories.map((category) => (
@@ -1278,7 +1328,7 @@ export default function NewAdminPanel({
                       onChange={(event) =>
                         setProviderStatusFilter(event.target.value)
                       }
-                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:border-blue-400"
                     >
                       <option value="all">All statuses</option>
                       <option value="pending">Pending</option>
@@ -1291,7 +1341,7 @@ export default function NewAdminPanel({
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b bg-slate-50 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                    <tr className="border-b bg-slate-50 dark:bg-slate-950/60 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                       <th className="p-4 pl-6 min-w-[90px] whitespace-nowrap">
                         Photo
                       </th>
@@ -1328,10 +1378,10 @@ export default function NewAdminPanel({
                       return (
                         <tr
                           key={provider._id}
-                          className="hover:bg-slate-50/80 transition-colors"
+                          className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
                         >
                           <td className="p-4 pl-6 whitespace-nowrap">
-                            <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 flex items-center justify-center bg-slate-50 flex-shrink-0">
+                            <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 dark:border-white/10 flex items-center justify-center bg-slate-50 dark:bg-slate-950/60 flex-shrink-0">
                               {provider.profileImage ? (
                                 <img
                                   src={provider.profileImage}
@@ -1350,22 +1400,22 @@ export default function NewAdminPanel({
                             </div>
                           </td>
                           <td className="p-4 whitespace-nowrap">
-                            <p className="font-bold text-slate-900">
+                            <p className="font-bold text-slate-900 dark:text-white">
                               {provider.businessName || provider.name}
                             </p>
-                            <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                            <p className="mt-0.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
                               Owner: {provider.ownerName || provider.name || "-"}
                             </p>
                           </td>
-                          <td className="p-4 text-slate-600 font-medium whitespace-nowrap">
+                          <td className="p-4 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
                             {provider.category ||
                               provider.customCategory ||
                               "-"}
                           </td>
-                          <td className="p-4 text-slate-600 font-mono text-xs whitespace-nowrap">
+                          <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-xs whitespace-nowrap">
                             {provider.phone}
                           </td>
-                          <td className="p-4 text-slate-500 whitespace-nowrap capitalize">
+                          <td className="p-4 text-slate-500 dark:text-slate-400 whitespace-nowrap capitalize">
                             {provider.preferredWorkLocation || "MIDC"}
                           </td>
                           <td className="p-4 font-bold text-amber-500 whitespace-nowrap">
@@ -1375,19 +1425,19 @@ export default function NewAdminPanel({
                             <div className="space-y-1">
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
-                                  provider.aadhaarFrontUrl
+                                  provider.aadhaarFrontAvailable || provider.aadhaarFrontUrl
                                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                     : "bg-amber-50 text-amber-700 border border-amber-200"
                                 }`}
                               >
-                                {provider.aadhaarFrontUrl ? (
+                                {provider.aadhaarFrontAvailable || provider.aadhaarFrontUrl ? (
                                   <CheckCircle size={12} />
                                 ) : (
                                   <AlertCircle size={12} />
                                 )}
-                                {provider.aadhaarFrontUrl ? "Uploaded" : "Missing"}
+                                {provider.aadhaarFrontAvailable || provider.aadhaarFrontUrl ? "Uploaded" : "Missing"}
                               </span>
-                              <p className="text-[11px] font-bold text-slate-500">
+                              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
                                 {provider.aadhaarNumberMasked || "Not submitted"}
                               </p>
                             </div>
@@ -1405,7 +1455,7 @@ export default function NewAdminPanel({
                                 onClick={() =>
                                   setActiveDrawerProvider(provider)
                                 }
-                                className="bg-slate-100 p-2 rounded-xl text-slate-600 hover:bg-slate-200 transition flex-shrink-0"
+                                className="bg-slate-100 dark:bg-white/10 p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition flex-shrink-0"
                               >
                                 <Eye size={14} />
                               </button>
@@ -1430,7 +1480,7 @@ export default function NewAdminPanel({
                                       "rejected",
                                     )
                                   }
-                                  className="whitespace-nowrap bg-slate-100 text-slate-600 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-rose-50 hover:text-rose-600 transition border border-slate-200 flex-shrink-0"
+                                  className="whitespace-nowrap bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-rose-50 hover:text-rose-600 transition border border-slate-200 dark:border-white/10 flex-shrink-0"
                                 >
                                   Suspend
                                 </button>
@@ -1460,7 +1510,7 @@ export default function NewAdminPanel({
                             className="mx-auto mb-3 text-slate-300"
                             size={30}
                           />
-                          <p className="text-sm font-bold text-slate-700">
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
                             No providers match these filters
                           </p>
                           <button
@@ -1485,36 +1535,36 @@ export default function NewAdminPanel({
 
           {/* CLIENT NETWORK TAB */}
           {activeTab === "clients" && (
-            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
-              <div className="border-b border-slate-200 bg-white p-5 lg:p-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm shadow-slate-200/50 dark:shadow-black/20">
+              <div className="border-b border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-5 lg:p-6">
                 <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-slate-950">
+                      <h2 className="text-lg font-black text-slate-950 dark:text-white">
                         Client directory
                       </h2>
                       <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
                         {filteredClients.length} of {adminData?.users?.length || 0}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Registered clients with booking, cancellation and spend summary.
                     </p>
                   </div>
                   <label className="relative min-w-[280px]">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                     <input
                       value={clientSearch}
                       onChange={(event) => setClientSearch(event.target.value)}
                       placeholder="Search client name, phone or email"
-                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                      className="h-10 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 pl-10 pr-3 text-xs font-semibold outline-none transition focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-blue-50"
                     />
                   </label>
                 </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[980px] text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <thead className="border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
                     <tr>
                       <th className="px-5 py-3.5">Client</th>
                       <th className="px-5 py-3.5">Phone</th>
@@ -1531,22 +1581,22 @@ export default function NewAdminPanel({
                     {filteredClients.map((client) => {
                       const clientStats = getClientBookingStats(client);
                       return (
-                        <tr key={client._id} className="transition hover:bg-slate-50/80">
+                        <tr key={client._id} className="transition hover:bg-slate-50 dark:hover:bg-white/5">
                           <td className="px-5 py-4">
-                            <p className="font-black text-slate-900">
+                            <p className="font-black text-slate-900 dark:text-white">
                               {client.name || "Client"}
                             </p>
-                            <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                            <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
                               {client.email || "No email"}
                             </p>
                           </td>
-                          <td className="px-5 py-4 font-mono text-xs text-slate-600">
+                          <td className="px-5 py-4 font-mono text-xs text-slate-600 dark:text-slate-300">
                             {client.phone || "-"}
                           </td>
-                          <td className="max-w-[260px] px-5 py-4 text-xs font-semibold text-slate-500">
+                          <td className="max-w-[260px] px-5 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
                             {client.address || "Not added"}
                           </td>
-                          <td className="px-5 py-4 text-center font-black text-slate-900">
+                          <td className="px-5 py-4 text-center font-black text-slate-900 dark:text-white">
                             {clientStats.total}
                           </td>
                           <td className="px-5 py-4 text-center font-bold text-blue-600">
@@ -1558,10 +1608,10 @@ export default function NewAdminPanel({
                           <td className="px-5 py-4 text-center font-bold text-rose-600">
                             {clientStats.cancelled}
                           </td>
-                          <td className="px-5 py-4 text-right font-black text-slate-900">
+                          <td className="px-5 py-4 text-right font-black text-slate-900 dark:text-white">
                             {formatCurrency(clientStats.spend)}
                           </td>
-                          <td className="px-5 py-4 text-xs font-semibold text-slate-500">
+                          <td className="px-5 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
                             {formatDateTime(client.createdAt)}
                           </td>
                         </tr>
@@ -1571,7 +1621,7 @@ export default function NewAdminPanel({
                       <tr>
                         <td colSpan="9" className="px-6 py-16 text-center">
                           <User className="mx-auto mb-3 text-slate-300" size={30} />
-                          <p className="text-sm font-bold text-slate-700">
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
                             No clients match these filters
                           </p>
                         </td>
@@ -1588,10 +1638,10 @@ export default function NewAdminPanel({
             <div className="space-y-6">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
-                  <h2 className="text-lg font-black text-slate-950">
+                  <h2 className="text-lg font-black text-slate-950 dark:text-white">
                     Settlement overview
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     Reconcile completed jobs and release provider earnings.
                   </p>
                 </div>
@@ -1604,32 +1654,32 @@ export default function NewAdminPanel({
                 </button>
               </div>
               <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 border border-slate-100 dark:border-white/10 shadow-xs">
+                  <p className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                     Gross Capital Pipeline
                   </p>
-                  <h3 className="text-2xl font-black mt-2 text-slate-950">
+                  <h3 className="text-2xl font-black mt-2 text-slate-950 dark:text-white">
                     {formatCurrency(totalRevenue)}
                   </h3>
                 </div>
-                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 border border-slate-100 dark:border-white/10 shadow-xs">
+                  <p className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                     Provider Share (80%)
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-emerald-600">
                     {formatCurrency(totalRevenue * 0.8)}
                   </h3>
                 </div>
-                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 border border-slate-100 dark:border-white/10 shadow-xs">
+                  <p className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                     Platform overhead (20%)
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-blue-600">
                     {formatCurrency(totalRevenue * 0.2)}
                   </h3>
                 </div>
-                <div className="rounded-2xl bg-white p-6 border border-slate-100 shadow-xs">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 border border-slate-100 dark:border-white/10 shadow-xs">
+                  <p className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                     Escrow Clearing
                   </p>
                   <h3 className="text-2xl font-black mt-2 text-amber-500">
@@ -1639,9 +1689,9 @@ export default function NewAdminPanel({
               </div>
 
               {/* Provider Payout Summary */}
-              <div className="rounded-2xl bg-white shadow-xs border border-slate-100 overflow-hidden">
-                <div className="p-5 border-b bg-slate-50/50">
-                  <h3 className="font-bold text-slate-900 text-sm">
+              <div className="rounded-2xl bg-white dark:bg-slate-900 shadow-xs border border-slate-100 dark:border-white/10 overflow-hidden">
+                <div className="p-5 border-b bg-slate-50/50 dark:bg-slate-950/60">
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
                     Provider Payout Summary
                   </h3>
                 </div>
@@ -1649,7 +1699,7 @@ export default function NewAdminPanel({
                 <div className="p-6">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="rounded-xl border p-4">
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Released Payments
                       </p>
                       <h3 className="text-xl font-bold text-green-600">
@@ -1662,7 +1712,7 @@ export default function NewAdminPanel({
                     </div>
 
                     <div className="rounded-xl border p-4">
-                      <p className="text-xs text-slate-500">Pending Payments</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Pending Payments</p>
                       <h3 className="text-xl font-bold text-amber-600">
                         {
                           adminData?.bookings?.filter(
@@ -1675,7 +1725,7 @@ export default function NewAdminPanel({
                     </div>
 
                     <div className="rounded-xl border p-4">
-                      <p className="text-xs text-slate-500">Completed Jobs</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Completed Jobs</p>
                       <h3 className="text-xl font-bold text-blue-600">
                         {
                           adminData?.bookings?.filter(
@@ -1686,7 +1736,7 @@ export default function NewAdminPanel({
                     </div>
 
                     <div className="rounded-xl border p-4">
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Platform Earnings
                       </p>
                       <h3 className="text-xl font-bold text-purple-600">
@@ -1697,26 +1747,26 @@ export default function NewAdminPanel({
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/40">
-                <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 lg:flex-row lg:items-center">
+              <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm shadow-slate-200/40 dark:shadow-black/20">
+                <div className="flex flex-col justify-between gap-3 border-b border-slate-200 dark:border-white/10 p-5 lg:flex-row lg:items-center">
                   <div>
-                    <h3 className="text-sm font-black text-slate-950">
+                    <h3 className="text-sm font-black text-slate-950 dark:text-white">
                       Provider payout ledger
                     </h3>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Completed bookings eligible for settlement.
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <label className="relative min-w-[250px]">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                       <input
                         value={paymentSearch}
                         onChange={(event) =>
                           setPaymentSearch(event.target.value)
                         }
                         placeholder="Search customer or service"
-                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white"
+                        className="h-10 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 pl-10 pr-3 text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900"
                       />
                     </label>
                     <select
@@ -1725,7 +1775,7 @@ export default function NewAdminPanel({
                       onChange={(event) =>
                         setPaymentStatusFilter(event.target.value)
                       }
-                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-400"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:border-blue-400"
                     >
                       <option value="all">All payouts</option>
                       <option value="pending">Pending release</option>
@@ -1735,7 +1785,7 @@ export default function NewAdminPanel({
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    <thead className="border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
                       <tr>
                         <th className="px-5 py-3.5">Customer / booking</th>
                         <th className="px-5 py-3.5">Provider</th>
@@ -1757,33 +1807,33 @@ export default function NewAdminPanel({
                         return (
                           <tr
                             key={booking._id}
-                            className="transition hover:bg-slate-50/80"
+                            className="transition hover:bg-slate-50 dark:hover:bg-white/5"
                           >
                             <td className="px-5 py-4">
-                              <p className="font-bold text-slate-900">
+                              <p className="font-bold text-slate-900 dark:text-white">
                                 {booking.name || "Unknown customer"}
                               </p>
-                              <p className="mt-0.5 font-mono text-[10px] text-slate-400">
+                              <p className="mt-0.5 font-mono text-[10px] text-slate-400 dark:text-slate-500">
                                 #
                                 {String(
                                   booking.bookingId || booking._id || "",
                                 ).slice(-8)}
                               </p>
                             </td>
-                            <td className="px-5 py-4 font-semibold text-slate-600">
+                            <td className="px-5 py-4 font-semibold text-slate-600 dark:text-slate-300">
                               {booking.assignedProviderName ||
                                 booking.requestedProviderName ||
                                 "Unassigned"}
                             </td>
                             <td className="px-5 py-4">
-                              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                              <span className="rounded-lg bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
                                 {booking.service || "Service"}
                               </span>
                             </td>
-                            <td className="px-5 py-4 text-right font-bold text-slate-700">
+                            <td className="px-5 py-4 text-right font-bold text-slate-700 dark:text-slate-200">
                               {formatCurrency(grossAmount)}
                             </td>
-                            <td className="px-5 py-4 text-right font-black text-slate-950">
+                            <td className="px-5 py-4 text-right font-black text-slate-950 dark:text-white">
                               {formatCurrency(grossAmount * 0.8)}
                             </td>
                             <td className="px-5 py-4 text-center">
@@ -1797,7 +1847,7 @@ export default function NewAdminPanel({
                             </td>
                             <td className="px-5 py-4 text-right">
                               {booking.providerPaymentReleased ? (
-                                <span className="text-xs font-bold text-slate-400">
+                                <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
                                   Complete
                                 </span>
                               ) : (
@@ -1819,7 +1869,7 @@ export default function NewAdminPanel({
                         <tr>
                           <td
                             colSpan="7"
-                            className="px-6 py-14 text-center text-sm font-semibold text-slate-400"
+                            className="px-6 py-14 text-center text-sm font-semibold text-slate-400 dark:text-slate-500"
                           >
                             No completed payouts match these filters.
                           </td>
@@ -1834,15 +1884,15 @@ export default function NewAdminPanel({
 
           {/* MESSAGES CRM INBOX */}
           {activeTab === "messages" && (
-            <div className="flex h-[680px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
-              <div className="flex w-[360px] flex-shrink-0 flex-col border-r border-slate-200 bg-slate-50/40 xl:w-[400px]">
-                <div className="flex-shrink-0 space-y-3 border-b border-slate-200 bg-white p-5">
+            <div className="flex h-[680px] overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm shadow-slate-200/50 dark:shadow-black/20">
+              <div className="flex w-[360px] flex-shrink-0 flex-col border-r border-slate-200 dark:border-white/10 bg-slate-50/40 dark:bg-slate-950/60 xl:w-[400px]">
+                <div className="flex-shrink-0 space-y-3 border-b border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-black text-slate-950">
+                      <h3 className="text-sm font-black text-slate-950 dark:text-white">
                         Customer enquiries
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
+                      <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                         {filteredMessages.length} conversations
                       </p>
                     </div>
@@ -1850,24 +1900,24 @@ export default function NewAdminPanel({
                       type="button"
                       aria-label="Refresh customer messages"
                       onClick={refreshAdminContactMessages}
-                      className="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 text-blue-600 transition hover:bg-blue-50"
+                      className="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 dark:border-white/10 text-blue-600 transition hover:bg-blue-50"
                     >
                       <RefreshCw size={15} />
                     </button>
                   </div>
                   <label className="relative block">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                     <input
                       value={messageSearch}
                       onChange={(event) => setMessageSearch(event.target.value)}
                       placeholder="Search name, email or message"
-                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white"
+                      className="h-10 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 pl-10 pr-3 text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900"
                     />
                   </label>
                 </div>
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                   {filteredMessages.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 text-xs font-medium">
+                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs font-medium">
                       No customer enquiries match your search.
                     </div>
                   ) : (
@@ -1876,10 +1926,10 @@ export default function NewAdminPanel({
                         type="button"
                         key={msg._id}
                         onClick={() => setSelectedMessage(msg)}
-                        className={`w-full p-5 text-left transition-all ${selectedMessage?._id === msg._id ? "border-l-4 border-blue-600 bg-blue-50/70" : "border-l-4 border-transparent bg-white hover:bg-slate-50"}`}
+                        className={`w-full p-5 text-left transition-all ${selectedMessage?._id === msg._id ? "border-l-4 border-blue-600 bg-blue-50/70" : "border-l-4 border-transparent bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-white/5"}`}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <h4 className="truncate text-sm font-black text-slate-900">
+                          <h4 className="truncate text-sm font-black text-slate-900 dark:text-white">
                             {msg.name || "Unknown customer"}
                           </h4>
                           {msg.repliedAt && (
@@ -1888,11 +1938,11 @@ export default function NewAdminPanel({
                             </span>
                           )}
                         </div>
-                        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-500">
+                        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
                           {msg.subject ? `${msg.subject}: ` : ""}
                           {msg.message}
                         </p>
-                        <p className="mt-2 truncate text-[10px] font-semibold text-slate-400">
+                        <p className="mt-2 truncate text-[10px] font-semibold text-slate-400 dark:text-slate-500">
                           {msg.email || msg.phone || "No contact details"}
                         </p>
                       </button>
@@ -1900,37 +1950,37 @@ export default function NewAdminPanel({
                   )}
                 </div>
               </div>
-              <div className="flex-1 flex flex-col bg-slate-50/30">
+              <div className="flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-950/60">
                 {selectedMessage ? (
-                  <div className="flex flex-col h-full bg-white">
-                    <div className="p-4 border-b bg-slate-50/40 flex-shrink-0">
-                      <h3 className="font-bold text-slate-900">
+                  <div className="flex flex-col h-full bg-white dark:bg-slate-900">
+                    <div className="p-4 border-b bg-slate-50/40 dark:bg-slate-950/60 flex-shrink-0">
+                      <h3 className="font-bold text-slate-900 dark:text-white">
                         {selectedMessage.name}
                       </h3>
-                      <p className="text-xs text-slate-500 mt-0.5">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {selectedMessage.email}
                       </p>
                     </div>
                     <div className="flex-1 p-6 overflow-y-auto space-y-4">
-                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 max-w-xl">
-                        <p className="text-slate-800 text-sm whitespace-pre-line leading-relaxed">
+                      <div className="bg-slate-50 dark:bg-slate-950/60 p-5 rounded-2xl border border-slate-100 dark:border-white/10 max-w-xl">
+                        <p className="text-slate-800 dark:text-slate-100 text-sm whitespace-pre-line leading-relaxed">
                           {selectedMessage.message}
                         </p>
                       </div>
                       {selectedMessage.adminReply && (
                         <div className="bg-emerald-50/60 p-5 rounded-2xl border border-emerald-100 max-w-xl ml-auto">
-                          <p className="text-slate-900 text-sm font-medium whitespace-pre-line">
+                          <p className="text-slate-900 dark:text-white text-sm font-medium whitespace-pre-line">
                             {selectedMessage.adminReply}
                           </p>
                         </div>
                       )}
                     </div>
-                    <div className="p-4 border-t flex gap-3 items-end flex-shrink-0 bg-white">
+                    <div className="p-4 border-t flex gap-3 items-end flex-shrink-0 bg-white dark:bg-slate-900">
                       <textarea
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
                         placeholder="Type official response here..."
-                        className="flex-1 border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 h-20 resize-none"
+                        className="flex-1 border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 dark:bg-slate-950/60 h-20 resize-none"
                       />
                       <button
                         onClick={() => handleSendReply(selectedMessage._id)}
@@ -1942,17 +1992,17 @@ export default function NewAdminPanel({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-1 flex-col items-center justify-center px-8 text-center text-slate-400">
-                    <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-slate-100">
+                  <div className="flex flex-1 flex-col items-center justify-center px-8 text-center text-slate-400 dark:text-slate-500">
+                    <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 dark:bg-white/10">
                       <MessageSquare
                         size={26}
-                        className="stroke-1 text-slate-400"
+                        className="stroke-1 text-slate-400 dark:text-slate-500"
                       />
                     </div>
-                    <p className="text-sm font-black text-slate-700">
+                    <p className="text-sm font-black text-slate-700 dark:text-slate-200">
                       Select a conversation
                     </p>
-                    <p className="mt-1 max-w-xs text-xs leading-5 text-slate-400">
+                    <p className="mt-1 max-w-xs text-xs leading-5 text-slate-400 dark:text-slate-500">
                       Choose a customer enquiry from the inbox to read and
                       respond.
                     </p>
@@ -1966,54 +2016,54 @@ export default function NewAdminPanel({
           {activeTab === "analytics" && (
             <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-3">
-                <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-100 dark:border-white/10 shadow-xs flex items-center gap-4">
                   <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
                     <TrendingUp size={22} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Avg Basket Scale
                     </p>
-                    <h4 className="text-xl font-black text-slate-900">
+                    <h4 className="text-xl font-black text-slate-900 dark:text-white">
                       ₹{avgTicketSize}
                     </h4>
                   </div>
                 </div>
-                <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-100 dark:border-white/10 shadow-xs flex items-center gap-4">
                   <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600">
                     <Award size={22} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Job Fulfillment
                     </p>
-                    <h4 className="text-xl font-black text-slate-900">
+                    <h4 className="text-xl font-black text-slate-900 dark:text-white">
                       {fulfillmentRate}%
                     </h4>
                   </div>
                 </div>
-                <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-100 dark:border-white/10 shadow-xs flex items-center gap-4">
                   <div className="p-3 rounded-xl bg-amber-50 text-amber-600">
                     <Users size={22} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                       Operator Conversion
                     </p>
-                    <h4 className="text-xl font-black text-slate-900">
+                    <h4 className="text-xl font-black text-slate-900 dark:text-white">
                       {providerConversion}%
                     </h4>
                   </div>
                 </div>
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
-                  <h3 className="text-base font-bold text-slate-900 mb-5">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-xs">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-5">
                     Top Volume Service Sectors
                   </h3>
                   <div className="space-y-4.5">
                     {realTopServices.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 italic">
                         No historical nodes to render graphs.
                       </p>
                     ) : (
@@ -2025,12 +2075,12 @@ export default function NewAdminPanel({
                         return (
                           <div key={svc.name}>
                             <div className="flex justify-between text-xs mb-1.5 font-bold">
-                              <span className="text-slate-700">{svc.name}</span>
-                              <span className="text-slate-900">
+                              <span className="text-slate-700 dark:text-slate-200">{svc.name}</span>
+                              <span className="text-slate-900 dark:text-white">
                                 {svc.value} Capture Requests ({percentage}%)
                               </span>
                             </div>
-                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-100 dark:bg-white/10 h-2.5 rounded-full overflow-hidden">
                               <div
                                 className="bg-blue-600 h-full rounded-full transition-all duration-500"
                                 style={{ width: `${percentage}%` }}
@@ -2042,8 +2092,8 @@ export default function NewAdminPanel({
                     )}
                   </div>
                 </div>
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
-                  <h3 className="text-base font-bold text-slate-900 mb-5">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-xs">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-5">
                     Network Operator Leaderboards
                   </h3>
                   <div className="divide-y divide-slate-100">
@@ -2053,10 +2103,10 @@ export default function NewAdminPanel({
                         className="py-3 flex justify-between items-center last:pb-0 first:pt-0"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-bold text-slate-400">
+                          <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
                             #0{index + 1}
                           </span>
-                          <p className="font-bold text-xs text-slate-900 whitespace-nowrap">
+                          <p className="font-bold text-xs text-slate-900 dark:text-white whitespace-nowrap">
                             {p.name}
                           </p>
                         </div>
@@ -2064,7 +2114,7 @@ export default function NewAdminPanel({
                           <p className="text-xs font-bold text-amber-500 whitespace-nowrap">
                             ⭐ {p.rating || "5.0"}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mt-0.5">
                             {p.category || "Operator"}
                           </p>
                         </div>
@@ -2089,7 +2139,7 @@ export default function NewAdminPanel({
                       visibleSupportSummary.total,
                     ),
                     icon: LifeBuoy,
-                    color: "text-slate-600 bg-slate-100",
+                    color: "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/10",
                   },
                   {
                     label: "Open Tickets",
@@ -2127,13 +2177,13 @@ export default function NewAdminPanel({
                 ].map((stat, idx) => (
                   <div
                     key={idx}
-                    className="rounded-2xl p-5 bg-white border border-slate-100 shadow-xs flex items-center justify-between"
+                    className="rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 shadow-xs flex items-center justify-between"
                   >
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                         {stat.label}
                       </p>
-                      <h3 className="mt-1.5 text-xl font-black text-slate-900">
+                      <h3 className="mt-1.5 text-xl font-black text-slate-900 dark:text-white">
                         {stat.value}
                       </h3>
                     </div>
@@ -2145,17 +2195,17 @@ export default function NewAdminPanel({
               </div>
 
               {/* Main Ticket Interface */}
-              <div className="flex h-[700px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+              <div className="flex h-[700px] overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm shadow-slate-200/50 dark:shadow-black/20">
                 {/* Left Ticket Queue Sidebar */}
-                <div className="flex w-[390px] flex-shrink-0 flex-col border-r border-slate-200 bg-slate-50/30 xl:w-[430px]">
+                <div className="flex w-[390px] flex-shrink-0 flex-col border-r border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-slate-950/60 xl:w-[430px]">
                   {/* Search & Filters */}
-                  <div className="flex-shrink-0 space-y-3 border-b border-slate-200 bg-white p-5">
+                  <div className="flex-shrink-0 space-y-3 border-b border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-sm font-black text-slate-950">
+                        <h3 className="text-sm font-black text-slate-950 dark:text-white">
                           Helpdesk queue
                         </h3>
-                        <p className="mt-0.5 text-[11px] text-slate-500">
+                        <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                           {supportTickets.length} tickets in this view
                         </p>
                       </div>
@@ -2171,13 +2221,13 @@ export default function NewAdminPanel({
                     </div>
 
                     <div className="relative font-sans">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                       <input
                         type="text"
                         value={ticketSearchQuery}
                         onChange={(e) => setTicketSearchQuery(e.target.value)}
                         placeholder="Search ticket, subject, user or email"
-                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                        className="h-10 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 pl-9 pr-3 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-blue-50"
                       />
                     </div>
 
@@ -2185,7 +2235,7 @@ export default function NewAdminPanel({
                       <select
                         value={ticketStatusFilter}
                         onChange={(e) => setTicketStatusFilter(e.target.value)}
-                        className="h-9 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 font-bold text-slate-700 outline-none focus:border-blue-400"
+                        className="h-9 min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 px-2 font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-400"
                       >
                         <option value="All">All Status</option>
                         <option value="Open">Open</option>
@@ -2201,7 +2251,7 @@ export default function NewAdminPanel({
                         onChange={(e) =>
                           setTicketCategoryFilter(e.target.value)
                         }
-                        className="h-9 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 font-bold text-slate-700 outline-none focus:border-blue-400"
+                        className="h-9 min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 px-2 font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-400"
                       >
                         <option value="All">All types</option>
                         <option value="Booking Issue">Booking</option>
@@ -2217,7 +2267,7 @@ export default function NewAdminPanel({
                         onChange={(e) =>
                           setTicketPriorityFilter(e.target.value)
                         }
-                        className="h-9 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 font-bold text-slate-700 outline-none focus:border-blue-400"
+                        className="h-9 min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 px-2 font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-400"
                       >
                         <option value="All">All Priority</option>
                         <option value="Low">Low</option>
@@ -2231,12 +2281,12 @@ export default function NewAdminPanel({
                   {/* Queue Scrollable View */}
                   <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                     {supportLoading ? (
-                      <div className="p-8 text-center text-slate-400 text-xs font-semibold flex flex-col items-center gap-2">
+                      <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs font-semibold flex flex-col items-center gap-2">
                         <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
                         Fetching Queue...
                       </div>
                     ) : supportTickets.length === 0 ? (
-                      <div className="p-12 text-center text-slate-400 text-xs font-semibold">
+                      <div className="p-12 text-center text-slate-400 dark:text-slate-500 text-xs font-semibold">
                         No support tickets match these filters.
                       </div>
                     ) : (
@@ -2245,14 +2295,14 @@ export default function NewAdminPanel({
                           type="button"
                           key={t.ticketId}
                           onClick={() => loadTicketDetails(t.ticketId)}
-                          className={`w-full border-l-4 p-5 text-left transition hover:bg-slate-50 ${
+                          className={`w-full border-l-4 p-5 text-left transition hover:bg-slate-50 dark:hover:bg-white/5 ${
                             selectedTicket?.ticketId === t.ticketId
                               ? "border-blue-500 bg-blue-50/60 hover:bg-blue-50/60"
-                              : "border-transparent bg-white"
+                              : "border-transparent bg-white dark:bg-slate-900"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                               {t.ticketId}
                             </span>
                             <span
@@ -2261,23 +2311,23 @@ export default function NewAdminPanel({
                                   ? "bg-rose-50 text-rose-500 border-rose-100"
                                   : t.priority === "High"
                                     ? "bg-orange-50 text-orange-500 border-orange-100"
-                                    : "bg-slate-50 text-slate-500 border-slate-100"
+                                    : "bg-slate-50 dark:bg-slate-950/60 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-white/10"
                               }`}
                             >
                               {t.priority}
                             </span>
                           </div>
-                          <h4 className="mb-1 line-clamp-2 text-sm font-black leading-5 text-slate-900">
+                          <h4 className="mb-1 line-clamp-2 text-sm font-black leading-5 text-slate-900 dark:text-white">
                             {t.subject}
                           </h4>
-                          <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                          <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                             <span>By: {t.userName}</span>
                             <span
                               className={`rounded px-2 py-1 text-[9px] font-black uppercase ${
                                 t.status === "Resolved"
                                   ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
                                   : t.status === "Closed"
-                                    ? "bg-slate-100 text-slate-500"
+                                    ? "bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
                                     : t.status === "Waiting for Customer"
                                       ? "bg-amber-50 text-amber-600 border border-amber-100"
                                       : "bg-blue-50 text-blue-600 border border-blue-100"
@@ -2293,26 +2343,26 @@ export default function NewAdminPanel({
                 </div>
 
                 {/* Right Details & Conversation Panel */}
-                <div className="flex min-w-0 flex-1 flex-col bg-white">
+                <div className="flex min-w-0 flex-1 flex-col bg-white dark:bg-slate-900">
                   {selectedTicket ? (
                     <div className="flex flex-col h-full">
                       {/* Ticket Details Header */}
-                      <div className="p-5 border-b bg-slate-50/40 flex-shrink-0 flex items-start justify-between gap-4">
+                      <div className="p-5 border-b bg-slate-50/40 dark:bg-slate-950/60 flex-shrink-0 flex items-start justify-between gap-4">
                         <div className="text-left">
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-black text-blue-600 tracking-wider uppercase">
                               {selectedTicket.ticketId}
                             </span>
                             {selectedTicket.bookingId && (
-                              <span className="text-[9px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border">
+                              <span className="text-[9px] font-bold bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 px-2 py-0.5 rounded border">
                                 Booking: {selectedTicket.bookingId}
                               </span>
                             )}
                           </div>
-                          <h3 className="mt-1.5 text-base font-black leading-snug text-slate-950">
+                          <h3 className="mt-1.5 text-base font-black leading-snug text-slate-950 dark:text-white">
                             {selectedTicket.subject}
                           </h3>
-                          <p className="mt-1.5 text-[11px] font-semibold text-slate-500">
+                          <p className="mt-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                             {selectedTicket.category} •{" "}
                             {selectedTicket.priority} priority •{" "}
                             {selectedTicket.userName} (
@@ -2323,7 +2373,7 @@ export default function NewAdminPanel({
                         {/* Dropdown controls (Assign & Status) */}
                         <div className="flex flex-col gap-2 flex-shrink-0">
                           <div className="flex items-center gap-2 text-xs font-bold">
-                            <span className="text-slate-400 w-16 text-right">
+                            <span className="text-slate-400 dark:text-slate-500 w-16 text-right">
                               Assignee:
                             </span>
                             <select
@@ -2334,7 +2384,7 @@ export default function NewAdminPanel({
                                   e.target.value,
                                 )
                               }
-                              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
+                              className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-1.5 text-slate-700 dark:text-slate-200 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
                             >
                               <option value="">Unassigned</option>
                               {supportStaff.map((staff) => (
@@ -2346,7 +2396,7 @@ export default function NewAdminPanel({
                           </div>
 
                           <div className="flex items-center gap-2 text-xs font-bold">
-                            <span className="text-slate-400 w-16 text-right">
+                            <span className="text-slate-400 dark:text-slate-500 w-16 text-right">
                               Status:
                             </span>
                             <select
@@ -2357,7 +2407,7 @@ export default function NewAdminPanel({
                                   e.target.value,
                                 )
                               }
-                              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
+                              className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-1.5 text-slate-700 dark:text-slate-200 text-[11px] font-bold outline-none focus:border-blue-500 w-44"
                             >
                               <option value="Open">Open</option>
                               <option value="Assigned">Assigned</option>
@@ -2373,23 +2423,23 @@ export default function NewAdminPanel({
                       </div>
 
                       {/* Message Thread view */}
-                      <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/20">
+                      <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/20 dark:bg-slate-950/60">
                         {/* Original ticket details card */}
-                        <div className="p-4 rounded-xl bg-slate-50 border text-left">
+                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border text-left">
                           <div className="flex items-center gap-2 mb-2">
-                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-200 text-slate-600">
+                            <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-200 text-slate-600 dark:text-slate-300">
                               <User size={12} />
                             </div>
                             <div>
-                              <span className="text-[11px] font-black text-slate-800">
+                              <span className="text-[11px] font-black text-slate-800 dark:text-slate-100">
                                 {selectedTicket.userName}
                               </span>
-                              <span className="text-[9px] text-slate-400 font-bold ml-2">
+                              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold ml-2">
                                 CREATED TICKETS
                               </span>
                             </div>
                           </div>
-                          <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600">
+                          <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
                             {selectedTicket.description}
                           </p>
 
@@ -2402,11 +2452,11 @@ export default function NewAdminPanel({
                                     key={idx}
                                     href={file.url}
                                     download={file.name}
-                                    className="flex items-center gap-2 p-2 border bg-white hover:bg-slate-50 rounded-xl transition text-left"
+                                    className="flex items-center gap-2 p-2 border bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition text-left"
                                   >
                                     <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
                                     <div className="min-w-0 flex-1">
-                                      <p className="text-[10px] font-bold text-slate-700 truncate">
+                                      <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
                                         {file.name}
                                       </p>
                                       <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">
@@ -2430,7 +2480,7 @@ export default function NewAdminPanel({
                                 isInternal
                                   ? "bg-amber-50/80 border-amber-200 text-amber-900 shadow-sm"
                                   : isUser
-                                    ? "bg-white border-slate-100"
+                                    ? "bg-white dark:bg-slate-900 border-slate-100 dark:border-white/10"
                                     : "bg-blue-50/30 border-blue-100"
                               }`}
                             >
@@ -2439,7 +2489,7 @@ export default function NewAdminPanel({
                                   <div
                                     className={`grid h-6 w-6 place-items-center rounded-full border ${
                                       isUser
-                                        ? "bg-slate-100 border-slate-200 text-slate-600"
+                                        ? "bg-slate-100 dark:bg-white/10 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300"
                                         : isInternal
                                           ? "bg-amber-200/50 border-amber-300 text-amber-700"
                                           : "bg-blue-100 border-blue-200 text-blue-700"
@@ -2452,7 +2502,7 @@ export default function NewAdminPanel({
                                     )}
                                   </div>
                                   <div>
-                                    <span className="text-[11px] font-black text-slate-800">
+                                    <span className="text-[11px] font-black text-slate-800 dark:text-slate-100">
                                       {msg.senderId?.name || "Support desk"}
                                     </span>
                                     <span
@@ -2460,7 +2510,7 @@ export default function NewAdminPanel({
                                         isInternal
                                           ? "bg-amber-200 text-amber-800"
                                           : isUser
-                                            ? "bg-slate-100 text-slate-600"
+                                            ? "bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300"
                                             : "bg-blue-100 text-blue-800"
                                       }`}
                                     >
@@ -2472,7 +2522,7 @@ export default function NewAdminPanel({
                                     </span>
                                   </div>
                                 </div>
-                                <span className="text-[9px] text-slate-400 font-semibold">
+                                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold">
                                   {new Date(msg.createdAt).toLocaleDateString(
                                     "en-IN",
                                     {
@@ -2485,7 +2535,7 @@ export default function NewAdminPanel({
                                 </span>
                               </div>
 
-                              <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600">
+                              <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
                                 {msg.message}
                               </p>
 
@@ -2495,11 +2545,11 @@ export default function NewAdminPanel({
                                   <a
                                     href={msg.attachment.url}
                                     download={msg.attachment.name}
-                                    className="inline-flex items-center gap-2 p-2 border bg-white hover:bg-slate-50 rounded-xl transition text-left max-w-sm"
+                                    className="inline-flex items-center gap-2 p-2 border bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition text-left max-w-sm"
                                   >
                                     <FileText className="h-4 w-4 text-pink-500 flex-shrink-0" />
                                     <div className="min-w-0 flex-1">
-                                      <p className="text-[10px] font-bold text-slate-700 truncate">
+                                      <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
                                         {msg.attachment.name}
                                       </p>
                                       <p className="text-[8px] text-blue-500 font-black tracking-wider uppercase">
@@ -2518,18 +2568,18 @@ export default function NewAdminPanel({
                       {/* Reply Form */}
                       <form
                         onSubmit={handleSendTicketReply}
-                        className="p-4 border-t bg-slate-50/50 flex-shrink-0 text-left"
+                        className="p-4 border-t bg-slate-50/50 dark:bg-slate-950/60 flex-shrink-0 text-left"
                       >
                         {ticketReplyAttachment && (
-                          <div className="mb-2 flex items-center justify-between text-xs px-2.5 py-1.5 bg-white rounded-xl border">
-                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
+                          <div className="mb-2 flex items-center justify-between text-xs px-2.5 py-1.5 bg-white dark:bg-slate-900 rounded-xl border">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                               <Paperclip size={14} className="text-pink-500" />
                               {ticketReplyAttachment.name}
                             </span>
                             <button
                               type="button"
                               onClick={() => setTicketReplyAttachment(null)}
-                              className="text-slate-400 hover:text-slate-700"
+                              className="text-slate-400 dark:text-slate-500 hover:text-slate-700"
                             >
                               <X size={14} />
                             </button>
@@ -2537,7 +2587,7 @@ export default function NewAdminPanel({
                         )}
 
                         <div className="flex gap-2">
-                          <label className="grid h-9 w-9 place-items-center rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 cursor-pointer transition flex-shrink-0">
+                          <label className="grid h-9 w-9 place-items-center rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 hover:border-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 text-slate-500 dark:text-slate-400 cursor-pointer transition flex-shrink-0">
                             <Paperclip size={16} />
                             <input
                               type="file"
@@ -2555,7 +2605,7 @@ export default function NewAdminPanel({
                                 ? "Write an internal team note..."
                                 : "Respond to the client..."
                             }
-                            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 transition"
+                            className="min-w-0 flex-1 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 transition"
                           />
 
                           <button
@@ -2583,7 +2633,7 @@ export default function NewAdminPanel({
                         </div>
 
                         {/* Internal Note Checkbox */}
-                        <div className="mt-3.5 flex items-center gap-2 text-xs font-bold text-slate-500 select-none">
+                        <div className="mt-3.5 flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 select-none">
                           <input
                             type="checkbox"
                             id="internalNoteCheckbox"
@@ -2591,7 +2641,7 @@ export default function NewAdminPanel({
                             onChange={(e) =>
                               setIsInternalNote(e.target.checked)
                             }
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            className="h-3.5 w-3.5 rounded border-slate-300 dark:border-white/10 text-blue-600 focus:ring-blue-500"
                           />
                           <label
                             htmlFor="internalNoteCheckbox"
@@ -2608,10 +2658,10 @@ export default function NewAdminPanel({
                       <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-blue-400">
                         <LifeBuoy className="h-8 w-8" />
                       </div>
-                      <p className="text-sm font-black text-slate-700">
+                      <p className="text-sm font-black text-slate-700 dark:text-slate-200">
                         Select a support ticket
                       </p>
-                      <p className="mt-1 max-w-sm text-xs font-medium leading-5 text-slate-400">
+                      <p className="mt-1 max-w-sm text-xs font-medium leading-5 text-slate-400 dark:text-slate-500">
                         Open a ticket from the queue to review the full
                         conversation, assign an agent and update its status.
                       </p>
@@ -2634,17 +2684,17 @@ export default function NewAdminPanel({
 
       {/* PROVIDER DETAIL DRAWER */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col transform transition-transform duration-300 ease-in-out ${activeDrawerProvider ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl p-6 overflow-y-auto flex flex-col transform transition-transform duration-300 ease-in-out ${activeDrawerProvider ? "translate-x-0" : "translate-x-full"}`}
       >
         {activeDrawerProvider && (
           <>
             <div className="flex items-center justify-between border-b pb-4 mb-6">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                 Provider profile details
               </h3>
               <button
                 onClick={() => setActiveDrawerProvider(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:text-slate-500 dark:hover:bg-white/10"
               >
                 <X size={18} />
               </button>
@@ -2667,18 +2717,18 @@ export default function NewAdminPanel({
                   </span>
                 )}
               </div>
-              <h4 className="text-base font-bold text-slate-900">
+              <h4 className="text-base font-bold text-slate-900 dark:text-white">
                 {activeDrawerProvider.businessName || activeDrawerProvider.name}
               </h4>
               <p className="text-xs text-blue-600 font-bold uppercase">
                 {activeDrawerProvider.category || "Verified Node"}
               </p>
-              <p className="text-xs font-semibold text-slate-500">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 Owner: {activeDrawerProvider.ownerName || activeDrawerProvider.name || "Not added"}
               </p>
             </div>
             <div className="space-y-4 flex-1 text-sm">
-              <div className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="grid gap-3 rounded-xl border border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 p-4">
                 {[
                   ["Business name", activeDrawerProvider.businessName || activeDrawerProvider.name],
                   ["Owner full name", activeDrawerProvider.ownerName || activeDrawerProvider.name],
@@ -2689,26 +2739,26 @@ export default function NewAdminPanel({
                   ["Aadhaar", activeDrawerProvider.aadhaarNumberMasked || "Not uploaded"],
                 ].map(([label, value]) => (
                   <div key={label} className="grid grid-cols-[120px_1fr] gap-3">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                       {label}
                     </span>
-                    <span className="break-words font-bold text-slate-800">
+                    <span className="break-words font-bold text-slate-800 dark:text-slate-100">
                       {value}
                     </span>
                   </div>
                 ))}
               </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between">
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 dark:border-white/10 flex justify-between">
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase font-bold">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">
                     Trust Rating
                   </p>
-                  <p className="text-base font-black text-slate-800">
+                  <p className="text-base font-black text-slate-800 dark:text-slate-100">
                     ⭐ {activeDrawerProvider.rating || "5.0"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase font-bold">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">
                     Network Status
                   </p>
                   <span className="text-[10px] font-black text-green-700 uppercase bg-green-100 px-2 py-0.5 rounded">
@@ -2716,13 +2766,13 @@ export default function NewAdminPanel({
                   </span>
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                       Aadhaar verification
                     </p>
-                    <p className="mt-1 text-xs font-bold text-slate-600">
+                    <p className="mt-1 text-xs font-bold text-slate-600 dark:text-slate-300">
                       {activeDrawerProvider.aadhaarNumberMasked || "Aadhaar number not submitted"}
                     </p>
                   </div>
@@ -2736,12 +2786,16 @@ export default function NewAdminPanel({
                     {
                       label: "Front / PDF",
                       url: activeDrawerProvider.aadhaarFrontUrl,
+                      available: activeDrawerProvider.aadhaarFrontAvailable || Boolean(activeDrawerProvider.aadhaarFrontUrl),
+                      side: "front",
                       name: activeDrawerProvider.aadhaarDocumentName,
                       required: true,
                     },
                     {
                       label: "Back image",
                       url: activeDrawerProvider.aadhaarBackUrl,
+                      available: activeDrawerProvider.aadhaarBackAvailable || Boolean(activeDrawerProvider.aadhaarBackUrl),
+                      side: "back",
                       name: activeDrawerProvider.aadhaarBackDocumentName,
                       required: false,
                     },
@@ -2749,51 +2803,57 @@ export default function NewAdminPanel({
                     <div
                       key={document.label}
                       className={`rounded-xl border p-3 ${
-                        document.url
+                        document.available
                           ? "border-emerald-200 bg-emerald-50/60"
-                          : "border-slate-200 bg-slate-50"
+                          : "border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                             {document.label}
                           </p>
-                          <p className="mt-1 truncate text-xs font-bold text-slate-800">
-                            {documentLabel(document.name, document.url)}
+                          <p className="mt-1 truncate text-xs font-bold text-slate-800 dark:text-slate-100">
+                            {documentLabel(document.name, document.url || (document.available ? "uploaded" : ""))}
                           </p>
                         </div>
-                        {document.url ? (
-                          <a
-                            href={document.url}
-                            target="_blank"
-                            rel="noreferrer"
+                        {document.available ? (
+                          <button
+                            type="button"
+                            onClick={() => openDocumentInNewTab({
+                              providerId: activeDrawerProvider._id,
+                              side: document.side,
+                              onError: setStatusMessage,
+                            })}
                             className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-950 px-3 py-2 text-[11px] font-black uppercase text-white hover:bg-slate-800"
                           >
                             <Eye size={13} />
                             Open
-                          </a>
+                          </button>
                         ) : (
-                          <span className="shrink-0 rounded-lg bg-white px-3 py-2 text-[11px] font-black uppercase text-slate-400">
+                          <span className="shrink-0 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 text-[11px] font-black uppercase text-slate-400 dark:text-slate-500">
                             {document.required ? "Required" : "Optional"}
                           </span>
                         )}
                       </div>
                       {document.url && isImageDocument(document.url) && (
-                        <a
-                          href={document.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 block overflow-hidden rounded-lg border border-white bg-white shadow-sm"
+                        <button
+                          type="button"
+                          onClick={() => openDocumentInNewTab({
+                            providerId: activeDrawerProvider._id,
+                            side: document.side,
+                            onError: setStatusMessage,
+                          })}
+                          className="mt-3 block overflow-hidden rounded-lg border border-white bg-white dark:bg-slate-900 shadow-sm"
                         >
                           <img
                             src={document.url}
                             alt={`${activeDrawerProvider.name || "Provider"} ${document.label}`}
                             className="h-40 w-full object-cover"
                           />
-                        </a>
+                        </button>
                       )}
-                      {!document.url && document.required && (
+                      {!document.available && document.required && (
                         <p className="mt-2 flex items-center gap-1 text-[11px] font-bold text-rose-600">
                           <AlertCircle size={12} />
                           Cannot approve without Aadhaar front or PDF.
@@ -2809,11 +2869,11 @@ export default function NewAdminPanel({
                   </p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              <div className="rounded-xl border border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   Timeline
                 </p>
-                <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+                <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 dark:text-slate-300">
                   <span>Requested: {formatDateTime(activeDrawerProvider.requestedAt || activeDrawerProvider.createdAt)}</span>
                   <span>Approved: {formatDateTime(activeDrawerProvider.approvedAt)}</span>
                   <span>Rejected: {formatDateTime(activeDrawerProvider.rejectedAt)}</span>

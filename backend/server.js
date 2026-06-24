@@ -20,6 +20,7 @@ import { responseTimeLogger } from "./src/middleware/performance.js";
 import { setupTrackingSocket } from "./src/socket/trackingSocket.js";
 
 const app = express();
+app.disable("x-powered-by");
 
 const port = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === "production";
@@ -45,13 +46,17 @@ const sitemapRoutes = [
 //
 // ✅ FIXED CORS CONFIG (PRODUCTION READY)
 //
+const configuredOrigins = String(process.env.CLIENT_URLS || process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
 const allowedOrigins = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "http://localhost:3000",
   "https://servicehub.aparaitech.org",
   "https://www.servicehub.aparaitech.org",
-  process.env.CLIENT_URL // optional from env
+  ...configuredOrigins,
 ].filter(Boolean);
 const allowedOriginSet = new Set(allowedOrigins);
 
@@ -65,12 +70,15 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // allow localhost variations
-    if (
-      origin.includes("localhost") ||
-      origin.includes("127.0.0.1")
-    ) {
-      return callback(null, true);
+    if (!isProduction) {
+      try {
+        const { hostname } = new URL(origin);
+        if (["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname)) {
+          return callback(null, true);
+        }
+      } catch {
+        return callback(new Error("Invalid request origin."));
+      }
     }
 
     console.error("❌ Blocked by CORS:", origin);
@@ -88,6 +96,7 @@ app.use((req, res, next) => {
 
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
   next();
@@ -95,7 +104,7 @@ app.use((req, res, next) => {
 app.use(cors(corsOptions));
 app.use(responseTimeLogger);
 app.use(compression());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "7mb" }));
 
 const authLimiter = rateLimit({
   windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
@@ -126,8 +135,8 @@ const passwordRecoveryLimiter = rateLimit({
 //
 app.get("/api/health", (_req, res) => {
   const dbStatus = getDatabaseStatus();
-  res.json({
-    status: "ok",
+  res.status(dbStatus.connected ? 200 : 503).json({
+    status: dbStatus.connected ? "ok" : "unavailable",
     uptimeSeconds: Math.round(process.uptime()),
     databaseName: mongoDbName,
     database: dbStatus.connected ? "connected" : "disconnected",
@@ -183,6 +192,19 @@ app.use("/api", (_req, res) => {
   res.status(404).json({ message: "API route not found." });
 });
 
+app.use((error, req, res, _next) => {
+  if (error?.message?.includes("is not allowed by CORS") || error?.message === "Invalid request origin.") {
+    return res.status(403).json({ message: "Request origin is not allowed." });
+  }
+
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({ message: "Request payload is too large." });
+  }
+
+  console.error(`Unhandled ${req.method} ${req.originalUrl}: ${error?.message || "Unknown error"}`);
+  return res.status(500).json({ message: "Unexpected server error." });
+});
+
 const runStartupMaintenance = async () => {
   if (isProduction && process.env.RUN_STARTUP_MAINTENANCE !== "true") {
     console.log("Startup database maintenance skipped in production.");
@@ -211,6 +233,12 @@ const startServer = async () => {
       console.warn(`Catalog cache warmup skipped: ${error.message}`);
     }
 
+    try {
+      await runStartupMaintenance();
+    } catch (error) {
+      console.warn(`Startup database maintenance failed: ${error.message}`);
+    }
+
     const server = http.createServer(app);
     server.keepAliveTimeout = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS || 65000);
     server.headersTimeout = Number(process.env.SERVER_HEADERS_TIMEOUT_MS || 66000);
@@ -225,10 +253,6 @@ const startServer = async () => {
       );
     });
 
-    runStartupMaintenance().catch((error) => {
-      console.warn(`Startup database maintenance failed: ${error.message}`);
-    });
-
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
         console.error(`Port ${port} already in use`);
@@ -238,6 +262,7 @@ const startServer = async () => {
     });
   } catch (error) {
     console.error(`MongoDB connection failed: ${error.message}`);
+    process.exitCode = 1;
   }
 };
 

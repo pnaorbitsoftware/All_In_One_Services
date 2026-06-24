@@ -62,6 +62,7 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
   const [locatingProvider, setLocatingProvider] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const [actionInProgress, setActionInProgress] = useState(false);
   const watchIdRef = useRef(null);
   const lastSentAtRef = useRef(0);
 
@@ -185,8 +186,13 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
 
   const updateJourneyStep = useCallback(
     async (status) => {
+      if (actionInProgress) return false;
+      setActionInProgress(true);
       const updatedBooking = await updateProviderBookingStatus(booking._id, status);
-      if (!updatedBooking) return false;
+      if (!updatedBooking) {
+        setActionInProgress(false);
+        return false;
+      }
 
       setLiveTracking((current) => ({
         ...(current || {}),
@@ -200,9 +206,10 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
       }));
 
       if (["arrived", "job_started", "completed", "cancelled"].includes(status)) stopLiveSharing();
+      setActionInProgress(false);
       return true;
     },
-    [booking, stopLiveSharing, updateProviderBookingStatus]
+    [actionInProgress, booking, stopLiveSharing, updateProviderBookingStatus]
   );
 
   const syncProviderLocation = useCallback(
@@ -440,19 +447,19 @@ export default function ProviderRoutePanel({ booking, updateProviderBookingStatu
         <div>
           <p className="servicetrack-section-title">Next action</p>
           <div className="servicetrack-status-grid">
-            <button type="button" onClick={startLiveSharing} disabled={isClosed || liveSharing || ["arrived", "job_started", "completed"].includes(normalizedStatus)} data-active={normalizedStatus === "en_route"}>
+            <button type="button" onClick={startLiveSharing} disabled={actionInProgress || isClosed || liveSharing || ["arrived", "job_started", "completed"].includes(normalizedStatus)} data-active={normalizedStatus === "en_route"}>
               <Play size={17} />
               On my way
             </button>
-            <button type="button" onClick={markArrived} disabled={!canMarkArrived || normalizedStatus !== "en_route"} data-active={normalizedStatus === "arrived"}>
+            <button type="button" onClick={markArrived} disabled={actionInProgress || !canMarkArrived || normalizedStatus !== "en_route"} data-active={normalizedStatus === "arrived"}>
               <MapPin size={17} />
               I've arrived
             </button>
-            <button type="button" onClick={markJobStarted} disabled={!canStartJob} data-active={normalizedStatus === "job_started"} title={!hasSubmittedFinalEstimate ? "Send final estimate before starting the job." : "Start job"}>
+            <button type="button" onClick={markJobStarted} disabled={actionInProgress || !canStartJob} data-active={normalizedStatus === "job_started"} title={!hasSubmittedFinalEstimate ? "Send final estimate before starting the job." : "Start job"}>
               <Route size={17} />
               Job started
             </button>
-            <button type="button" onClick={markCompleted} disabled={!canFinishJob} data-active={normalizedStatus === "completed"} title={!canCompleteAfterPayment ? "Before completing the work, the client must pay the money." : "Mark work completed"}>
+            <button type="button" onClick={markCompleted} disabled={actionInProgress || !canFinishJob} data-active={normalizedStatus === "completed"} title={!canCompleteAfterPayment ? "Before completing the work, the client must pay the money." : "Mark work completed"}>
               <CheckCircle2 size={17} />
               Work completed
             </button>

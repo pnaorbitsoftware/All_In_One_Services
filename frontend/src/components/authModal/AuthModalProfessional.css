@@ -175,3 +175,44 @@
   .auth-modal-register .provider-form-section { grid-template-columns: 1fr; }
   .auth-modal-register .auth-hero { padding-right: 44px; }
 }
+
+.dark .auth-modal-register .auth-field-helper,
+.dark .provider-upload-copy small {
+  color: #94a3b8;
+}
+
+.dark .auth-modal-register .provider-form-section,
+.dark .auth-modal-register .auth-input,
+.dark .provider-upload-tile {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
+.dark .auth-modal-register .provider-section-heading {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+  color: #60a5fa;
+}
+
+.dark .auth-modal-register .provider-section-heading strong,
+.dark .auth-modal-register .auth-input input,
+.dark .auth-modal-register .auth-input select,
+.dark .auth-modal-register .auth-input textarea,
+.dark .provider-upload-copy strong {
+  color: #f8fafc;
+}
+
+.dark .provider-upload-tile:hover {
+  border-color: #60a5fa;
+  background: #111827;
+}
+
+.dark .provider-upload-tile.has-file {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(22, 101, 52, 0.2);
+}
+
+.dark .provider-upload-icon {
+  color: #93c5fd;
+  background: rgba(37, 99, 235, 0.18);
+}

@@ -22,8 +22,9 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const AUTH_API_URLS = [
   ...new Set([
     API_URL,
-    "http://localhost:5000/api",
-    "http://localhost:5001/api",
+    ...(import.meta.env.DEV
+      ? ["http://localhost:5000/api", "http://localhost:5001/api"]
+      : []),
   ]),
 ];
 const providerCategories = [
@@ -425,8 +426,8 @@ export default function AuthModal({
         return;
       }
 
-      if (file.size > 4 * 1024 * 1024) {
-        setError("Aadhaar document must be under 4MB.");
+      if (file.size > 2 * 1024 * 1024) {
+        setError("Aadhaar document must be under 2MB.");
         event.target.value = "";
         return;
       }

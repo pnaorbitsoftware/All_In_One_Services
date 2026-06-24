@@ -182,7 +182,7 @@ router.post("/tickets", requireAuth, ticketCreationLimiter, async (req, res) => 
     });
 
     // Send email to user (Brevo)
-    await sendSupportEmail(
+    sendSupportEmail(
       ticket,
       `Support Ticket Created - ${ticketId}`,
       `<p>Thank you for contacting ServiceHub.</p><p>Your support ticket <strong>${ticketId}</strong> has been created successfully and is currently under review by our operations desk.</p>`
@@ -482,7 +482,7 @@ router.post("/tickets/:ticketId/messages", requireAuth, async (req, res) => {
 
     // Send email notification on admin reply (exclude internal notes)
     if (req.user.role === "admin" && senderRole !== "internal") {
-      await sendSupportEmail(
+      sendSupportEmail(
         ticket,
         `New Reply to Your Support Ticket - ${ticket.ticketId}`,
         `<p>A member of our support team has responded to your ticket <strong>${ticket.ticketId}</strong>:</p>
@@ -544,7 +544,7 @@ router.patch("/tickets/:ticketId/assign", requireAuth, requireAdmin, async (req,
     await ticket.save();
 
     // Send email notification (Ticket Assigned)
-    await sendSupportEmail(
+    sendSupportEmail(
       ticket,
       `Support Ticket Assigned - ${ticket.ticketId}`,
       `<p>An agent has taken ownership of your support ticket <strong>${ticket.ticketId}</strong>.</p>
@@ -607,21 +607,21 @@ router.patch("/tickets/:ticketId/status", requireAuth, requireAdmin, async (req,
 
     // Send email notification of status transition
     if (status === "Resolved") {
-      await sendSupportEmail(
+      sendSupportEmail(
         ticket,
         `Your Ticket ${ticket.ticketId} Has Been Resolved`,
         `<p>Your support ticket <strong>${ticket.ticketId}</strong> has been resolved by our support staff.</p>
          <p>If the issue is fully addressed, no further actions are required. If you feel this resolution is incomplete or if you have follow-up questions, simply post a reply on the ticket thread to automatically reopen it.</p>`
       );
     } else if (status === "Closed") {
-      await sendSupportEmail(
+      sendSupportEmail(
         ticket,
         `Your Ticket ${ticket.ticketId} Has Been Closed`,
         `<p>Your support ticket <strong>${ticket.ticketId}</strong> has been closed.</p>
          <p>If you have any further questions or new issues, please create a new support ticket.</p>`
       );
     } else {
-      await sendSupportEmail(
+      sendSupportEmail(
         ticket,
         `Support Ticket Status Updated - ${ticket.ticketId}`,
         `<p>The status of your support ticket <strong>${ticket.ticketId}</strong> has been updated from <strong>${oldStatus}</strong> to <strong>${status}</strong>.</p>`

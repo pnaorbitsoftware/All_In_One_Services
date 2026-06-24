@@ -226,6 +226,7 @@ const providerSchema = new mongoose.Schema(
 );
 
 providerSchema.index({ createdAt: -1 });
+providerSchema.index({ owner: 1 });
 providerSchema.index({ approvalStatus: 1, createdAt: -1 });
 providerSchema.index({ isActive: 1, approvalStatus: 1, rating: -1, reviews: -1 });
 

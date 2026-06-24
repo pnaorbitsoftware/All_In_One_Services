@@ -58,6 +58,7 @@ ledgerSchema.index({ booking: 1 });
 ledgerSchema.index({ payment: 1 });
 ledgerSchema.index({ user: 1 });
 ledgerSchema.index({ provider: 1 });
+ledgerSchema.index({ provider: 1, type: 1, status: 1, createdAt: -1 });
 ledgerSchema.index({ type: 1 });
 
 const Ledger = mongoose.model("Ledger", ledgerSchema);

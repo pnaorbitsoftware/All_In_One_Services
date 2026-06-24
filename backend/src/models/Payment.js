@@ -99,6 +99,7 @@ const paymentSchema = new mongoose.Schema(
 paymentSchema.index({ booking: 1 });
 paymentSchema.index({ user: 1 });
 paymentSchema.index({ provider: 1 });
+paymentSchema.index({ provider: 1, status: 1, paidAt: -1 });
 paymentSchema.index({ razorpayOrderId: 1 });
 paymentSchema.index({ razorpayPaymentId: 1 });
 paymentSchema.index({ status: 1 });
