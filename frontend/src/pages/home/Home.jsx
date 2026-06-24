@@ -43,7 +43,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   acceptEstimate,
   createRazorpayOrder,
-  getAdminLedger,
   getProviderEarnings,
   loadRazorpayScript,
   rejectEstimate,
@@ -82,6 +81,17 @@ import {
 } from "../../seo/seoData";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+let catalogRequestPromise = null;
+const fetchCatalogSnapshot = () => {
+  if (!catalogRequestPromise) {
+    catalogRequestPromise = fetch(`${API_URL}/catalog`)
+      .then((response) => (response.ok ? response.json() : { providers: [] }))
+      .finally(() => {
+        catalogRequestPromise = null;
+      });
+  }
+  return catalogRequestPromise;
+};
 const AUTH_API_URLS = [
   ...new Set([
     API_URL,
@@ -749,7 +759,6 @@ export default function Home() {
   const [providerData, setProviderData] = useState(null);
   const [providerEarnings, setProviderEarnings] = useState(null);
   const [adminData, setAdminData] = useState(null);
-  const [adminPaymentData, setAdminPaymentData] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [payingBookingId, setPayingBookingId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -833,15 +842,14 @@ export default function Home() {
   }, []);
 
   const clearSessionState = useCallback(
-    ({ message = "" } = {}) => {
+    ({ message = "", closeAuth = true } = {}) => {
       clearStoredAuthSession();
-      closeSessionUi();
+      closeSessionUi({ closeAuth });
       setUser(null);
       setBookings([]);
       setProviderData(null);
       setProviderEarnings(null);
       setAdminData(null);
-      setAdminPaymentData(null);
       setSelectedProviders({});
       setProviderClientMode(false);
       setActiveView("home");
@@ -865,6 +873,14 @@ export default function Home() {
       const savedToken = localStorage.getItem("servicehub_token");
       const savedUser = getSavedUser();
 
+      // Opening a native file picker temporarily blurs the browser. When it
+      // closes, focus/visibility events run this sync again. An anonymous
+      // visitor is a valid state, so keep an in-progress registration modal.
+      if (!savedToken && !savedUser) {
+        if (!stopped) clearSessionState({ closeAuth: false });
+        return;
+      }
+
       if (!savedToken || !savedUser || isExpiredToken(savedToken)) {
         if (!stopped) clearSessionState();
         return;
@@ -884,7 +900,9 @@ export default function Home() {
           !allowedSessionRoles.has(verifiedUser.role) ||
           !(verifiedUser.id || verifiedUser._id)
         ) {
-          clearSessionState({ message: "Your session data was invalid. Please log in again." });
+          clearSessionState({
+            message: "Your session data was invalid. Please log in again.",
+          });
           return;
         }
         localStorage.setItem("servicehub_user", JSON.stringify(verifiedUser));
@@ -895,7 +913,8 @@ export default function Home() {
             provider: new Set(["home", "client", "provider"]),
             admin: new Set(["admin"]),
           };
-          if (allowedViews[verifiedUser.role]?.has(currentView)) return currentView;
+          if (allowedViews[verifiedUser.role]?.has(currentView))
+            return currentView;
           return verifiedUser.role === "provider"
             ? "provider"
             : verifiedUser.role === "admin"
@@ -920,7 +939,9 @@ export default function Home() {
       storageSyncTimer = window.setTimeout(syncAuthSession, 25);
     };
     const handleInvalidSession = () =>
-      clearSessionState({ message: "Your session expired. Please log in again." });
+      clearSessionState({
+        message: "Your session expired. Please log in again.",
+      });
 
     syncAuthSession();
     window.addEventListener("storage", handleStorageChange);
@@ -1015,8 +1036,7 @@ export default function Home() {
   }, []);
 
   const refreshCatalogProviders = useCallback(async () => {
-    fetch(`${API_URL}/catalog`)
-      .then((response) => (response.ok ? response.json() : { providers: [] }))
+    fetchCatalogSnapshot()
       .then((data) =>
         setCatalogProviders((data.providers || []).map(normalizeProvider)),
       )
@@ -1203,9 +1223,12 @@ export default function Home() {
     if (!currentToken) return;
     try {
       setProviderClientMode(false);
-      const response = await authenticatedFetch(`${API_URL}/providers/dashboard`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      });
+      const response = await authenticatedFetch(
+        `${API_URL}/providers/dashboard`,
+        {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        },
+      );
       const data = await parseApiResponse(
         response,
         "Provider dashboard could not be loaded.",
@@ -1229,9 +1252,12 @@ export default function Home() {
       setActiveView("provider");
     } catch (error) {
       try {
-        const profileResponse = await authenticatedFetch(`${API_URL}/providers/profile`, {
-          headers: { Authorization: `Bearer ${currentToken}` },
-        });
+        const profileResponse = await authenticatedFetch(
+          `${API_URL}/providers/profile`,
+          {
+            headers: { Authorization: `Bearer ${currentToken}` },
+          },
+        );
         const profileData = await parseApiResponse(
           profileResponse,
           "Provider profile could not be loaded.",
@@ -1263,7 +1289,7 @@ export default function Home() {
       setStatusMessage(error.message);
       setActiveView("provider");
     }
-  }, [user?.role]);
+  }, [user]);
 
   useEffect(() => {
     if (
@@ -1302,15 +1328,24 @@ export default function Home() {
 
     const intervalId = window.setInterval(loadProviderDashboard, 10000);
     return () => window.clearInterval(intervalId);
-  }, [activeView, loadProviderDashboard, providerProfile?.approvalStatus, user?.role, token]);
+  }, [
+    activeView,
+    loadProviderDashboard,
+    providerProfile?.approvalStatus,
+    user?.role,
+    token,
+  ]);
 
   const openProviderAccount = async () => {
     const currentToken = localStorage.getItem("servicehub_token");
     if (!currentToken) return;
     try {
-      const response = await authenticatedFetch(`${API_URL}/providers/profile`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      });
+      const response = await authenticatedFetch(
+        `${API_URL}/providers/profile`,
+        {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        },
+      );
       const data = await parseApiResponse(
         response,
         "Provider profile could not be loaded.",
@@ -1335,14 +1370,17 @@ export default function Home() {
   const submitProviderAccount = async (event) => {
     event.preventDefault();
     try {
-      const response = await authenticatedFetch(`${API_URL}/providers/profile`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        `${API_URL}/providers/profile`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(providerAccountForm),
         },
-        body: JSON.stringify(providerAccountForm),
-      });
+      );
       const data = await parseApiResponse(
         response,
         "Provider profile could not be updated.",
@@ -1390,28 +1428,22 @@ export default function Home() {
     }
   };
 
-  const loadAdminDashboard = async () => {
+  const loadAdminDashboard = useCallback(async () => {
     try {
-      if (user?.role !== "admin")
-        throw new Error("Admin access required.");
+      if (user?.role !== "admin") throw new Error("Admin access required.");
       const currentToken = localStorage.getItem("servicehub_token");
       if (!currentToken)
         throw new Error("Please log in as admin to open the admin panel.");
       const authHeaders = { Authorization: `Bearer ${currentToken}` };
-      const [response, paymentData] = await Promise.all([
-        authenticatedFetch(`${API_URL}/admin/dashboard`, { headers: authHeaders }),
-        getAdminLedger().catch(() => null),
-      ]);
+      const response = await authenticatedFetch(`${API_URL}/admin/dashboard`, {
+        headers: authHeaders,
+      });
       const data = await parseApiResponse(
         response,
         "Admin dashboard could not be loaded.",
       );
       if (!response.ok)
         throw new Error(data.message || "Admin dashboard could not be loaded.");
-
-      console.log("ADMIN DATA", data);
-      console.log("FIRST PROVIDER", data.providers?.[0]);
-      console.log("FIRST BOOKING", data.bookings?.[0]);
 
       setAdminData({
         ...data,
@@ -1419,36 +1451,44 @@ export default function Home() {
           data.contactMessages || [],
         ),
       });
-      setAdminPaymentData(paymentData);
       setActiveView("admin");
     } catch (error) {
       setStatusMessage(error.message);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (activeView !== "admin" || user?.role !== "admin" || adminData?.stats)
+      return;
+    const timer = window.setTimeout(loadAdminDashboard, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeView, adminData?.stats, loadAdminDashboard, user?.role]);
 
   const refreshAdminContactMessages = async ({ silent = false } = {}) => {
     const currentToken = localStorage.getItem("servicehub_token");
     if (!currentToken) return;
 
     try {
-      const response = await authenticatedFetch(`${API_URL}/admin/dashboard`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      });
+      const response = await authenticatedFetch(
+        `${API_URL}/admin/contact-messages`,
+        {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        },
+      );
       const data = await parseApiResponse(
         response,
-        "Admin dashboard could not be loaded.",
+        "Client messages could not be loaded.",
       );
       if (!response.ok)
-        throw new Error(data.message || "Admin dashboard could not be loaded.");
+        throw new Error(data.message || "Client messages could not be loaded.");
 
       setAdminData((current) => {
-        const nextData = {
-          ...data,
+        const nextMessages = {
           contactMessages: mergeContactMessagesWithReplies(
             data.contactMessages || [],
           ),
         };
-        return current ? { ...current, ...nextData } : nextData;
+        return current ? { ...current, ...nextMessages } : nextMessages;
       });
       if (!silent) setStatusMessage("Client messages refreshed.");
     } catch (error) {
@@ -1465,7 +1505,7 @@ export default function Home() {
     );
     const timer = window.setInterval(
       () => refreshAdminContactMessages({ silent: true }),
-      10000,
+      30000,
     );
     return () => {
       window.clearTimeout(initialRefresh);
@@ -1485,7 +1525,6 @@ export default function Home() {
     window.setTimeout(() => {
       if (client) refreshClientBookings();
       if (provider) loadProviderDashboard();
-      if (admin) loadAdminDashboard();
     }, 900);
   };
 
@@ -1555,14 +1594,17 @@ export default function Home() {
       if (!currentToken)
         throw new Error("Please log in to update your profile image.");
 
-      const response = await authenticatedFetch(`${API_URL}/auth/profile-image`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${currentToken}`,
+      const response = await authenticatedFetch(
+        `${API_URL}/auth/profile-image`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
+          body: JSON.stringify({ profileImage }),
         },
-        body: JSON.stringify({ profileImage }),
-      });
+      );
       const data = await parseApiResponse(
         response,
         "Profile image could not be updated.",
@@ -1836,7 +1878,7 @@ export default function Home() {
     cancellationReason = "",
   ) => {
     try {
-        const response = await authenticatedFetch(
+      const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/status`,
         {
           method: "PATCH",
@@ -2001,9 +2043,13 @@ export default function Home() {
     }
   };
 
-  const updateProviderApproval = async (providerId, approvalStatus) => {
+  const updateProviderApproval = async (
+    providerId,
+    approvalStatus,
+    rejectionReason = "",
+  ) => {
     try {
-        const response = await authenticatedFetch(
+      const response = await authenticatedFetch(
         `${API_URL}/admin/providers/${providerId}/approval`,
         {
           method: "PATCH",
@@ -2011,7 +2057,7 @@ export default function Home() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ approvalStatus }),
+          body: JSON.stringify({ approvalStatus, rejectionReason }),
         },
       );
       const data = await parseApiResponse(
@@ -2036,14 +2082,17 @@ export default function Home() {
 
   const updateBookingRequest = async (bookingId, payload) => {
     try {
-      const response = await authenticatedFetch(`${API_URL}/admin/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        `${API_URL}/admin/bookings/${bookingId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+      );
       const data = await parseApiResponse(response, "Booking update failed.");
       if (!response.ok)
         throw new Error(data.message || "Booking update failed.");
@@ -2062,10 +2111,13 @@ export default function Home() {
 
   const cancelClientBooking = async (bookingId) => {
     try {
-      const response = await authenticatedFetch(`${API_URL}/bookings/${bookingId}/cancel`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await authenticatedFetch(
+        `${API_URL}/bookings/${bookingId}/cancel`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       const data = await parseApiResponse(
         response,
         "Booking could not be cancelled.",
@@ -2097,14 +2149,17 @@ export default function Home() {
 
   const submitClientReview = async (bookingId, payload) => {
     try {
-      const response = await authenticatedFetch(`${API_URL}/bookings/${bookingId}/review`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        `${API_URL}/bookings/${bookingId}/review`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+      );
       const data = await parseApiResponse(
         response,
         "Review could not be submitted.",
@@ -2138,93 +2193,103 @@ export default function Home() {
         ]}
       />
       <div className="min-h-screen bg-slate-50 text-slate-950 transition-colors duration-500 dark:bg-slate-950 dark:text-white">
-        {activeView === "home" && <ModernNavbar
-          navScrolled={navScrolled}
-          SERVICEHUB_ICON={SERVICEHUB_ICON}
-          user={user}
-          activeView={activeView}
-          providerDashboardNavLabel={providerDashboardNavLabel || "Workspace"}
-          language={language}
-          supportedLanguages={
-            supportedLanguages || [
-              { code: "en", label: "English", short: "EN" },
-              { code: "hi", label: "हिंदी", short: "HI" },
-              { code: "mr", label: "मराठी", short: "MR" },
-            ]
-          }
-          isDark={isDark}
-          mainNavItems={mainNavItems || []}
-          accountMenuOpen={accountMenuOpen}
-          loginMenuOpen={loginMenuOpen}
-          moreMenuOpen={moreMenuOpen}
-          mobileNavOpen={mobileNavOpen}
-          accountMenuRef={accountMenuRef}
-          loginMenuRef={loginMenuRef}
-          moreMenuRef={moreMenuRef}
-          t={t || ((key) => key)}
-          setTheme={typeof setTheme === "function" ? setTheme : () => {}}
-          setLanguage={
-            typeof setLanguage === "function" ? setLanguage : () => {}
-          }
-          setActiveView={
-            typeof setActiveView === "function" ? setActiveView : () => {}
-          }
-          setAccountMenuOpen={
-            typeof setAccountMenuOpen === "function"
-              ? setAccountMenuOpen
-              : () => {}
-          }
-          setLoginMenuOpen={
-            typeof setLoginMenuOpen === "function" ? setLoginMenuOpen : () => {}
-          }
-          setMoreMenuOpen={
-            typeof setMoreMenuOpen === "function" ? setMoreMenuOpen : () => {}
-          }
-          setMobileNavOpen={
-            typeof setMobileNavOpen === "function" ? setMobileNavOpen : () => {}
-          }
-          navigateHome={
-            typeof navigateHome === "function" ? navigateHome : () => {}
-          }
-          goMainHome={
-            typeof goMainHome === "function"
-              ? goMainHome
-              : typeof handleHomeNav === "function"
-                ? handleHomeNav
+        {activeView === "home" && (
+          <ModernNavbar
+            navScrolled={navScrolled}
+            SERVICEHUB_ICON={SERVICEHUB_ICON}
+            user={user}
+            activeView={activeView}
+            providerDashboardNavLabel={providerDashboardNavLabel || "Workspace"}
+            language={language}
+            supportedLanguages={
+              supportedLanguages || [
+                { code: "en", label: "English", short: "EN" },
+                { code: "hi", label: "हिंदी", short: "HI" },
+                { code: "mr", label: "मराठी", short: "MR" },
+              ]
+            }
+            isDark={isDark}
+            mainNavItems={mainNavItems || []}
+            accountMenuOpen={accountMenuOpen}
+            loginMenuOpen={loginMenuOpen}
+            moreMenuOpen={moreMenuOpen}
+            mobileNavOpen={mobileNavOpen}
+            accountMenuRef={accountMenuRef}
+            loginMenuRef={loginMenuRef}
+            moreMenuRef={moreMenuRef}
+            t={t || ((key) => key)}
+            setTheme={typeof setTheme === "function" ? setTheme : () => {}}
+            setLanguage={
+              typeof setLanguage === "function" ? setLanguage : () => {}
+            }
+            setActiveView={
+              typeof setActiveView === "function" ? setActiveView : () => {}
+            }
+            setAccountMenuOpen={
+              typeof setAccountMenuOpen === "function"
+                ? setAccountMenuOpen
                 : () => {}
-          }
-          handleHomeNav={
-            typeof handleHomeNav === "function" ? handleHomeNav : () => {}
-          }
-          isNavActive={
-            typeof isNavActive === "function" ? isNavActive : () => false
-          }
-          openClientAuth={
-            typeof openClientAuth === "function" ? openClientAuth : () => {}
-          }
-          openProviderAuth={
-            typeof openProviderAuth === "function" ? openProviderAuth : () => {}
-          }
-          openProfileMenu={
-            typeof openProfileMenu === "function" ? openProfileMenu : () => {}
-          }
-          loadProviderDashboard={
-            typeof loadProviderDashboard === "function"
-              ? loadProviderDashboard
-              : () => {}
-          }
-          loadAdminDashboard={
-            typeof loadAdminDashboard === "function"
-              ? loadAdminDashboard
-              : () => {}
-          }
-          handleLogout={
-            typeof handleLogout === "function" ? handleLogout : () => {}
-          }
-          setStatusMessage={
-            typeof setStatusMessage === "function" ? setStatusMessage : () => {}
-          }
-        />}
+            }
+            setLoginMenuOpen={
+              typeof setLoginMenuOpen === "function"
+                ? setLoginMenuOpen
+                : () => {}
+            }
+            setMoreMenuOpen={
+              typeof setMoreMenuOpen === "function" ? setMoreMenuOpen : () => {}
+            }
+            setMobileNavOpen={
+              typeof setMobileNavOpen === "function"
+                ? setMobileNavOpen
+                : () => {}
+            }
+            navigateHome={
+              typeof navigateHome === "function" ? navigateHome : () => {}
+            }
+            goMainHome={
+              typeof goMainHome === "function"
+                ? goMainHome
+                : typeof handleHomeNav === "function"
+                  ? handleHomeNav
+                  : () => {}
+            }
+            handleHomeNav={
+              typeof handleHomeNav === "function" ? handleHomeNav : () => {}
+            }
+            isNavActive={
+              typeof isNavActive === "function" ? isNavActive : () => false
+            }
+            openClientAuth={
+              typeof openClientAuth === "function" ? openClientAuth : () => {}
+            }
+            openProviderAuth={
+              typeof openProviderAuth === "function"
+                ? openProviderAuth
+                : () => {}
+            }
+            openProfileMenu={
+              typeof openProfileMenu === "function" ? openProfileMenu : () => {}
+            }
+            loadProviderDashboard={
+              typeof loadProviderDashboard === "function"
+                ? loadProviderDashboard
+                : () => {}
+            }
+            loadAdminDashboard={
+              typeof loadAdminDashboard === "function"
+                ? loadAdminDashboard
+                : () => {}
+            }
+            handleLogout={
+              typeof handleLogout === "function" ? handleLogout : () => {}
+            }
+            setStatusMessage={
+              typeof setStatusMessage === "function"
+                ? setStatusMessage
+                : () => {}
+            }
+          />
+        )}
 
         {activeView === "home" && (
           <main id="top" className="overflow-hidden pt-24 lg:pt-28">
@@ -2263,30 +2328,31 @@ export default function Home() {
           </main>
         )}
 
-        {activeView === "client" && ["user", "provider"].includes(user?.role) && (
-          <ClientDashboard
-            key={`client-${bookings
-              .map(
-                (booking) =>
-                  `${booking._id}:${booking.status}:${booking.estimateStatus}:${booking.paymentStatus}:${booking.clientRating || ""}`,
-              )
-              .join("|")}`}
-            bookings={bookings}
-            cancelClientBooking={cancelClientBooking}
-            onAcceptEstimate={handleAcceptEstimate}
-            onRejectEstimate={handleRejectEstimate}
-            onSubmitReview={submitClientReview}
-            onPayNow={handlePayNow}
-            payingBookingId={payingBookingId}
-            t={t}
-            isProviderClientMode={user?.role === "provider"}
-            onBrowseServices={browseServicesAsClient}
-            onProviderDashboard={loadProviderDashboard}
-            onRefreshBookings={refreshClientBookings}
-            onOpenProfile={openProfileMenu}
-            onLogout={handleLogout}
-          />
-        )}
+        {activeView === "client" &&
+          ["user", "provider"].includes(user?.role) && (
+            <ClientDashboard
+              key={`client-${bookings
+                .map(
+                  (booking) =>
+                    `${booking._id}:${booking.status}:${booking.estimateStatus}:${booking.paymentStatus}:${booking.clientRating || ""}`,
+                )
+                .join("|")}`}
+              bookings={bookings}
+              cancelClientBooking={cancelClientBooking}
+              onAcceptEstimate={handleAcceptEstimate}
+              onRejectEstimate={handleRejectEstimate}
+              onSubmitReview={submitClientReview}
+              onPayNow={handlePayNow}
+              payingBookingId={payingBookingId}
+              t={t}
+              isProviderClientMode={user?.role === "provider"}
+              onBrowseServices={browseServicesAsClient}
+              onProviderDashboard={loadProviderDashboard}
+              onRefreshBookings={refreshClientBookings}
+              onOpenProfile={openProfileMenu}
+              onLogout={handleLogout}
+            />
+          )}
 
         {activeView === "provider" && user?.role === "provider" && (
           <ProviderDashboard
@@ -2319,6 +2385,7 @@ export default function Home() {
 
         {activeView === "admin" && user?.role === "admin" && (
           <NewAdminPanel
+            key={adminData?.stats ? "admin-loaded" : "admin-loading"}
             adminData={adminData}
             selectedProviders={selectedProviders}
             setSelectedProviders={setSelectedProviders}
@@ -2328,7 +2395,6 @@ export default function Home() {
             refreshAdminContactMessages={refreshAdminContactMessages}
             setStatusMessage={setStatusMessage}
             adminEmail={user?.email || ""}
-            paymentData={adminPaymentData}
             refreshAdminPayments={loadAdminDashboard}
             onLogout={handleLogout}
           />
@@ -3195,11 +3261,11 @@ function ClientDashboard({
   const [rejectTargetBooking, setRejectTargetBooking] = useState(null);
   const [cancelledPageOpen, setCancelledPageOpen] = useState(false);
   const [completedPageOpen, setCompletedPageOpen] = useState(false);
+  const [bookingsPageOpen, setBookingsPageOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
   const [reviewForms, setReviewForms] = useState({});
   const [reviewSubmittingId, setReviewSubmittingId] = useState("");
   const [refreshingClient, setRefreshingClient] = useState(false);
-  const bookingHistoryRef = useRef(null);
-  const sectionRefs = useRef({});
   const savedProviderCount = new Set(
     bookings
       .map(
@@ -3305,19 +3371,25 @@ function ClientDashboard({
   ];
   const clientSidebarItems = [
     {
-      label: "Dashboard",
+      label: "Overview",
       icon: LayoutDashboard,
-      onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+      active: !bookingsPageOpen && !completedPageOpen && !cancelledPageOpen,
+      onClick: () => {
+        setBookingsPageOpen(false);
+        setCompletedPageOpen(false);
+        setCancelledPageOpen(false);
+      },
     },
     {
-      label: "Bookings",
+      label: "My bookings",
       icon: CalendarCheck,
       badge: bookings.length,
-      onClick: () =>
-        bookingHistoryRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
+      active: bookingsPageOpen,
+      onClick: () => {
+        setBookingsPageOpen(true);
+        setCompletedPageOpen(false);
+        setCancelledPageOpen(false);
+      },
     },
     {
       label: "Find providers",
@@ -3326,12 +3398,28 @@ function ClientDashboard({
       onClick: onBrowseServices,
     },
     {
-      label: "Reviews",
+      label: "Completed & reviews",
       icon: Star,
       badge: bookings.filter(
         (booking) => booking.status === "completed" && !booking.clientRating,
       ).length,
-      onClick: () => setCompletedPageOpen(true),
+      active: completedPageOpen,
+      onClick: () => {
+        setCompletedPageOpen(true);
+        setBookingsPageOpen(false);
+        setCancelledPageOpen(false);
+      },
+    },
+    {
+      label: "Cancelled",
+      icon: XCircle,
+      badge: bookingSections[3].bookings.length,
+      active: cancelledPageOpen,
+      onClick: () => {
+        setCancelledPageOpen(true);
+        setBookingsPageOpen(false);
+        setCompletedPageOpen(false);
+      },
     },
   ];
 
@@ -3384,147 +3472,153 @@ function ClientDashboard({
       booking.requestedProviderName ||
       provider?.name ||
       "Provider not accepted yet";
-    const providerPrice = provider?.price || formatPrice(booking.costEstimate);
-    const cancelState = getClientCancelState(booking, now);
-    const showCancelAction = !["completed", "cancelled"].includes(
-      booking.status,
-    );
-
     return (
-      <div
+      <article
         key={booking._id}
-        className="client-service-card rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5"
+        className="client-order-card"
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="client-order-main">
+          <div className="client-order-icon" aria-hidden="true">
+            <BriefcaseBusiness size={19} />
+          </div>
+          <div className="client-order-copy">
+            <div className="client-order-title-row">
+              <div>
+                <p className="client-order-kicker">
+                  Booking #{String(booking.bookingId || booking._id || "").slice(-8)}
+                </p>
+                <h3>{booking.service}</h3>
+              </div>
+              <StatusBadge status={booking.status} />
+            </div>
+            <div className="client-order-meta">
+              <span><CalendarCheck size={15} /> {formatBookingDate(booking.preferredDate)}, {formatBookingTime(booking.preferredTime)}</span>
+              <span><UserRound size={15} /> {providerName}</span>
+              <span><MapPin size={15} /> {booking.address || "Address not added"}</span>
+            </div>
+          </div>
+        </div>
+        <div className="client-order-footer">
           <div>
-            <p className="text-lg font-black">{booking.service}</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-500">
-              {formatBookingDate(booking.preferredDate)} at{" "}
-              {formatBookingTime(booking.preferredTime)}
-            </p>
+            <span>Estimate</span>
+            <strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong>
           </div>
-          <StatusBadge status={booking.status} />
+          <button type="button" onClick={() => setSelectedBooking(booking)}>
+            View details <ChevronRight size={16} />
+          </button>
         </div>
-
-        {booking.status !== "cancelled" && (
-          <ClientJobProgress booking={booking} />
-        )}
-
-        <div className="mt-2 grid gap-2 lg:grid-cols-4">
-          <div className="client-service-tile rounded-xl bg-slate-50 p-2.5 dark:bg-white/10">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-              Provider
-            </p>
-            <p className="mt-1 text-sm font-black">{providerName}</p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {provider?.phone || "Phone after acceptance"}
-            </p>
-          </div>
-          <div className="client-service-tile rounded-xl bg-slate-50 p-2.5 dark:bg-white/10">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-              Date
-            </p>
-            <p className="mt-1 text-sm font-black">
-              {formatBookingDate(booking.preferredDate)}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {formatBookingTime(booking.preferredTime)}
-            </p>
-          </div>
-          <div className="client-service-tile rounded-xl bg-slate-50 p-2.5 dark:bg-white/10">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-              Service
-            </p>
-            <p className="mt-1 text-sm font-black">{booking.service}</p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {booking.serviceDuration}
-            </p>
-          </div>
-          <div className="client-service-tile rounded-xl bg-slate-50 p-2.5 dark:bg-white/10">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-              Money
-            </p>
-            <p className="mt-1 text-sm font-black text-emerald-700 dark:text-emerald-200">
-              {formatPrice(booking.costEstimate)}
-            </p>
-            <p className="mt-0.5 text-xs font-bold text-teal-700 dark:text-teal-200">
-              {providerPrice}
-            </p>
-          </div>
-        </div>
-
-        <div className="client-service-note mt-2 rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-slate-600 dark:bg-amber-300/10 dark:text-slate-300">
-          Address: {booking.address}
-          {booking.status !== "completed" && booking.problemDescription && (
-            <p className="mt-1">Problem: {booking.problemDescription}</p>
-          )}
-        </div>
-        <ClientPaymentSection
-          booking={booking}
-          providerStartingPrice={providerPrice}
-          onAcceptEstimate={onAcceptEstimate}
-          onRejectClick={() => setRejectTargetBooking(booking)}
-          onPayNow={onPayNow}
-          isPaying={payingBookingId === booking._id}
-        />
-        {booking.status === "cancelled" && (
-          <div className="client-service-note danger mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200">
-            Cancelled by: {booking.cancelledBy || "Not recorded"}
-            {booking.cancelledAt && (
-              <p className="mt-1">
-                Cancelled on: {formatBookingDate(booking.cancelledAt)}
-              </p>
-            )}
-            {booking.cancelledBy === "provider" && (
-              <p className="mt-1">
-                Reason: {booking.cancellationReason || "Reason not provided"}
-              </p>
-            )}
-            {booking.adminRejectionReason && (
-              <p className="mt-1">
-                Admin reason: {booking.adminRejectionReason}
-              </p>
-            )}
-          </div>
-        )}
-        {booking.status === "completed" && (
-          <ClientReviewPanel
-            booking={booking}
-            form={reviewForms[booking._id]}
-            submitting={reviewSubmittingId === booking._id}
-            onChange={(updates) => updateReviewForm(booking._id, updates)}
-            onSubmit={() => submitReview(booking)}
-          />
-        )}
-        {showCancelAction && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-slate-500">
-              {booking.acceptedAt
-                ? "Cancellation closes 10 minutes after provider acceptance."
-                : "You can cancel until a provider accepts, then for 10 more minutes."}
-            </p>
-            <button
-              type="button"
-              disabled={!cancelState.canCancel}
-              onClick={async () => {
-                const cancelledBooking = await cancelClientBooking(booking._id);
-                if (cancelledBooking) {
-                  setCancelledPageOpen(true);
-                  window.setTimeout(
-                    () => window.scrollTo({ top: 0, behavior: "smooth" }),
-                    0,
-                  );
-                }
-              }}
-              className="client-cancel-button rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15 transition hover:-translate-y-0.5 hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:hover:translate-y-0 dark:disabled:bg-white/10 dark:disabled:text-slate-400"
-            >
-              {cancelState.label}
-            </button>
-          </div>
-        )}
-      </div>
+      </article>
     );
   };
+
+  const bookingDetailDrawer = selectedBooking ? (() => {
+    const booking = selectedBooking;
+    const provider = booking.assignedProvider || booking.requestedProvider || null;
+    const providerName = booking.assignedProviderName || booking.requestedProviderName || provider?.name || "Provider not assigned";
+    const providerPrice = provider?.price || formatPrice(booking.costEstimate);
+    const cancelState = getClientCancelState(booking, now);
+    return (
+      <motion.div className="client-booking-drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setSelectedBooking(null)}>
+        <motion.aside className="client-booking-drawer" initial={{ x: 36, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 36, opacity: 0 }} role="dialog" aria-modal="true" aria-label="Booking details">
+          <header>
+            <div><span>Booking details</span><h2>{booking.service}</h2><p>#{booking.bookingId || booking._id}</p></div>
+            <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details"><X size={20} /></button>
+          </header>
+          <div className="client-booking-drawer-body">
+            <div className="client-booking-summary">
+              <div><span>Status</span><StatusBadge status={booking.status} /></div>
+              <div><span>Provider</span><strong>{providerName}</strong><small>{provider?.phone || "Contact available after acceptance"}</small></div>
+              <div><span>Scheduled</span><strong>{formatBookingDate(booking.preferredDate)}</strong><small>{formatBookingTime(booking.preferredTime)}</small></div>
+              <div><span>Estimate</span><strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong><small>{booking.paymentStatus || "unpaid"}</small></div>
+            </div>
+            {booking.status !== "cancelled" && <section className="client-booking-section"><h3>Service progress</h3><ClientJobProgress booking={booking} /></section>}
+            <section className="client-booking-section client-booking-address"><h3>Service information</h3><p><MapPin size={16} /> {booking.address}</p><p><MessageCircle size={16} /> {booking.problemDescription || "No problem description"}</p></section>
+            <ClientPaymentSection booking={booking} providerStartingPrice={providerPrice} onAcceptEstimate={onAcceptEstimate} onRejectClick={() => setRejectTargetBooking(booking)} onPayNow={onPayNow} isPaying={payingBookingId === booking._id} />
+            {booking.status === "cancelled" && <section className="client-booking-section client-booking-cancelled"><h3>Cancellation details</h3><p>Cancelled by: <strong>{booking.cancelledBy || "Not recorded"}</strong></p><p>Cancelled: {booking.cancelledAt ? formatBookingDate(booking.cancelledAt) : "Not recorded"}</p><p>Reason: {booking.cancellationReason || booking.adminRejectionReason || "Reason not provided"}</p></section>}
+            {booking.status === "completed" && <ClientReviewPanel booking={booking} form={reviewForms[booking._id]} submitting={reviewSubmittingId === booking._id} onChange={(updates) => updateReviewForm(booking._id, updates)} onSubmit={() => submitReview(booking)} />}
+          </div>
+          {!['completed', 'cancelled'].includes(booking.status) && <footer><p>{booking.acceptedAt ? "Cancellation closes 10 minutes after acceptance." : "You can cancel until a provider accepts."}</p><button type="button" disabled={!cancelState.canCancel} onClick={async () => { const cancelled = await cancelClientBooking(booking._id); if (cancelled) { setSelectedBooking(null); setCancelledPageOpen(true); } }}>{cancelState.label}</button></footer>}
+        </motion.aside>
+      </motion.div>
+    );
+  })() : null;
+
+  if (bookingsPageOpen) {
+    const currentBookings = [
+      ...bookingSections[0].bookings,
+      ...bookingSections[1].bookings,
+    ];
+    return (
+      <DashboardShell
+        title="My Bookings"
+        subtitle="Track pending and active services without dashboard clutter."
+        notifications={notifications}
+        variant="client"
+        sidebarItems={clientSidebarItems}
+        onProfile={onOpenProfile}
+        onLogout={onLogout}
+        headerActions={
+          <button
+            type="button"
+            onClick={refreshBookings}
+            disabled={refreshingClient}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white dark:bg-amber-300 dark:text-slate-950"
+          >
+            <RefreshCw
+              size={17}
+              className={refreshingClient ? "animate-spin" : ""}
+            />
+            {refreshingClient ? "Refreshing" : "Refresh bookings"}
+          </button>
+        }
+      >
+        <div className="grid gap-5">
+          {bookingSections.slice(0, 2).map((section) => (
+            <Panel
+              key={section.title}
+              title={`${section.title} (${section.bookings.length})`}
+            >
+              <p className="mb-4 text-sm font-semibold text-slate-500 dark:text-slate-300">
+                {section.copy}
+              </p>
+              <div className="grid gap-4 xl:grid-cols-2">
+                {section.bookings.length ? (
+                  section.bookings.map(renderBookingCard)
+                ) : (
+                  <EmptyState
+                    title={`No ${section.title.toLowerCase()}`}
+                    copy={section.copy}
+                  />
+                )}
+              </div>
+            </Panel>
+          ))}
+          {!currentBookings.length && (
+            <button
+              type="button"
+              onClick={onBrowseServices}
+              className="mx-auto rounded-2xl bg-slate-950 px-6 py-4 font-black text-white dark:bg-amber-300 dark:text-slate-950"
+            >
+              Browse services
+            </button>
+          )}
+        </div>
+        <AnimatePresence>
+          {bookingDetailDrawer}
+          {rejectTargetBooking && (
+            <RejectEstimateModal
+              booking={rejectTargetBooking}
+              onClose={() => setRejectTargetBooking(null)}
+              onReject={async (reason) => {
+                await onRejectEstimate(rejectTargetBooking._id, reason);
+                setRejectTargetBooking(null);
+              }}
+            />
+          )}
+        </AnimatePresence>
+      </DashboardShell>
+    );
+  }
 
   if (cancelledPageOpen) {
     const cancelledBookings = bookingSections[3].bookings;
@@ -3563,6 +3657,7 @@ function ClientDashboard({
             )}
           </div>
         </Panel>
+        <AnimatePresence>{bookingDetailDrawer}</AnimatePresence>
       </DashboardShell>
     );
   }
@@ -3604,6 +3699,7 @@ function ClientDashboard({
             )}
           </div>
         </Panel>
+        <AnimatePresence>{bookingDetailDrawer}</AnimatePresence>
       </DashboardShell>
     );
   }
@@ -3684,7 +3780,7 @@ function ClientDashboard({
         />
       </div>
       <div className="mt-6 grid gap-3 md:grid-cols-4">
-        {statusBlocks.map((block, index) => (
+        {statusBlocks.map((block) => (
           <button
             key={block.title}
             type="button"
@@ -3697,9 +3793,7 @@ function ClientDashboard({
                 setCancelledPageOpen(true);
                 return;
               }
-              sectionRefs.current[bookingSections[index].title]?.scrollIntoView(
-                { behavior: "smooth", block: "start" },
-              );
+              setBookingsPageOpen(true);
             }}
             className={`dashboard-status-card rounded-2xl border border-slate-200 bg-gradient-to-br ${block.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:from-white/10 dark:to-white/5`}
           >
@@ -3730,18 +3824,14 @@ function ClientDashboard({
               <button
                 key={booking._id}
                 type="button"
-                onClick={() =>
-                  bookingHistoryRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  })
-                }
+                onClick={() => setBookingsPageOpen(true)}
                 className="dashboard-list-row"
               >
                 <span>
                   <strong>{booking.service}</strong>
                   <small>
-                    {formatBookingDate(booking.preferredDate)} · {formatBookingTime(booking.preferredTime)}
+                    {formatBookingDate(booking.preferredDate)} ·{" "}
+                    {formatBookingTime(booking.preferredTime)}
                   </small>
                 </span>
                 <StatusBadge status={booking.status} />
@@ -3759,20 +3849,14 @@ function ClientDashboard({
           <div className="grid gap-3">
             {bookings
               .filter(
-                (booking) =>
-                  booking.estimateStatus || booking.paymentStatus,
+                (booking) => booking.estimateStatus || booking.paymentStatus,
               )
               .slice(0, 3)
               .map((booking) => (
                 <button
                   key={booking._id}
                   type="button"
-                  onClick={() =>
-                    bookingHistoryRef.current?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    })
-                  }
+                  onClick={() => setBookingsPageOpen(true)}
                   className="dashboard-list-row"
                 >
                   <span>
@@ -3781,7 +3865,9 @@ function ClientDashboard({
                       Estimate: {booking.estimateStatus || "not submitted"}
                     </small>
                   </span>
-                  <PaymentStatusBadge status={booking.paymentStatus || "unpaid"} />
+                  <PaymentStatusBadge
+                    status={booking.paymentStatus || "unpaid"}
+                  />
                 </button>
               ))}
             {!bookings.some(
@@ -3795,58 +3881,14 @@ function ClientDashboard({
           </div>
         </Panel>
       </div>
-      <div className="mt-8">
-        <Panel title="Booking history">
-          <div ref={bookingHistoryRef} className="dashboard-scroll-target grid gap-5">
-            {bookings.length ? (
-              bookingSections
-                .filter(
-                  (section) =>
-                    !["Completed services", "Cancelled services"].includes(
-                      section.title,
-                    ),
-                )
-                .map((section) => (
-                  <section
-                    key={section.title}
-                    ref={(node) => {
-                      sectionRefs.current[section.title] = node;
-                    }}
-                    className="scroll-mt-28 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/5"
-                  >
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-base font-black text-slate-950 dark:text-white">
-                          {section.title}
-                        </h3>
-                        <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-300">
-                          {section.copy}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm dark:bg-white/10 dark:text-slate-200">
-                        {section.bookings.length}
-                      </span>
-                    </div>
-                    <div className="grid gap-3 xl:grid-cols-2">
-                      {section.bookings.length ? (
-                        section.bookings.map(renderBookingCard)
-                      ) : (
-                        <EmptyState
-                          title={`No ${section.title.toLowerCase()}`}
-                          copy={section.copy}
-                        />
-                      )}
-                    </div>
-                  </section>
-                ))
-            ) : (
-              <EmptyState
-                title="No bookings yet"
-                copy="Booked services will show here with provider, date, time, and price details."
-              />
-            )}
-          </div>
-        </Panel>
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => setBookingsPageOpen(true)}
+          className="rounded-2xl border border-slate-200 bg-white px-6 py-4 font-black text-slate-800 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white"
+        >
+          Open all bookings
+        </button>
         <div className="mt-5 flex justify-center">
           <button
             type="button"
@@ -3858,6 +3900,7 @@ function ClientDashboard({
         </div>
       </div>
       <AnimatePresence>
+        {bookingDetailDrawer}
         {rejectTargetBooking && (
           <RejectEstimateModal
             booking={rejectTargetBooking}
@@ -4224,10 +4267,7 @@ function ProviderDashboard({
   const [estimateTargetBooking, setEstimateTargetBooking] = useState(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [historyPageOpen, setHistoryPageOpen] = useState(false);
-  const historySectionRef = useRef(null);
-  const requestSectionRef = useRef(null);
-  const jobsSectionRef = useRef(null);
-  const earningsSectionRef = useRef(null);
+  const [providerPage, setProviderPage] = useState("overview");
   const confirmedJobs = providerBookings.filter(
     (booking) => !["completed", "cancelled"].includes(booking.status),
   );
@@ -4283,43 +4323,48 @@ function ProviderDashboard({
   ].slice(0, 8);
   const providerSidebarItems = [
     {
-      label: "Dashboard",
+      label: "Overview",
       icon: LayoutDashboard,
-      onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+      active: !historyPageOpen && providerPage === "overview",
+      onClick: () => {
+        setHistoryPageOpen(false);
+        setProviderPage("overview");
+      },
     },
     {
       label: "Requests",
       icon: Bell,
       badge: providerRequests.length,
-      onClick: () =>
-        requestSectionRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
+      active: !historyPageOpen && providerPage === "requests",
+      onClick: () => {
+        setHistoryPageOpen(false);
+        setProviderPage("requests");
+      },
     },
     {
       label: "Active jobs",
       icon: BriefcaseBusiness,
       badge: confirmedJobs.length,
-      onClick: () =>
-        jobsSectionRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
+      active: !historyPageOpen && providerPage === "jobs",
+      onClick: () => {
+        setHistoryPageOpen(false);
+        setProviderPage("jobs");
+      },
     },
     {
       label: "Earnings",
       icon: Wallet,
-      onClick: () =>
-        earningsSectionRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
+      active: !historyPageOpen && providerPage === "earnings",
+      onClick: () => {
+        setHistoryPageOpen(false);
+        setProviderPage("earnings");
+      },
     },
     {
       label: "History",
       icon: ListChecks,
       badge: historyJobs.length,
+      active: historyPageOpen,
       onClick: () => setHistoryPageOpen(true),
     },
     {
@@ -4361,6 +4406,7 @@ function ProviderDashboard({
           approvalStatus={approvalStatus}
           approvalTitle={approvalTitle}
           approvalCopy={approvalCopy}
+          providerProfile={providerProfile}
           refreshDashboard={refreshDashboard}
         />
       </DashboardShell>
@@ -4383,8 +4429,22 @@ function ProviderDashboard({
 
   return (
     <DashboardShell
-      title="Provider Dashboard"
-      subtitle="A premium workspace for accepting requests, managing revenue, and completing service work."
+      title={
+        {
+          overview: "Provider Overview",
+          requests: "Client Requests",
+          jobs: "Active Service Jobs",
+          earnings: "Earnings & Payouts",
+        }[providerPage]
+      }
+      subtitle={
+        {
+          overview: "Your daily work summary, kept simple and actionable.",
+          requests: "Review new requests and accept the right jobs.",
+          jobs: "Run travel, arrival, estimate, payment and completion from one focused workspace.",
+          earnings: "Track payable revenue and withdraw available earnings.",
+        }[providerPage]
+      }
       notifications={notifications}
       variant="provider"
       sidebarItems={providerSidebarItems}
@@ -4418,136 +4478,185 @@ function ProviderDashboard({
               Refresh dashboard
             </button>
           </div>
-          <div className="grid gap-5 lg:grid-cols-4">
-            <StatCard
-              icon={IndianRupee}
-              label="Projected earnings"
-              value={`Rs. ${providerBookings.reduce((sum, booking) => sum + (booking.costEstimate || 0), 0).toLocaleString("en-IN")}`}
-            />
-            <StatCard
-              icon={Bell}
-              label="New requests"
-              value={providerRequests.length}
-            />
-            <StatCard
-              icon={BriefcaseBusiness}
-              label="Accepted jobs"
-              value={providerBookings.length}
-            />
-            <StatCard
-              icon={Star}
-              label="Rating"
-              value={providerProfile?.rating || "0.0"}
-            />
-          </div>
-          <div ref={earningsSectionRef} className="dashboard-scroll-target mt-5 grid gap-5 lg:grid-cols-4">
-            <ProviderWithdrawCard
-              earningsSummary={earningsSummary}
-              providerProfile={providerProfile}
-              onWithdrawClick={() => setWithdrawOpen(true)}
-            />
-            <PaymentSummaryCard
-              icon={Clock}
-              title="Pending Earnings"
-              amount={formatMoney(earningsSummary.pendingEarnings || 0)}
-              description="Expected 80% share from pending payments."
-            />
-            <PaymentSummaryCard
-              icon={CheckCircle}
-              title="Completed Paid Bookings"
-              amount={earningsSummary.totalBookingsPaid || 0}
-              description="Bookings with verified Razorpay payments."
-            />
-            <PaymentSummaryCard
-              icon={CreditCard}
-              title="Awaiting Client Payment"
-              amount={awaitingClientPayment}
-              description="Accepted estimates waiting for checkout."
-            />
-          </div>
-          <div className="mt-8">
-            <Panel title="New client requests" sectionRef={requestSectionRef}>
-              <div className="grid gap-4">
-                {providerRequests.length ? (
-                  providerRequests.map((booking) => (
-                    <JobCard
-                      key={booking._id}
-                      booking={booking}
-                      actionLabel="Accept request"
-                      onAction={() => acceptProviderRequest(booking._id)}
-                      alertMode
-                    />
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No new requests"
-                    copy={`New ${providerProfile?.category || "service"} bookings will appear here.`}
-                  />
-                )}
-              </div>
-            </Panel>
-          </div>
-          <div className="mt-5 grid gap-5 xl:grid-cols-2">
-            <Panel title="Confirmed service jobs" sectionRef={jobsSectionRef}>
-              <div className="grid gap-4">
-                {confirmedJobs.length ? (
-                  confirmedJobs.map((booking) => (
-                    <div key={booking._id} className="grid gap-3">
+          {providerPage === "overview" && (
+            <div className="grid gap-5 lg:grid-cols-4">
+              <StatCard
+                icon={IndianRupee}
+                label="Projected earnings"
+                value={`Rs. ${providerBookings.reduce((sum, booking) => sum + (booking.costEstimate || 0), 0).toLocaleString("en-IN")}`}
+              />
+              <StatCard
+                icon={Bell}
+                label="New requests"
+                value={providerRequests.length}
+              />
+              <StatCard
+                icon={BriefcaseBusiness}
+                label="Accepted jobs"
+                value={providerBookings.length}
+              />
+              <StatCard
+                icon={Star}
+                label="Rating"
+                value={providerProfile?.rating || "0.0"}
+              />
+            </div>
+          )}
+          {providerPage === "earnings" && (
+            <div className="grid gap-5 lg:grid-cols-4">
+              <ProviderWithdrawCard
+                earningsSummary={earningsSummary}
+                providerProfile={providerProfile}
+                onWithdrawClick={() => setWithdrawOpen(true)}
+              />
+              <PaymentSummaryCard
+                icon={Clock}
+                title="Pending Earnings"
+                amount={formatMoney(earningsSummary.pendingEarnings || 0)}
+                description="Expected 80% share from pending payments."
+              />
+              <PaymentSummaryCard
+                icon={CheckCircle}
+                title="Completed Paid Bookings"
+                amount={earningsSummary.totalBookingsPaid || 0}
+                description="Bookings with verified Razorpay payments."
+              />
+              <PaymentSummaryCard
+                icon={CreditCard}
+                title="Awaiting Client Payment"
+                amount={awaitingClientPayment}
+                description="Accepted estimates waiting for checkout."
+              />
+            </div>
+          )}
+          {providerPage === "requests" && (
+            <div className="mt-2">
+              <Panel title={`New client requests (${providerRequests.length})`}>
+                <div className="grid gap-4">
+                  {providerRequests.length ? (
+                    providerRequests.map((booking) => (
                       <JobCard
+                        key={booking._id}
                         booking={booking}
-                        secondaryAction={() => setCancelTargetBooking(booking)}
-                        onEstimateClick={
-                          booking.status === "arrived" ||
-                          (booking.status === "job_started" &&
-                            booking.paymentStatus !== "paid")
-                            ? () => setEstimateTargetBooking(booking)
-                            : null
-                        }
+                        actionLabel="Accept request"
+                        onAction={() => acceptProviderRequest(booking._id)}
+                        alertMode
                       />
-                      <ProviderRoutePanel
-                        booking={booking}
-                        updateProviderBookingStatus={
-                          updateProviderBookingStatus
-                        }
-                        setStatusMessage={setStatusMessage}
-                        apiUrl={API_URL}
-                      />
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No confirmed jobs yet"
-                    copy="Accepted client jobs will appear here until they are completed or cancelled."
-                  />
-                )}
-              </div>
-            </Panel>
-            <Panel
-              title="Client history"
-              className="scroll-mt-28"
-              sectionRef={historySectionRef}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4 dark:bg-white/5">
-                <div>
-                  <p className="text-sm font-black text-slate-950 dark:text-white">
-                    {historyJobs.length} history record
-                    {historyJobs.length === 1 ? "" : "s"}
-                  </p>
-                  <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-300">
-                    Open the full page to review every completed and cancelled
-                    client job.
-                  </p>
+                    ))
+                  ) : (
+                    <EmptyState
+                      title="No new requests"
+                      copy={`New ${providerProfile?.category || "service"} bookings will appear here.`}
+                    />
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setHistoryPageOpen(true)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
-                >
-                  Open all history <ArrowRight size={17} />
-                </button>
-              </div>
-            </Panel>
-          </div>
+              </Panel>
+            </div>
+          )}
+          {providerPage === "jobs" && (
+            <div className="mt-2">
+              <Panel title={`Confirmed service jobs (${confirmedJobs.length})`}>
+                <div className="grid gap-4">
+                  {confirmedJobs.length ? (
+                    confirmedJobs.map((booking) => (
+                      <div key={booking._id} className="grid gap-3">
+                        <JobCard
+                          booking={booking}
+                          secondaryAction={() =>
+                            setCancelTargetBooking(booking)
+                          }
+                          onEstimateClick={
+                            booking.status === "arrived" ||
+                            (booking.status === "job_started" &&
+                              booking.paymentStatus !== "paid")
+                              ? () => setEstimateTargetBooking(booking)
+                              : null
+                          }
+                        />
+                        <ProviderRoutePanel
+                          booking={booking}
+                          updateProviderBookingStatus={
+                            updateProviderBookingStatus
+                          }
+                          setStatusMessage={setStatusMessage}
+                          apiUrl={API_URL}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyState
+                      title="No confirmed jobs yet"
+                      copy="Accepted client jobs will appear here until they are completed or cancelled."
+                    />
+                  )}
+                </div>
+              </Panel>
+            </div>
+          )}
+          {providerPage === "overview" && (
+            <div className="dashboard-overview-grid mt-6 grid gap-5 xl:grid-cols-2">
+              <Panel title="Work waiting for you">
+                <div className="grid gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setProviderPage("requests")}
+                    className="dashboard-list-row"
+                  >
+                    <span>
+                      <strong>New client requests</strong>
+                      <small>Accept or review incoming work</small>
+                    </span>
+                    <strong>{providerRequests.length}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProviderPage("jobs")}
+                    className="dashboard-list-row"
+                  >
+                    <span>
+                      <strong>Active service jobs</strong>
+                      <small>Travel, estimate and complete jobs</small>
+                    </span>
+                    <strong>{confirmedJobs.length}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProviderPage("earnings")}
+                    className="dashboard-list-row"
+                  >
+                    <span>
+                      <strong>Available to withdraw</strong>
+                      <small>Open earnings and payout controls</small>
+                    </span>
+                    <strong>
+                      {formatMoney(earningsSummary.availableToWithdraw || 0)}
+                    </strong>
+                  </button>
+                </div>
+              </Panel>
+              <Panel title="Client history">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4 dark:bg-white/5">
+                  <div>
+                    <p className="text-sm font-black text-slate-950 dark:text-white">
+                      {historyJobs.length} history record
+                      {historyJobs.length === 1 ? "" : "s"}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-300">
+                      Open the full page to review every completed and cancelled
+                      client job.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryPageOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+                  >
+                    Open all history <ArrowRight size={17} />
+                  </button>
+                </div>
+              </Panel>
+            </div>
+          )}
         </div>
         {isDashboardLocked && (
           <div className="absolute inset-x-0 top-6 z-20 flex justify-center px-4">
@@ -4702,6 +4811,7 @@ function ProviderApprovalWaitCard({
   approvalStatus,
   approvalTitle,
   approvalCopy,
+  providerProfile,
   refreshDashboard,
 }) {
   return (
@@ -4719,6 +4829,24 @@ function ProviderApprovalWaitCard({
         <p className="mx-auto mt-4 max-w-xl text-base font-semibold leading-7 text-slate-600 dark:text-slate-300">
           {approvalCopy}
         </p>
+        <div className="mx-auto mt-5 grid max-w-xl gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Aadhaar verification
+            </span>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
+              {providerProfile?.verificationStatus || "pending"}
+            </span>
+          </div>
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+            Aadhaar: {providerProfile?.aadhaarNumberMasked || "Not uploaded"}
+          </p>
+          {providerProfile?.verificationRejectedReason && (
+            <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">
+              {providerProfile.verificationRejectedReason}
+            </p>
+          )}
+        </div>
         <button
           type="button"
           onClick={refreshDashboard}
@@ -5502,15 +5630,22 @@ function DashboardShell({
           <img src={SERVICEHUB_ICON} alt="ServiceHub" />
           <span>
             <strong>ServiceHub</strong>
-            <small>{variant === "provider" ? "Provider Control Hub" : "Client Control Hub"}</small>
+            <small>
+              {variant === "provider"
+                ? "Provider Control Hub"
+                : "Client Control Hub"}
+            </small>
           </span>
         </div>
-        <nav className="dashboard-side-nav" aria-label={`${variant} dashboard navigation`}>
-          {sidebarItems.map(({ label, icon: Icon, onClick, badge }, index) => (
+        <nav
+          className="dashboard-side-nav"
+          aria-label={`${variant} dashboard navigation`}
+        >
+          {sidebarItems.map(({ label, icon: Icon, onClick, badge, active }) => (
             <button
               key={label}
               type="button"
-              className={index === 0 ? "active" : ""}
+              className={active ? "active" : ""}
               onClick={() => {
                 onClick?.();
                 setMobileSidebarOpen(false);
@@ -5575,16 +5710,22 @@ function DashboardShell({
               {notificationsOpen && (
                 <div className="dashboard-notification-popover">
                   <div className="dashboard-notification-title">
-                    <strong>Notifications</strong><span>{notifications.length}</span>
+                    <strong>Notifications</strong>
+                    <span>{notifications.length}</span>
                   </div>
                   <div className="dashboard-notification-list">
-                    {hasNotifications ? notifications.map((item, index) => (
-                      <div key={`${item.title}-${index}`}>
-                        <strong>{item.title}</strong>
-                        <p>{item.message}</p>
+                    {hasNotifications ? (
+                      notifications.map((item, index) => (
+                        <div key={`${item.title}-${index}`}>
+                          <strong>{item.title}</strong>
+                          <p>{item.message}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div>
+                        <strong>No notifications</strong>
+                        <p>New updates will appear here.</p>
                       </div>
-                    )) : (
-                      <div><strong>No notifications</strong><p>New updates will appear here.</p></div>
                     )}
                   </div>
                 </div>
@@ -5796,7 +5937,6 @@ function JobCard({
     </article>
   );
 }
-
 function ProviderCancelModal({ booking, onClose, onSubmit }) {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);

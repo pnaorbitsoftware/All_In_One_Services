@@ -285,41 +285,57 @@ router.get("/tickets", requireAuth, async (req, res) => {
    ========================================================================== */
 router.get("/analytics", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const total = await SupportTicket.countDocuments();
-    const open = await SupportTicket.countDocuments({ status: { $in: ["Open", "Assigned", "In Progress", "Waiting for Customer"] } });
-    const resolved = await SupportTicket.countDocuments({ status: "Resolved" });
-    const highPriority = await SupportTicket.countDocuments({ priority: { $in: ["High", "Urgent"] } });
+    const [summary = {}] = await SupportTicket.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          open: {
+            $sum: {
+              $cond: [
+                { $in: ["$status", ["Open", "Assigned", "In Progress", "Waiting for Customer"]] },
+                1,
+                0,
+              ],
+            },
+          },
+          resolved: { $sum: { $cond: [{ $eq: ["$status", "Resolved"] }, 1, 0] } },
+          highPriority: {
+            $sum: { $cond: [{ $in: ["$priority", ["High", "Urgent"]] }, 1, 0] },
+          },
+          avgResolutionMs: {
+            $avg: {
+              $cond: [
+                {
+                  $and: [
+                    { $in: ["$status", ["Resolved", "Closed"]] },
+                    { $ne: ["$resolvedAt", null] },
+                    { $gt: ["$resolvedAt", "$createdAt"] },
+                  ],
+                },
+                { $subtract: ["$resolvedAt", "$createdAt"] },
+                null,
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
-    // Calculate Average Resolution Time
-    const resolvedTickets = await SupportTicket.find({
-      status: { $in: ["Resolved", "Closed"] },
-      resolvedAt: { $ne: null },
-    }, "createdAt resolvedAt").lean();
-
-    let avgResolutionTime = "N/A";
-    if (resolvedTickets.length > 0) {
-      let totalMs = 0;
-      resolvedTickets.forEach((t) => {
-        const diff = new Date(t.resolvedAt) - new Date(t.createdAt);
-        if (diff > 0) totalMs += diff;
-      });
-
-      const avgHours = totalMs / (1000 * 60 * 60) / resolvedTickets.length;
-      if (avgHours < 1) {
-        const avgMinutes = Math.round(avgHours * 60);
-        avgResolutionTime = `${avgMinutes}m`;
-      } else {
-        avgResolutionTime = `${avgHours.toFixed(1)}h`;
-      }
-    }
+    const averageHours = Number(summary.avgResolutionMs || 0) / (1000 * 60 * 60);
+    const avgResolutionTime = !summary.avgResolutionMs
+      ? "N/A"
+      : averageHours < 1
+        ? `${Math.round(averageHours * 60)}m`
+        : `${averageHours.toFixed(1)}h`;
 
     return res.json({
       success: true,
       stats: {
-        total,
-        open,
-        resolved,
-        highPriority,
+        total: summary.total || 0,
+        open: summary.open || 0,
+        resolved: summary.resolved || 0,
+        highPriority: summary.highPriority || 0,
         avgResolutionTime,
       },
     });
@@ -355,7 +371,18 @@ router.get("/staff", requireAuth, requireAdmin, async (req, res) => {
    ========================================================================== */
 router.get("/tickets/:ticketId", requireAuth, async (req, res) => {
   try {
-    const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId }).lean();
+    const messageQuery = { ticketId: req.params.ticketId };
+    if (req.user.role !== "admin") {
+      messageQuery.senderRole = { $ne: "internal" };
+    }
+
+    const [ticket, messages] = await Promise.all([
+      SupportTicket.findOne({ ticketId: req.params.ticketId }).lean(),
+      TicketMessage.find(messageQuery)
+        .sort({ createdAt: 1 })
+        .populate("senderId", "name email profileImage role")
+        .lean(),
+    ]);
 
     if (!ticket) {
       return res.status(404).json({
@@ -371,19 +398,6 @@ router.get("/tickets/:ticketId", requireAuth, async (req, res) => {
         message: "You are not authorized to view this ticket.",
       });
     }
-
-    // Fetch conversation thread
-    const messageQuery = { ticketId: req.params.ticketId };
-    if (req.user.role !== "admin") {
-      // Hide internal notes from regular clients
-      messageQuery.senderRole = { $ne: "internal" };
-    }
-
-    // Populate sender details
-    const messages = await TicketMessage.find(messageQuery)
-      .sort({ createdAt: 1 })
-      .populate("senderId", "name email profileImage role")
-      .lean();
 
     return res.json({ success: true, ticket, messages });
   } catch (error) {

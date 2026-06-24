@@ -377,6 +377,7 @@ bookingSchema.index({ user: 1, createdAt: -1 });
 bookingSchema.index({ assignedProvider: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ requestedProvider: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ service: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ createdAt: -1 });
 
 bookingSchema.pre("validate", function assignPublicBookingId(next) {
   if (!this.bookingId) {

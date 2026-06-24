@@ -17,6 +17,7 @@ import {
 import { buildStatusUpdateOperation } from "../services/bookingTrackingService.js";
 import { emitStatusChange } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
+import { invalidateCatalogCache } from "./catalogRoutes.js";
 
 const router = express.Router();
 
@@ -117,8 +118,6 @@ router.get("/profile", requireAuth, requireProvider, async (req, res) => {
 
 router.get("/availability", requireAuth, requireProvider, async (req, res) => {
   try {
-    console.log(req.method, req.originalUrl);
-    console.log(req.body);
     const provider = await Provider.findOne({ owner: req.user._id });
 
     if (!provider) {
@@ -133,8 +132,6 @@ router.get("/availability", requireAuth, requireProvider, async (req, res) => {
 
 router.patch("/availability", requireAuth, requireProvider, async (req, res) => {
   try {
-    console.log(req.method, req.originalUrl);
-    console.log(req.body);
     const { isActive } = req.body;
 
     if (typeof isActive !== "boolean") {
@@ -153,6 +150,7 @@ router.patch("/availability", requireAuth, requireProvider, async (req, res) => 
 
     provider.isActive = isActive;
     await provider.save();
+    invalidateCatalogCache();
 
     res.json({
       message: `Availability status updated to ${isActive ? "Active" : "Inactive"}.`,
@@ -223,6 +221,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     };
 
     await provider.save();
+    invalidateCatalogCache();
 
     await User.findByIdAndUpdate(req.user._id, {
       name: provider.name,
@@ -485,4 +484,3 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
 });
 
 export default router;
-

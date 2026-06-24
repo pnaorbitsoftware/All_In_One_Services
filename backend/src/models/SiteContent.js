@@ -35,6 +35,8 @@ const siteContentSchema = new mongoose.Schema(
   { collection: "sitecontents", timestamps: true }
 );
 
+siteContentSchema.index({ isActive: 1, sectionKey: 1 });
+
 const SiteContent = mongoose.model("SiteContent", siteContentSchema);
 
 export default SiteContent;

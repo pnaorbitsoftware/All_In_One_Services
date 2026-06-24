@@ -1,15 +1,19 @@
 import "./AuthModal.css";
+import "./AuthModalProfessional.css";
 import { useEffect, useRef, useState } from "react";
 import {
   BriefcaseBusiness,
+  CheckCircle,
   Eye,
   EyeOff,
-  ImagePlus,
+  FileText,
   IndianRupee,
   Lock,
   Mail,
   MapPin,
   Phone,
+  Trash2,
+  UploadCloud,
   User,
   X,
 } from "lucide-react";
@@ -170,6 +174,46 @@ const readJsonSafely = async (response) => {
   }
 };
 
+function ProviderUploadField({
+  label,
+  hint,
+  accept,
+  value,
+  fileName,
+  onChange,
+  onRemove,
+  required = false,
+  document = false,
+}) {
+  return (
+    <div className="provider-upload-field">
+      <span className="provider-upload-label">
+        {label}{required && <em>Required</em>}
+      </span>
+      <label className={`provider-upload-tile ${value ? "has-file" : ""}`}>
+        <input type="file" accept={accept} onChange={onChange} required={required && !value} />
+        {value && !document ? (
+          <img src={value} alt="Selected upload preview" />
+        ) : (
+          <span className="provider-upload-icon">
+            {value ? <FileText size={22} /> : <UploadCloud size={22} />}
+          </span>
+        )}
+        <span className="provider-upload-copy">
+          <strong>{value ? fileName : "Choose file"}</strong>
+          <small>{value ? "Ready to upload" : hint}</small>
+        </span>
+        {value && <CheckCircle className="provider-upload-check" size={18} />}
+      </label>
+      {value && (
+        <button type="button" className="provider-upload-remove" onClick={onRemove}>
+          <Trash2 size={14} /> Remove
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function AuthModal({
   mode,
   initialRole = "user",
@@ -194,6 +238,11 @@ export default function AuthModal({
     preferredWorkLocation: "",
     workImage: "",
     workImageName: "",
+    aadhaarNumber: "",
+    aadhaarFrontUrl: "",
+    aadhaarBackUrl: "",
+    aadhaarDocumentName: "",
+    aadhaarBackDocumentName: "",
     price: "",
     responseTime: "",
     otpChannel: "email",
@@ -323,6 +372,12 @@ export default function AuthModal({
       return;
     }
 
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Work photo must be under 4MB.");
+      event.target.value = "";
+      return;
+    }
+
     try {
       const workImage = await resizeWorkImage(file);
       setError("");
@@ -331,6 +386,66 @@ export default function AuthModal({
       setError(imageError.message || "Work photo could not be prepared.");
       event.target.value = "";
     }
+  };
+
+  const readDocumentAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () =>
+        reject(new Error("Selected Aadhaar document could not be read."));
+      reader.readAsDataURL(file);
+    });
+
+  const handleAadhaarDocumentChange = (field) => {
+    return async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const file = event.target.files?.[0];
+      const nameField = field === "aadhaarBackUrl"
+        ? "aadhaarBackDocumentName"
+        : "aadhaarDocumentName";
+      if (!file) {
+        setForm((prev) => ({ ...prev, [field]: "", [nameField]: "" }));
+        return;
+      }
+
+      const allowedTypes = [
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+        "application/pdf",
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        setError("Upload Aadhaar as PNG, JPG, WEBP, or PDF.");
+        event.target.value = "";
+        return;
+      }
+
+      if (file.size > 4 * 1024 * 1024) {
+        setError("Aadhaar document must be under 4MB.");
+        event.target.value = "";
+        return;
+      }
+
+      try {
+        const aadhaarUrl = file.type === "application/pdf"
+          ? await readDocumentAsDataUrl(file)
+          : await resizeWorkImage(file);
+        setError("");
+        setForm((prev) => ({
+          ...prev,
+          [field]: aadhaarUrl,
+          [nameField]: file.name,
+        }));
+      } catch (documentError) {
+        setError(documentError.message || "Aadhaar document could not be prepared.");
+        event.target.value = "";
+      }
+    };
   };
 
   const togglePasswordVisibility = (field) => {
@@ -347,6 +462,9 @@ export default function AuthModal({
   };
 
   const handleBackdropClose = (event) => {
+    // Native macOS file pickers can replay the Open-button mouse event on the
+    // page underneath. Keep long provider forms open so selected files persist.
+    if (isProviderRegister) return;
     if (event.target === event.currentTarget) {
       handleRequestClose(event);
     }
@@ -504,6 +622,16 @@ export default function AuthModal({
 
       if (isRegister && form.password !== form.confirmPassword) {
         throw new Error("Password and confirm password must match.");
+      }
+
+      if (isProviderRegister) {
+        const aadhaarDigits = form.aadhaarNumber.replace(/\D/g, "");
+        if (aadhaarDigits.length !== 12) {
+          throw new Error("Enter a valid 12-digit Aadhaar number.");
+        }
+        if (!form.aadhaarFrontUrl) {
+          throw new Error("Upload Aadhaar front image or PDF before registration.");
+        }
       }
 
       const loginPayload = isRegister
@@ -991,22 +1119,60 @@ export default function AuthModal({
                 </div>
               </label>
 
+              <ProviderUploadField
+                label="Work photo"
+                hint="PNG, JPG or WEBP up to 4MB"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                value={form.workImage}
+                fileName={form.workImageName}
+                onChange={handleWorkImageChange}
+                onRemove={() => setForm((prev) => ({ ...prev, workImage: "", workImageName: "" }))}
+              />
+
               <label>
-                Work photo
+                Aadhaar number
                 <div className="auth-input">
-                  <ImagePlus size={18} />
+                  <Lock size={18} />
                   <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp"
-                    onChange={handleWorkImageChange}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength="14"
+                    value={form.aadhaarNumber}
+                    onChange={(event) => {
+                      const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
+                      const formatted = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+                      setForm((prev) => ({ ...prev, aadhaarNumber: formatted }));
+                    }}
+                    placeholder="XXXX XXXX 1234"
+                    required
                   />
                 </div>
-                {form.workImageName && (
-                  <span className="auth-file-selected">
-                    {form.workImageName}
-                  </span>
-                )}
+                <p className="auth-field-helper">
+                  Only the last four digits are shown to admin after upload.
+                </p>
               </label>
+
+              <ProviderUploadField
+                label="Aadhaar front or PDF"
+                hint="Image or PDF up to 4MB"
+                accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+                value={form.aadhaarFrontUrl}
+                fileName={form.aadhaarDocumentName}
+                onChange={handleAadhaarDocumentChange("aadhaarFrontUrl")}
+                onRemove={() => setForm((prev) => ({ ...prev, aadhaarFrontUrl: "", aadhaarDocumentName: "" }))}
+                required
+                document={form.aadhaarDocumentName?.toLowerCase().endsWith(".pdf")}
+              />
+
+              <ProviderUploadField
+                label="Aadhaar back"
+                hint="Optional with a complete Aadhaar PDF"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                value={form.aadhaarBackUrl}
+                fileName={form.aadhaarBackDocumentName}
+                onChange={handleAadhaarDocumentChange("aadhaarBackUrl")}
+                onRemove={() => setForm((prev) => ({ ...prev, aadhaarBackUrl: "", aadhaarBackDocumentName: "" }))}
+              />
             </div>
           )}
 
