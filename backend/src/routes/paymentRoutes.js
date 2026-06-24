@@ -142,7 +142,7 @@ router.post("/bookings/:bookingId/estimate", requireAuth, requireProvider, async
       return sendError(res, 400, "Final estimate amount must be greater than 0.");
     }
 
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const provider = await Provider.findOne({ owner: req.user._id }).select("_id").lean();
 
     if (!provider) {
       return sendError(res, 404, "Provider profile not found.");
@@ -567,39 +567,60 @@ router.get("/provider/earnings", requireAuth, requireProvider, async (req, res) 
       return sendError(res, 404, "Provider profile not found.");
     }
 
-    const [paidPayments, pendingPayments, payoutEntries, withdrawalEntries] = await Promise.all([
-      Payment.find({ provider: provider._id, status: "paid" })
-        .populate("booking")
-        .populate("user", "name email phone")
-        .sort({ paidAt: -1, createdAt: -1 }),
-      Payment.find({
-        provider: provider._id,
-        status: { $in: ["pending", "order_created"] },
-      }),
-      Ledger.find({ provider: provider._id, type: "payout", status: "completed" }).sort({ createdAt: -1 }),
-      Ledger.find({ provider: provider._id, type: "provider_withdrawal", status: { $in: ["pending", "completed"] } }).sort({ createdAt: -1 }),
+    const [[paymentSummary = {}], [ledgerSummary = {}]] = await Promise.all([
+      Payment.aggregate([
+        { $match: { provider: provider._id } },
+        {
+          $group: {
+            _id: null,
+            totalPaidEarnings: {
+              $sum: { $cond: [{ $eq: ["$status", "paid"] }, "$providerShare", 0] },
+            },
+            totalPlatformFee: {
+              $sum: { $cond: [{ $eq: ["$status", "paid"] }, "$platformFee", 0] },
+            },
+            pendingPaymentAmount: {
+              $sum: { $cond: [{ $in: ["$status", ["pending", "order_created"]] }, "$amount", 0] },
+            },
+            totalBookingsPaid: {
+              $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      Ledger.aggregate([
+        { $match: { provider: provider._id } },
+        {
+          $group: {
+            _id: null,
+            adminReleasedAmount: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ["$type", "payout"] }, { $eq: ["$status", "completed"] }] },
+                  "$amount",
+                  0,
+                ],
+              },
+            },
+            withdrawnAmount: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ["$type", "provider_withdrawal"] }, { $in: ["$status", ["pending", "completed"]] }] },
+                  "$amount",
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
     ]);
 
-    const totalPaidEarnings = paidPayments.reduce(
-      (total, payment) => total + (payment.providerShare || 0),
-      0
-    );
-    const totalPlatformFee = paidPayments.reduce(
-      (total, payment) => total + (payment.platformFee || 0),
-      0
-    );
-    const pendingEarnings = pendingPayments.reduce(
-      (total, payment) => total + Math.round((payment.amount || 0) * 0.8),
-      0
-    );
-    const adminReleasedAmount = payoutEntries.reduce(
-      (total, entry) => total + (entry.amount || 0),
-      0
-    );
-    const withdrawnAmount = withdrawalEntries.reduce(
-      (total, entry) => total + (entry.amount || 0),
-      0
-    );
+    const totalPaidEarnings = Number(paymentSummary.totalPaidEarnings || 0);
+    const totalPlatformFee = Number(paymentSummary.totalPlatformFee || 0);
+    const pendingEarnings = Math.round(Number(paymentSummary.pendingPaymentAmount || 0) * 0.8);
+    const adminReleasedAmount = Number(ledgerSummary.adminReleasedAmount || 0);
+    const withdrawnAmount = Number(ledgerSummary.withdrawnAmount || 0);
     const availableToWithdraw = Math.max(adminReleasedAmount - withdrawnAmount, 0);
 
     res.json({
@@ -611,12 +632,12 @@ router.get("/provider/earnings", requireAuth, requireProvider, async (req, res) 
         withdrawnAmount,
         availableToWithdraw,
         pendingEarnings,
-        totalBookingsPaid: paidPayments.length,
+        totalBookingsPaid: Number(paymentSummary.totalBookingsPaid || 0),
         totalPlatformFee,
       },
-      earnings: paidPayments,
-      payouts: payoutEntries,
-      withdrawals: withdrawalEntries,
+      earnings: [],
+      payouts: [],
+      withdrawals: [],
     });
   } catch (error) {
     res.status(500).json({

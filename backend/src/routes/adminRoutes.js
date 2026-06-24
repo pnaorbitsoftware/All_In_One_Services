@@ -51,10 +51,47 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
         .select("name email phone address profileImage createdAt updatedAt")
         .sort({ createdAt: -1 })
         .lean(),
-      Provider.find()
-        .select("name businessName ownerName category customCategory phone email preferredWorkLocation location address rating reviews approvalStatus verificationStatus verificationRejectedReason aadhaarNumberMasked aadhaarFrontUrl aadhaarBackUrl aadhaarDocumentName aadhaarBackDocumentName isActive requestedAt approvedAt rejectedAt suspendedAt createdAt updatedAt totalEarnings pendingEarnings paidEarnings")
-        .sort({ createdAt: -1 })
-        .lean(),
+      Provider.aggregate([
+        { $sort: { createdAt: -1 } },
+        {
+          $project: {
+            name: 1,
+            businessName: 1,
+            ownerName: 1,
+            category: 1,
+            customCategory: 1,
+            phone: 1,
+            email: 1,
+            preferredWorkLocation: 1,
+            location: 1,
+            address: 1,
+            rating: 1,
+            reviews: 1,
+            approvalStatus: 1,
+            verificationStatus: 1,
+            verificationRejectedReason: 1,
+            aadhaarNumberMasked: 1,
+            aadhaarDocumentName: 1,
+            aadhaarBackDocumentName: 1,
+            aadhaarFrontAvailable: {
+              $ne: [{ $ifNull: ["$aadhaarFrontUrl", ""] }, ""],
+            },
+            aadhaarBackAvailable: {
+              $ne: [{ $ifNull: ["$aadhaarBackUrl", ""] }, ""],
+            },
+            isActive: 1,
+            requestedAt: 1,
+            approvedAt: 1,
+            rejectedAt: 1,
+            suspendedAt: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            totalEarnings: 1,
+            pendingEarnings: 1,
+            paidEarnings: 1,
+          },
+        },
+      ]),
       Booking.find()
         .select("bookingId name phone userEmail service preferredDate preferredTime costEstimate status assignedProvider requestedProvider requestedProviderName assignedProviderName finalEstimateAmount providerPaymentReleased providerPaymentReleasedAt cancelledBy adminRejectedAt adminRejectionReason createdAt")
         .sort({ createdAt: -1 })
@@ -79,8 +116,8 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
         (provider.approvalStatus === "approved" ? "legacy_approved" : "pending"),
       verificationRejectedReason: provider.verificationRejectedReason || "",
       aadhaarNumberMasked: provider.aadhaarNumberMasked || "Not submitted",
-      aadhaarFrontUrl: provider.aadhaarFrontUrl || "",
-      aadhaarBackUrl: provider.aadhaarBackUrl || "",
+      aadhaarFrontAvailable: Boolean(provider.aadhaarFrontAvailable),
+      aadhaarBackAvailable: Boolean(provider.aadhaarBackAvailable),
       aadhaarDocumentName: provider.aadhaarDocumentName || "",
       aadhaarBackDocumentName: provider.aadhaarBackDocumentName || "",
     }));
@@ -119,6 +156,50 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
     res.status(500).json({ message: "Admin dashboard could not be loaded." });
   }
 });
+
+router.get(
+  "/providers/:providerId/aadhaar/:side",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const side = req.params.side === "back" ? "back" : "front";
+      const provider = await Provider.findById(req.params.providerId)
+        .select("aadhaarFrontUrl aadhaarBackUrl aadhaarDocumentName aadhaarBackDocumentName")
+        .lean();
+
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found." });
+      }
+
+      const documentUrl = side === "back" ? provider.aadhaarBackUrl : provider.aadhaarFrontUrl;
+      const documentName = side === "back"
+        ? provider.aadhaarBackDocumentName
+        : provider.aadhaarDocumentName;
+
+      if (!documentUrl) {
+        return res.status(404).json({ message: `Aadhaar ${side} document is not available.` });
+      }
+
+      if (/^https:\/\//i.test(documentUrl)) {
+        return res.redirect(302, documentUrl);
+      }
+
+      const match = documentUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=\s]+)$/i);
+      if (!match || !["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"].includes(match[1].toLowerCase())) {
+        return res.status(415).json({ message: "Stored Aadhaar document format is not supported." });
+      }
+
+      const fileBuffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+      const safeName = encodeURIComponent(documentName || `aadhaar-${side}`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${safeName}`);
+      res.type(match[1]).send(fileBuffer);
+    } catch {
+      res.status(500).json({ message: "Aadhaar document could not be loaded." });
+    }
+  },
+);
 
 router.get(
   "/contact-messages",
@@ -254,49 +335,58 @@ router.patch(
           .json({ message: "Invalid provider approval status." });
       }
 
-      const provider = await Provider.findById(req.params.providerId);
+      const now = new Date();
+      const provider = await Provider.findOneAndUpdate(
+        {
+          _id: req.params.providerId,
+          ...(approvalStatus === "approved" ? { aadhaarFrontUrl: { $nin: ["", null] } } : {}),
+        },
+        {
+          $set: {
+            approvalStatus,
+            verificationStatus: approvalStatus === "approved" ? "approved" : "rejected",
+            isActive: approvalStatus === "approved",
+            approvedAt: approvalStatus === "approved" ? now : null,
+            ...(approvalStatus === "rejected"
+              ? { rejectedAt: now, suspendedAt: now }
+              : {}),
+            verificationRejectedReason:
+              approvalStatus === "rejected"
+                ? rejectionReason || "Provider profile was not approved by admin."
+                : "",
+          },
+        },
+        { new: true },
+      );
 
       if (!provider) {
-        return res.status(404).json({ message: "Provider not found." });
-      }
-
-      if (approvalStatus === "approved" && !provider.aadhaarFrontUrl) {
-        return res.status(400).json({
-          message: "Aadhaar document verification is required before approving this provider.",
+        const providerExists = await Provider.exists({ _id: req.params.providerId });
+        return res.status(providerExists ? 400 : 404).json({
+          message: providerExists
+            ? "Aadhaar document verification is required before approving this provider."
+            : "Provider not found.",
         });
       }
-
-      provider.approvalStatus = approvalStatus;
-      provider.verificationStatus = approvalStatus === "approved" ? "approved" : "rejected";
-      provider.isActive = approvalStatus === "approved";
-      provider.approvedAt = approvalStatus === "approved" ? new Date() : null;
-      provider.rejectedAt = approvalStatus === "rejected" ? new Date() : provider.rejectedAt;
-      provider.suspendedAt = approvalStatus === "rejected" && provider.isActive === false ? new Date() : provider.suspendedAt;
-      provider.verificationRejectedReason =
-        approvalStatus === "rejected"
-          ? rejectionReason || "Provider profile was not approved by admin."
-          : "";
-      await provider.save();
 
       invalidateCatalogCache();
 
       if (approvalStatus === "approved") {
-        await sendProviderApprovalEmail({
+        sendProviderApprovalEmail({
           to: provider.email,
           name: provider.name,
-        });
+        }).catch((error) => console.warn(`Provider approval email failed: ${error.message}`));
         sendProviderApprovalWhatsApp({
           to: provider.phone,
           name: provider.name,
         }).catch(() => {});
       } else {
-        await sendProviderRejectionEmail({
+        sendProviderRejectionEmail({
           to: provider.email,
           name: provider.name,
           reason:
             rejectionReason ||
             "Your provider profile could not be approved at this time.",
-        });
+        }).catch((error) => console.warn(`Provider rejection email failed: ${error.message}`));
         sendProviderRejectionWhatsApp({
           to: provider.phone,
           name: provider.name,

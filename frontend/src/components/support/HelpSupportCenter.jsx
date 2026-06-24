@@ -79,8 +79,8 @@ export default function HelpSupportCenter({ user, onLogin }) {
     }
   }, [messages, activeScreen]);
 
-  const fetchTickets = async () => {
-    setIsLoading(true);
+  const fetchTickets = async ({ silent = false } = {}) => {
+    if (!silent) setIsLoading(true);
     try {
       const response = await fetch(`${API_URL}/support/tickets`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -92,7 +92,7 @@ export default function HelpSupportCenter({ user, onLogin }) {
     } catch (err) {
       console.error("Error fetching support tickets:", err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -106,8 +106,14 @@ export default function HelpSupportCenter({ user, onLogin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, token, user?.role]);
 
-  const fetchTicketDetails = async (ticketId) => {
-    setIsLoading(true);
+  const showToast = (msg, success = true) => {
+    setStatusMessage(msg);
+    setIsSuccess(success);
+    setTimeout(() => setStatusMessage(null), 5000);
+  };
+
+  const fetchTicketDetails = async (ticketId, { silent = false } = {}) => {
+    if (!silent) setIsLoading(true);
     try {
       const response = await fetch(`${API_URL}/support/tickets/${ticketId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -124,15 +130,30 @@ export default function HelpSupportCenter({ user, onLogin }) {
       console.error(err);
       showToast("Error connecting to server.", false);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
-  const showToast = (msg, success = true) => {
-    setStatusMessage(msg);
-    setIsSuccess(success);
-    setTimeout(() => setStatusMessage(null), 5000);
-  };
+  useEffect(() => {
+    if (!isOpen || !token || user?.role !== "user") return undefined;
+
+    const refreshSupport = () => {
+      if (document.visibilityState !== "visible") return;
+      if (activeScreen === "detail" && selectedTicket?.ticketId) {
+        fetchTicketDetails(selectedTicket.ticketId, { silent: true });
+      } else {
+        fetchTickets({ silent: true });
+      }
+    };
+    const timerId = window.setInterval(refreshSupport, 15000);
+    document.addEventListener("visibilitychange", refreshSupport);
+    return () => {
+      window.clearInterval(timerId);
+      document.removeEventListener("visibilitychange", refreshSupport);
+    };
+    // Keep only the visible support screen live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScreen, isOpen, selectedTicket?.ticketId, token, user?.role]);
 
   const handleFileChange = (e, isReply = false) => {
     const files = Array.from(e.target.files);
@@ -304,7 +325,7 @@ export default function HelpSupportCenter({ user, onLogin }) {
       {/* FLOATING SUPPORT BUTTON */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 z-[80] flex h-14 items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-pink-500 px-5 text-white shadow-[0_10px_30px_rgba(168,85,247,0.35)] transition-all duration-300 hover:scale-105 hover:shadow-[0_15px_35px_rgba(168,85,247,0.5)] border border-white/10"
+        className="servicehub-support-trigger fixed bottom-5 right-5 z-[80] flex h-14 items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-pink-500 px-5 text-white shadow-[0_10px_30px_rgba(168,85,247,0.35)] transition-all duration-300 hover:scale-105 hover:shadow-[0_15px_35px_rgba(168,85,247,0.5)] border border-white/10"
       >
         <LifeBuoy className="h-5 w-5 animate-pulse" />
         <span className="text-sm font-extrabold tracking-wide hidden sm:inline">Help & Support</span>

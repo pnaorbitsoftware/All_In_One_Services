@@ -14,12 +14,94 @@ import {
   sendCancellationWhatsApp,
   sendServiceCompletedWhatsApp,
 } from "../services/whatsappNotificationService.js";
-import { buildStatusUpdateOperation } from "../services/bookingTrackingService.js";
 import { emitStatusChange } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
 import { invalidateCatalogCache } from "./catalogRoutes.js";
 
 const router = express.Router();
+const providerIdentityCache = new Map();
+const providerDashboardProfileCache = new Map();
+const providerIdentityCacheTtlMs = Number(process.env.PROVIDER_IDENTITY_CACHE_TTL_MS || 60_000);
+
+const rememberProviderIdentity = (provider) => {
+  if (!provider?.owner || !provider?._id) return;
+  providerIdentityCache.set(String(provider.owner), {
+    provider: {
+      _id: provider._id,
+      owner: provider.owner,
+      name: provider.name,
+      category: provider.category,
+    },
+    expiresAt: Date.now() + providerIdentityCacheTtlMs,
+  });
+};
+
+const getProviderIdentity = async (ownerId) => {
+  const cacheKey = String(ownerId);
+  const cached = providerIdentityCache.get(cacheKey);
+  if (cached?.expiresAt > Date.now()) return cached.provider;
+  if (cached) providerIdentityCache.delete(cacheKey);
+
+  const provider = await Provider.findOne({ owner: ownerId })
+    .select("_id owner name category")
+    .lean();
+  rememberProviderIdentity(provider);
+  return provider;
+};
+
+const forgetProviderCaches = (ownerId) => {
+  const cacheKey = String(ownerId);
+  providerIdentityCache.delete(cacheKey);
+  providerDashboardProfileCache.delete(cacheKey);
+};
+
+const notifyClientInBackground = ({ booking, providerName, action }) => {
+  void User.findById(booking.user)
+    .select("name email phone")
+    .lean()
+    .then(async (client) => {
+      if (action === "completed") {
+        await sendServiceCompletedEmail({
+          to: client?.email,
+          name: client?.name || booking.name,
+          booking,
+          providerName,
+        });
+        await sendServiceCompletedWhatsApp({
+          to: client?.phone || booking.phone,
+          name: client?.name || booking.name,
+          booking,
+          providerName,
+        });
+      } else if (action === "cancelled") {
+        await sendProviderCancellationEmail({
+          to: client?.email,
+          booking,
+          reason: booking.cancellationReason,
+        });
+        await sendCancellationWhatsApp({
+          to: client?.phone || booking.phone,
+          booking,
+          reason: booking.cancellationReason,
+          cancelledBy: "provider",
+        });
+      } else if (action === "accepted") {
+        await sendProviderAcceptedEmail({
+          to: client?.email,
+          name: client?.name || booking.name,
+          booking,
+          provider: { name: providerName },
+        });
+        await sendBookingAcceptedWhatsApp({
+          to: client?.phone || booking.phone,
+          name: client?.name || booking.name,
+          booking,
+          provider: { name: providerName },
+        });
+      }
+    })
+    .catch((error) => console.warn(`Provider notification failed: ${error.message}`));
+};
 
 const requireProvider = (req, res, next) => {
   if (req.user.role !== "provider") {
@@ -61,11 +143,27 @@ const hideClientContactUntilAccepted = (booking) => {
 
 router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
   try {
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const cacheKey = String(req.user._id);
+    const cachedProfile = providerDashboardProfileCache.get(cacheKey);
+    let provider = cachedProfile?.expiresAt > Date.now() ? cachedProfile.provider : null;
+    if (!provider) {
+      if (cachedProfile) providerDashboardProfileCache.delete(cacheKey);
+      provider = await Provider.findOne({ owner: req.user._id })
+        .select("-aadhaarFrontUrl -aadhaarBackUrl")
+        .lean();
+      if (provider) {
+        providerDashboardProfileCache.set(cacheKey, {
+          provider,
+          expiresAt: Date.now() + providerIdentityCacheTtlMs,
+        });
+      }
+    }
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
     }
+
+    rememberProviderIdentity(provider);
 
     if (provider.approvalStatus !== "approved") {
       return res.json({
@@ -86,9 +184,9 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
           { assignedProvider: provider._id },
           { requestedProvider: provider._id, status: "cancelled" },
         ],
-      }).sort({ createdAt: -1 }),
+      }).select("-workImage").sort({ createdAt: -1 }).lean(),
       provider.isActive
-        ? Booking.find(buildAvailableBookingFilter(provider)).sort({ createdAt: -1 })
+        ? Booking.find(buildAvailableBookingFilter(provider)).select("-workImage").sort({ createdAt: -1 }).lean()
         : Promise.resolve([]),
     ]);
 
@@ -104,7 +202,9 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
 
 router.get("/profile", requireAuth, requireProvider, async (req, res) => {
   try {
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const provider = await Provider.findOne({ owner: req.user._id })
+      .select("-aadhaarFrontUrl -aadhaarBackUrl")
+      .lean();
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
@@ -150,6 +250,7 @@ router.patch("/availability", requireAuth, requireProvider, async (req, res) => 
 
     provider.isActive = isActive;
     await provider.save();
+    forgetProviderCaches(req.user._id);
     invalidateCatalogCache();
 
     res.json({
@@ -221,6 +322,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     };
 
     await provider.save();
+    forgetProviderCaches(req.user._id);
     invalidateCatalogCache();
 
     await User.findByIdAndUpdate(req.user._id, {
@@ -237,7 +339,9 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
 
 router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async (req, res) => {
   try {
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const provider = await Provider.findOne({ owner: req.user._id })
+      .select("_id owner name category approvalStatus isActive")
+      .lean();
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
@@ -270,23 +374,9 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
     if (!booking) {
       return res.status(404).json({ message: "Booking request is no longer available." });
     }
-    const client = await User.findById(booking.user);
-    await sendProviderAcceptedEmail({
-      to: client?.email,
-      name: client?.name || booking.name,
-      booking,
-      provider,
-    });
-    sendBookingAcceptedWhatsApp({
-      to: client?.phone || booking.phone,
-      name: client?.name || booking.name,
-      booking,
-      provider,
-    }).catch(() => {});
-
     emitStatusChange(req.app.get("io"), booking);
-
     res.json({ booking });
+    notifyClientInBackground({ booking: booking.toObject(), providerName: provider.name, action: "accepted" });
   } catch (error) {
     res.status(500).json({ message: "Booking request could not be accepted." });
   }
@@ -294,7 +384,7 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
 
 router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async (req, res) => {
   try {
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const provider = await getProviderIdentity(req.user._id);
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
@@ -303,7 +393,9 @@ router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async 
     const booking = await Booking.findOne({
       ...bookingLookup(req.params.bookingId),
       assignedProvider: provider._id,
-    });
+    })
+      .select("bookingId status eta name phone clientLocation providerLocation address trackingEvents updatedAt")
+      .lean();
 
     if (!booking) {
       return res.status(404).json({ message: "Booking not found for this provider." });
@@ -328,7 +420,7 @@ router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async 
 });
 router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, async (req, res) => {
   try {
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const provider = await getProviderIdentity(req.user._id);
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
@@ -348,7 +440,7 @@ router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, asyn
       },
       { providerLocation },
       { new: true }
-    );
+    ).select("-workImage").lean();
 
     if (!booking) {
       return res.status(404).json({ message: "Active booking not found for this provider." });
@@ -379,7 +471,7 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       return res.status(400).json({ message: "Invalid booking status." });
     }
 
-    const provider = await Provider.findOne({ owner: req.user._id });
+    const provider = await getProviderIdentity(req.user._id);
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
@@ -401,79 +493,67 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       update.cancellationReason = cancellationReason.trim();
     }
 
-    const existingBooking = await Booking.findOne({
+    const normalizedStatus = status === "confirmed" || status === "assigned"
+      ? "accepted"
+      : status === "on_the_way" ? "en_route" : status;
+    const allowedCurrentStatuses = {
+      accepted: ["pending", "accepted", "confirmed", "assigned"],
+      en_route: ["pending", "accepted", "confirmed", "assigned", "on_the_way", "en_route"],
+      arrived: ["pending", "accepted", "confirmed", "assigned", "on_the_way", "en_route", "arrived"],
+      job_started: ["arrived", "job_started"],
+      completed: ["job_started", "completed"],
+      cancelled: ["pending", "accepted", "confirmed", "assigned", "on_the_way", "en_route", "arrived", "job_started", "cancelled"],
+    };
+    const bookingFilter = {
       ...bookingLookup(req.params.bookingId),
       assignedProvider: provider._id,
-    });
-
-    if (!existingBooking) {
-      return res.status(404).json({ message: "Booking not found for this provider." });
+      status: { $in: allowedCurrentStatuses[normalizedStatus] || [] },
+    };
+    if (normalizedStatus === "job_started") {
+      bookingFilter.$or = [
+        { finalEstimateAmount: { $gt: 0 } },
+        { estimateStatus: { $in: ["submitted", "accepted"] } },
+      ];
     }
+    if (normalizedStatus === "completed") bookingFilter.paymentStatus = "paid";
 
-    if (status === "job_started") {
-      if (existingBooking.status !== "arrived") {
-        return res.status(400).json({ message: "Mark arrived before starting the job." });
-      }
-
-      if (!existingBooking.finalEstimateAmount && !["submitted", "accepted"].includes(existingBooking.estimateStatus)) {
-        return res.status(400).json({ message: "Send the final estimate before starting the job." });
-      }
-    }
-
-    if (status === "completed") {
-      if (existingBooking.status !== "job_started") {
-        return res.status(400).json({ message: "Start the job before marking the work completed." });
-      }
-
-      if (existingBooking.paymentStatus !== "paid") {
-        return res.status(400).json({ message: "Before completing the work, the client must pay the money." });
-      }
-    }
-
-    const updateOperation = buildStatusUpdateOperation({
-      booking: existingBooking,
-      status,
-      set: update,
-    });
+    const updateOperation = {
+      $set: { ...update, status: normalizedStatus },
+      $push: { trackingEvents: { status: normalizedStatus, updatedAt: new Date() } },
+    };
 
     const booking = await Booking.findOneAndUpdate(
-      { ...bookingLookup(req.params.bookingId), assignedProvider: provider._id },
+      bookingFilter,
       updateOperation,
       { new: true }
-    );
+    ).lean();
 
-    if (status === "completed") {
-      const client = await User.findById(booking.user);
-      await sendServiceCompletedEmail({
-        to: client?.email,
-        name: client?.name || booking.name,
-        booking,
-        providerName: provider.name,
-      });
-      sendServiceCompletedWhatsApp({
-        to: client?.phone || booking.phone,
-        name: client?.name || booking.name,
-        booking,
-        providerName: provider.name,
-      }).catch(() => {});
-    } else if (status === "cancelled") {
-      const client = await User.findById(booking.user);
-      await sendProviderCancellationEmail({
-        to: client?.email,
-        booking,
-        reason: booking.cancellationReason,
-      });
-      sendCancellationWhatsApp({
-        to: client?.phone || booking.phone,
-        booking,
-        reason: booking.cancellationReason,
-        cancelledBy: "provider",
-      }).catch(() => {});
+    if (!booking) {
+      const existingBooking = await Booking.findOne({
+        ...bookingLookup(req.params.bookingId),
+        assignedProvider: provider._id,
+      }).select("status finalEstimateAmount estimateStatus paymentStatus").lean();
+      if (!existingBooking) return res.status(404).json({ message: "Booking not found for this provider." });
+      if (normalizedStatus === "job_started" && existingBooking.status !== "arrived") {
+        return res.status(400).json({ message: "Mark arrived before starting the job." });
+      }
+      if (normalizedStatus === "job_started") {
+        return res.status(400).json({ message: "Send the final estimate before starting the job." });
+      }
+      if (normalizedStatus === "completed" && existingBooking.status !== "job_started") {
+        return res.status(400).json({ message: "Start the job before marking the work completed." });
+      }
+      if (normalizedStatus === "completed") {
+        return res.status(400).json({ message: "Before completing the work, the client must pay the money." });
+      }
+      return res.status(400).json({ message: "Booking status cannot move backward." });
     }
 
     emitStatusChange(req.app.get("io"), booking);
-
     res.json({ booking });
+    if (["completed", "cancelled"].includes(normalizedStatus)) {
+      notifyClientInBackground({ booking, providerName: provider.name, action: normalizedStatus });
+    }
   } catch (error) {
     if (/booking status|completed bookings|cannot move/i.test(error.message)) {
       return res.status(400).json({ message: error.message });

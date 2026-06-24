@@ -2,24 +2,24 @@ import { Star, MapPin } from "lucide-react";
 
 export default function ModernProviders({ services = [], setSelectedService }) {
   return (
-    <section id="providers" className="bg-white py-20">
+    <section id="providers" className="bg-white py-20 transition-colors dark:bg-slate-950">
       <div className="mx-auto max-w-[1400px] px-6">
         <div className="mb-12 flex items-center justify-between">
           <div>
-            <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700">
+            <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
               Trusted Professionals
             </span>
 
-            <h2 className="mt-5 text-4xl font-extrabold text-slate-900">
+            <h2 className="mt-5 text-4xl font-extrabold text-slate-900 dark:text-white">
               Top rated service providers
             </h2>
 
-            <p className="mt-3 text-slate-600">
+            <p className="mt-3 text-slate-600 dark:text-slate-300">
               Compare ratings, pricing and availability.
             </p>
           </div>
 
-          <div className="rounded-full border border-slate-200 px-5 py-2 font-semibold text-slate-700">
+          <div className="rounded-full border border-slate-200 px-5 py-2 font-semibold text-slate-700 dark:border-white/10 dark:text-slate-200">
             {services.length} Providers
           </div>
         </div>
@@ -28,7 +28,7 @@ export default function ModernProviders({ services = [], setSelectedService }) {
           {services.slice(0, 8).map((service, index) => (
             <div
               key={service.id || service.providerId || service.name || index}
-              className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-2 hover:shadow-xl"
+              className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-2 hover:shadow-xl dark:border-white/10 dark:bg-slate-900"
             >
               <img
                 src={service.image}
@@ -38,7 +38,7 @@ export default function ModernProviders({ services = [], setSelectedService }) {
 
               <div className="p-5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold text-slate-900">
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                     {service.name}
                   </h3>
 
@@ -51,11 +51,11 @@ export default function ModernProviders({ services = [], setSelectedService }) {
                   </span>
                 </div>
 
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   {service.category}
                 </p>
 
-                <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                <div className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                   <MapPin size={14} />
                   {service.location || "Available nearby"}
                 </div>
@@ -69,7 +69,7 @@ export default function ModernProviders({ services = [], setSelectedService }) {
                     onClick={() =>
                       setSelectedService && setSelectedService(service)
                     }
-                    className="flex-1 rounded-xl border border-slate-300 py-2 font-medium"
+                    className="flex-1 rounded-xl border border-slate-300 py-2 font-medium dark:border-white/15 dark:text-slate-100"
                   >
                     View Profile
                   </button>

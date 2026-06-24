@@ -223,9 +223,11 @@ router.post("/", requireAuth, async (req, res) => {
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user._id })
+      .select("-workImage")
       .populate("assignedProvider", "name category location phone price responseTime rating reviews")
       .populate("requestedProvider", "name category location phone price responseTime rating reviews")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ bookings });
   } catch (error) {
     res.status(500).json({ message: "Could not load bookings." });
@@ -464,7 +466,6 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
 });
 
 export default router;
-
 
 
 
