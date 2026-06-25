@@ -44,7 +44,7 @@ const timelineSteps = [
 
 export default function HelpSupportCenter({ user, onLogin }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState("menu"); // "menu", "create", "list", "detail", "faq"
+  const [activeScreen, setActiveScreen] = useState("menu");
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -102,7 +102,6 @@ export default function HelpSupportCenter({ user, onLogin }) {
       return () => window.clearTimeout(timerId);
     }
     return undefined;
-    // Fetch when the support panel or authenticated user changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, token, user?.role]);
 
@@ -157,7 +156,7 @@ export default function HelpSupportCenter({ user, onLogin }) {
 
   const handleFileChange = (e, isReply = false) => {
     const files = Array.from(e.target.files);
-    
+
     files.forEach((file) => {
       if (file.size > 5 * 1024 * 1024) {
         showToast(`File "${file.name}" exceeds the 5MB size limit.`, false);
@@ -175,7 +174,10 @@ export default function HelpSupportCenter({ user, onLogin }) {
         "text/plain",
       ];
       if (!allowedTypes.includes(file.type)) {
-        showToast(`Format of "${file.name}" not supported. Use Images, PDFs, Word, or Text.`, false);
+        showToast(
+          `Format of "${file.name}" not supported. Use Images, PDFs, Word, or Text.`,
+          false
+        );
         return;
       }
 
@@ -244,17 +246,20 @@ export default function HelpSupportCenter({ user, onLogin }) {
 
     setReplySubmitting(true);
     try {
-      const response = await fetch(`${API_URL}/support/tickets/${selectedTicket.ticketId}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: replyMessage,
-          attachment: replyAttachment,
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}/support/tickets/${selectedTicket.ticketId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            message: replyMessage,
+            attachment: replyAttachment,
+          }),
+        }
+      );
 
       const data = await response.json();
       if (response.ok && data.success) {
@@ -262,7 +267,10 @@ export default function HelpSupportCenter({ user, onLogin }) {
         setReplyMessage("");
         setReplyAttachment(null);
         // Refresh ticket status locally (might have auto-reopened)
-        if (selectedTicket.status === "Resolved" || selectedTicket.status === "Closed") {
+        if (
+          selectedTicket.status === "Resolved" ||
+          selectedTicket.status === "Closed"
+        ) {
           setSelectedTicket((prev) => ({ ...prev, status: "Open" }));
         }
       } else {
@@ -328,7 +336,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
         className="servicehub-support-trigger fixed bottom-5 right-5 z-[80] flex h-14 items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-pink-500 px-5 text-white shadow-[0_10px_30px_rgba(168,85,247,0.35)] transition-all duration-300 hover:scale-105 hover:shadow-[0_15px_35px_rgba(168,85,247,0.5)] border border-white/10"
       >
         <LifeBuoy className="h-5 w-5 animate-pulse" />
-        <span className="text-sm font-extrabold tracking-wide hidden sm:inline">Help & Support</span>
+        <span className="text-sm font-extrabold tracking-wide hidden sm:inline">
+          Help & Support
+        </span>
       </button>
 
       {/* SUPPORT CENTER SIDE PANEL */}
@@ -353,20 +363,34 @@ export default function HelpSupportCenter({ user, onLogin }) {
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
+                    {/* Back button – navigates back or closes panel */}
+                    <button
+                      onClick={() => {
+                        if (activeScreen !== "menu") {
+                          setActiveScreen("menu");
+                        } else {
+                          setIsOpen(false);
+                        }
+                      }}
+                      className="rounded-full bg-white/5 p-2 text-slate-400 hover:bg-white/10 hover:text-white transition"
+                      aria-label="Go back or close"
+                    >
+                      <ArrowLeft className="h-5 w-5" />
+                    </button>
+
                     <div className="grid h-10 w-10 place-items-center rounded-xl bg-violet-600/30 border border-violet-500/30 text-violet-400">
                       <LifeBuoy className="h-5 w-5" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black tracking-wide text-white">Help & Support Center</h2>
-                      <p className="text-xs text-slate-400">We are here to assist you 24/7</p>
+                      <h2 className="text-lg font-black tracking-wide text-white">
+                        Help & Support Center
+                      </h2>
+                      <p className="text-xs text-slate-400">
+                        We are here to assist you 24/7
+                      </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setIsOpen(false)}
-                    className="rounded-full bg-white/5 p-2 text-slate-400 hover:bg-white/10 hover:text-white transition"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                  {/* ✕ button removed – back arrow handles closing */}
                 </div>
               </div>
 
@@ -379,7 +403,11 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       : "border-rose-500/20 bg-rose-500/10 text-rose-400"
                   }`}
                 >
-                  {isSuccess ? <CheckCircle className="h-4.5 w-4.5 flex-shrink-0" /> : <AlertCircle className="h-4.5 w-4.5 flex-shrink-0" />}
+                  {isSuccess ? (
+                    <CheckCircle className="h-4.5 w-4.5 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="h-4.5 w-4.5 flex-shrink-0" />
+                  )}
                   <span className="flex-1">{statusMessage}</span>
                 </div>
               )}
@@ -394,7 +422,10 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       <button
                         onClick={() => {
                           if (!user) {
-                            showToast("Please log in to raise support tickets.", false);
+                            showToast(
+                              "Please log in to raise support tickets.",
+                              false
+                            );
                             onLogin?.();
                           } else {
                             setActiveScreen("create");
@@ -406,15 +437,22 @@ export default function HelpSupportCenter({ user, onLogin }) {
                           <LifeBuoy className="h-5 w-5" />
                         </div>
                         <div>
-                          <h3 className="font-extrabold text-sm text-white group-hover:text-violet-400 transition">Create Ticket</h3>
-                          <p className="text-[11px] text-slate-400 mt-1 leading-normal">Submit a new request to operations</p>
+                          <h3 className="font-extrabold text-sm text-white group-hover:text-violet-400 transition">
+                            Create Ticket
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-1 leading-normal">
+                            Submit a new request to operations
+                          </p>
                         </div>
                       </button>
 
                       <button
                         onClick={() => {
                           if (!user) {
-                            showToast("Please log in to view your tickets.", false);
+                            showToast(
+                              "Please log in to view your tickets.",
+                              false
+                            );
                             onLogin?.();
                           } else {
                             setActiveScreen("list");
@@ -426,21 +464,47 @@ export default function HelpSupportCenter({ user, onLogin }) {
                           <History className="h-5 w-5" />
                         </div>
                         <div>
-                          <h3 className="font-extrabold text-sm text-white group-hover:text-fuchsia-400 transition">My Tickets</h3>
-                          <p className="text-[11px] text-slate-400 mt-1 leading-normal">Track your active issues</p>
+                          <h3 className="font-extrabold text-sm text-white group-hover:text-fuchsia-400 transition">
+                            My Tickets
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-1 leading-normal">
+                            Track your active issues
+                          </p>
                         </div>
                       </button>
                     </div>
 
                     {/* Quick Category Tickets */}
                     <div>
-                      <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3">Quick Topic Actions</h4>
+                      <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3">
+                        Quick Topic Actions
+                      </h4>
                       <div className="space-y-2">
                         {[
-                          { label: "Report Provider", icon: ShieldAlert, cat: "Provider Issue", sub: "Report Unprofessional Behavior" },
-                          { label: "Report Payment Issue", icon: CreditCard, cat: "Payment Issue", sub: "Double Charge / Refund Delayed" },
-                          { label: "Technical Issue", icon: AlertCircle, cat: "Technical Issue", sub: "Platform Bug / Location GPS error" },
-                          { label: "Account Issue", icon: User, cat: "Account Issue", sub: "Profile Edit / Security Reset" },
+                          {
+                            label: "Report Provider",
+                            icon: ShieldAlert,
+                            cat: "Provider Issue",
+                            sub: "Report Unprofessional Behavior",
+                          },
+                          {
+                            label: "Report Payment Issue",
+                            icon: CreditCard,
+                            cat: "Payment Issue",
+                            sub: "Double Charge / Refund Delayed",
+                          },
+                          {
+                            label: "Technical Issue",
+                            icon: AlertCircle,
+                            cat: "Technical Issue",
+                            sub: "Platform Bug / Location GPS error",
+                          },
+                          {
+                            label: "Account Issue",
+                            icon: User,
+                            cat: "Account Issue",
+                            sub: "Profile Edit / Security Reset",
+                          },
                         ].map((item) => (
                           <button
                             key={item.label}
@@ -449,7 +513,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
                           >
                             <div className="flex items-center gap-3">
                               <item.icon className="h-4.5 w-4.5 text-slate-400 group-hover:text-pink-400 transition" />
-                              <span className="text-xs font-bold text-slate-200 group-hover:text-white transition">{item.label}</span>
+                              <span className="text-xs font-bold text-slate-200 group-hover:text-white transition">
+                                {item.label}
+                              </span>
                             </div>
                             <ChevronRight className="h-4 w-4 text-slate-500 group-hover:translate-x-0.5 transition" />
                           </button>
@@ -464,15 +530,19 @@ export default function HelpSupportCenter({ user, onLogin }) {
                         className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900/20 hover:bg-slate-900/40 border border-slate-900 transition text-left group"
                       >
                         <BookOpen className="h-4 w-4 text-cyan-400" />
-                        <span className="text-xs font-bold text-slate-300 group-hover:text-white">Browse FAQ</span>
+                        <span className="text-xs font-bold text-slate-300 group-hover:text-white">
+                          Browse FAQ
+                        </span>
                       </button>
-                      
+
                       <a
                         href="/contact"
                         className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900/20 hover:bg-slate-900/40 border border-slate-900 transition group"
                       >
                         <MessageCircle className="h-4 w-4 text-emerald-400" />
-                        <span className="text-xs font-bold text-slate-300 group-hover:text-white">General Contact</span>
+                        <span className="text-xs font-bold text-slate-300 group-hover:text-white">
+                          General Contact
+                        </span>
                       </a>
                     </div>
                   </div>
@@ -488,10 +558,14 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       <ArrowLeft className="h-3.5 w-3.5" /> Back to menu
                     </button>
 
-                    <h3 className="text-base font-black text-white mb-4">Submit a Support Ticket</h3>
+                    <h3 className="text-base font-black text-white mb-4">
+                      Submit a Support Ticket
+                    </h3>
                     <form onSubmit={submitTicket} className="space-y-4">
                       <div>
-                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">Subject</label>
+                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">
+                          Subject
+                        </label>
                         <input
                           type="text"
                           required
@@ -504,7 +578,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">Category</label>
+                          <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">
+                            Category
+                          </label>
                           <select
                             value={category}
                             onChange={(e) => setCategory(e.target.value)}
@@ -514,13 +590,19 @@ export default function HelpSupportCenter({ user, onLogin }) {
                             <option value="Payment Issue">Payment Issue</option>
                             <option value="Provider Issue">Provider Issue</option>
                             <option value="Account Issue">Account Issue</option>
-                            <option value="Technical Issue">Technical Issue</option>
-                            <option value="General Inquiry">General Inquiry</option>
+                            <option value="Technical Issue">
+                              Technical Issue
+                            </option>
+                            <option value="General Inquiry">
+                              General Inquiry
+                            </option>
                           </select>
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">Priority</label>
+                          <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">
+                            Priority
+                          </label>
                           <select
                             value={priority}
                             onChange={(e) => setPriority(e.target.value)}
@@ -535,7 +617,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">Booking ID (Optional)</label>
+                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">
+                          Booking ID (Optional)
+                        </label>
                         <input
                           type="text"
                           value={bookingId}
@@ -546,7 +630,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">Describe your issue</label>
+                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">
+                          Describe your issue
+                        </label>
                         <textarea
                           required
                           rows={4}
@@ -559,26 +645,46 @@ export default function HelpSupportCenter({ user, onLogin }) {
 
                       {/* File Upload component */}
                       <div>
-                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">Attachments</label>
+                        <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5">
+                          Attachments
+                        </label>
                         <label className="flex flex-col items-center justify-center border border-dashed border-slate-800 bg-slate-900/30 hover:bg-slate-900/50 hover:border-violet-500/40 rounded-xl p-5 cursor-pointer transition">
                           <UploadCloud className="h-7 w-7 text-slate-500 mb-1.5" />
-                          <span className="text-xs font-bold text-slate-300">Upload Files</span>
-                          <span className="text-[10px] text-slate-500 mt-1">PNG, JPG, PDF, Word, TXT (Max 5MB)</span>
-                          <input type="file" multiple className="hidden" onChange={(e) => handleFileChange(e, false)} />
+                          <span className="text-xs font-bold text-slate-300">
+                            Upload Files
+                          </span>
+                          <span className="text-[10px] text-slate-500 mt-1">
+                            PNG, JPG, PDF, Word, TXT (Max 5MB)
+                          </span>
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => handleFileChange(e, false)}
+                          />
                         </label>
 
                         {/* List Attachments */}
                         {attachments.length > 0 && (
                           <div className="mt-3.5 space-y-2 bg-slate-900/20 p-2 border border-slate-900 rounded-xl">
                             {attachments.map((file, idx) => (
-                              <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-slate-900 border border-slate-850">
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-slate-900 border border-slate-850"
+                              >
                                 <div className="flex items-center gap-2 truncate">
                                   <FileText className="h-4.5 w-4.5 text-pink-400 flex-shrink-0" />
-                                  <span className="font-semibold text-slate-300 truncate">{file.name}</span>
+                                  <span className="font-semibold text-slate-300 truncate">
+                                    {file.name}
+                                  </span>
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                                  onClick={() =>
+                                    setAttachments((prev) =>
+                                      prev.filter((_, i) => i !== idx)
+                                    )
+                                  }
                                   className="text-slate-500 hover:text-white"
                                 >
                                   <X className="h-4 w-4" />
@@ -596,7 +702,8 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       >
                         {isLoading ? (
                           <>
-                            <Loader2 className="h-4 w-4 animate-spin" /> Submitting Request...
+                            <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                            Submitting Request...
                           </>
                         ) : (
                           "Submit Ticket"
@@ -617,7 +724,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
                     </button>
 
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-base font-black text-white">My Support Tickets</h3>
+                      <h3 className="text-base font-black text-white">
+                        My Support Tickets
+                      </h3>
                       <button
                         onClick={fetchTickets}
                         className="text-[11px] font-black text-violet-400 hover:underline flex items-center gap-1"
@@ -647,7 +756,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
                         <option value="Open">Open</option>
                         <option value="Assigned">Assigned</option>
                         <option value="In Progress">In Progress</option>
-                        <option value="Waiting for Customer">Waiting for Customer</option>
+                        <option value="Waiting for Customer">
+                          Waiting for Customer
+                        </option>
                         <option value="Resolved">Resolved</option>
                         <option value="Closed">Closed</option>
                       </select>
@@ -662,8 +773,13 @@ export default function HelpSupportCenter({ user, onLogin }) {
                     ) : filteredTickets.length === 0 ? (
                       <div className="text-center border border-slate-850 bg-slate-900/10 rounded-2xl py-14 px-4 text-slate-500">
                         <History className="h-9 w-9 text-slate-700 mx-auto mb-3" />
-                        <p className="text-sm font-bold text-slate-400">No support tickets found</p>
-                        <p className="text-xs text-slate-500 mt-1">If you have any active inquiries, file a new support ticket.</p>
+                        <p className="text-sm font-bold text-slate-400">
+                          No support tickets found
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          If you have any active inquiries, file a new support
+                          ticket.
+                        </p>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -674,7 +790,9 @@ export default function HelpSupportCenter({ user, onLogin }) {
                             className="group p-4 border border-slate-900 hover:border-slate-800 rounded-2xl bg-slate-900/30 hover:bg-slate-900/70 transition cursor-pointer text-left relative overflow-hidden"
                           >
                             <div className="flex items-center justify-between gap-2.5 mb-2.5">
-                              <span className="text-[11px] font-black text-violet-400 uppercase tracking-wider">{ticket.ticketId}</span>
+                              <span className="text-[11px] font-black text-violet-400 uppercase tracking-wider">
+                                {ticket.ticketId}
+                              </span>
                               <span
                                 className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
                                   statusColors[ticket.status] || statusColors.Open
@@ -692,11 +810,14 @@ export default function HelpSupportCenter({ user, onLogin }) {
                               <span>Cat: {ticket.category}</span>
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
-                                {new Date(ticket.createdAt).toLocaleDateString("en-IN", {
-                                  day: "numeric",
-                                  month: "short",
-                                  year: "numeric",
-                                })}
+                                {new Date(ticket.createdAt).toLocaleDateString(
+                                  "en-IN",
+                                  {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  }
+                                )}
                               </span>
                             </div>
                           </div>
@@ -720,10 +841,18 @@ export default function HelpSupportCenter({ user, onLogin }) {
                     <div className="p-4 border border-slate-850 bg-slate-900/40 rounded-2xl flex-shrink-0">
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div>
-                          <span className="text-[11px] font-black text-violet-400 tracking-wider uppercase">{selectedTicket.ticketId}</span>
-                          <h3 className="text-sm font-extrabold text-white mt-1 leading-snug">{selectedTicket.subject}</h3>
+                          <span className="text-[11px] font-black text-violet-400 tracking-wider uppercase">
+                            {selectedTicket.ticketId}
+                          </span>
+                          <h3 className="text-sm font-extrabold text-white mt-1 leading-snug">
+                            {selectedTicket.subject}
+                          </h3>
                         </div>
-                        <span className={`text-[10px] px-2.5 py-0.5 rounded-full border flex-shrink-0 ${statusColors[selectedTicket.status]}`}>
+                        <span
+                          className={`text-[10px] px-2.5 py-0.5 rounded-full border flex-shrink-0 ${
+                            statusColors[selectedTicket.status]
+                          }`}
+                        >
                           {selectedTicket.status}
                         </span>
                       </div>
@@ -732,12 +861,22 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       <div className="mt-4 pt-3 border-t border-slate-850">
                         <div className="flex items-center justify-between text-[9px] font-black uppercase text-slate-500 mb-2">
                           <span>Timeline Tracking</span>
-                          <span>Progress: {Math.round(getTimelineProgress(selectedTicket.status))}%</span>
+                          <span>
+                            Progress:{" "}
+                            {Math.round(
+                              getTimelineProgress(selectedTicket.status)
+                            )}
+                            %
+                          </span>
                         </div>
                         <div className="relative h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
                           <div
                             className="absolute left-0 top-0 h-full bg-gradient-to-r from-violet-600 via-pink-500 to-emerald-400 transition-all duration-500"
-                            style={{ width: `${getTimelineProgress(selectedTicket.status)}%` }}
+                            style={{
+                              width: `${getTimelineProgress(
+                                selectedTicket.status
+                              )}%`,
+                            }}
                           />
                         </div>
                         <div className="flex justify-between mt-2.5 text-[9px] text-slate-400 font-black tracking-wide">
@@ -757,33 +896,42 @@ export default function HelpSupportCenter({ user, onLogin }) {
                             <User className="h-3 w-3" />
                           </div>
                           <div>
-                            <span className="text-xs font-black text-white">{selectedTicket.userName}</span>
-                            <span className="text-[9px] text-slate-500 ml-2 font-bold">CLIENT (ORIGINAL TICKET DESCRIPTION)</span>
+                            <span className="text-xs font-black text-white">
+                              {selectedTicket.userName}
+                            </span>
+                            <span className="text-[9px] text-slate-500 ml-2 font-bold">
+                              CLIENT (ORIGINAL TICKET DESCRIPTION)
+                            </span>
                           </div>
                         </div>
-                        <p className="text-xs text-slate-300 leading-relaxed pl-8 white-space: pre-wrap;">
+                        <p className="text-xs text-slate-300 leading-relaxed pl-8 whitespace-pre-wrap">
                           {selectedTicket.description}
                         </p>
 
                         {/* Attachments if any */}
-                        {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
-                          <div className="mt-3.5 ml-8 grid grid-cols-2 gap-2">
-                            {selectedTicket.attachments.map((file, idx) => (
-                              <a
-                                key={idx}
-                                href={file.url}
-                                download={file.name}
-                                className="flex items-center gap-2 p-2 border border-slate-800 bg-slate-900 hover:bg-slate-900/80 rounded-xl transition text-left"
-                              >
-                                <FileText className="h-4 w-4 text-pink-400 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[10px] font-bold text-slate-300 truncate">{file.name}</p>
-                                  <p className="text-[8px] text-violet-400 uppercase font-black tracking-wider">Download File</p>
-                                </div>
-                              </a>
-                            ))}
-                          </div>
-                        )}
+                        {selectedTicket.attachments &&
+                          selectedTicket.attachments.length > 0 && (
+                            <div className="mt-3.5 ml-8 grid grid-cols-2 gap-2">
+                              {selectedTicket.attachments.map((file, idx) => (
+                                <a
+                                  key={idx}
+                                  href={file.url}
+                                  download={file.name}
+                                  className="flex items-center gap-2 p-2 border border-slate-800 bg-slate-900 hover:bg-slate-900/80 rounded-xl transition text-left"
+                                >
+                                  <FileText className="h-4 w-4 text-pink-400 flex-shrink-0" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-bold text-slate-300 truncate">
+                                      {file.name}
+                                    </p>
+                                    <p className="text-[8px] text-violet-400 uppercase font-black tracking-wider">
+                                      Download File
+                                    </p>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          )}
                       </div>
 
                       {/* Other conversation thread messages */}
@@ -800,13 +948,21 @@ export default function HelpSupportCenter({ user, onLogin }) {
                                       : "bg-emerald-600/25 text-emerald-400 border-emerald-500/20"
                                   }`}
                                 >
-                                  {isClient ? <User className="h-3 w-3" /> : <LifeBuoy className="h-3 w-3" />}
+                                  {isClient ? (
+                                    <User className="h-3 w-3" />
+                                  ) : (
+                                    <LifeBuoy className="h-3 w-3" />
+                                  )}
                                 </div>
                                 <div>
-                                  <span className="text-xs font-black text-white">{msg.senderId?.name || "Support Staff"}</span>
+                                  <span className="text-xs font-black text-white">
+                                    {msg.senderId?.name || "Support Staff"}
+                                  </span>
                                   <span
                                     className={`text-[9px] px-1.5 py-0.5 rounded ml-2 font-black uppercase tracking-wider ${
-                                      isClient ? "bg-violet-500/10 text-violet-400" : "bg-emerald-500/10 text-emerald-400"
+                                      isClient
+                                        ? "bg-violet-500/10 text-violet-400"
+                                        : "bg-emerald-500/10 text-emerald-400"
                                     }`}
                                   >
                                     {isClient ? "Client" : "Support Desk"}
@@ -814,15 +970,18 @@ export default function HelpSupportCenter({ user, onLogin }) {
                                 </div>
                               </div>
                               <span className="text-[9px] font-bold text-slate-500">
-                                {new Date(msg.createdAt).toLocaleTimeString("en-IN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                })}
+                                {new Date(msg.createdAt).toLocaleTimeString(
+                                  "en-IN",
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  }
+                                )}
                               </span>
                             </div>
 
-                            <p className="text-xs text-slate-300 leading-relaxed pl-8 white-space: pre-wrap;">
+                            <p className="text-xs text-slate-300 leading-relaxed pl-8 whitespace-pre-wrap">
                               {msg.message}
                             </p>
 
@@ -836,8 +995,12 @@ export default function HelpSupportCenter({ user, onLogin }) {
                                 >
                                   <FileText className="h-4 w-4 text-pink-400 flex-shrink-0" />
                                   <div className="min-w-0 flex-1">
-                                    <p className="text-[10px] font-bold text-slate-300 truncate">{msg.attachment.name}</p>
-                                    <p className="text-[8px] text-violet-400 uppercase font-black tracking-wider">Download File</p>
+                                    <p className="text-[10px] font-bold text-slate-300 truncate">
+                                      {msg.attachment.name}
+                                    </p>
+                                    <p className="text-[8px] text-violet-400 uppercase font-black tracking-wider">
+                                      Download File
+                                    </p>
                                   </div>
                                 </a>
                               </div>
@@ -851,17 +1014,25 @@ export default function HelpSupportCenter({ user, onLogin }) {
                     {/* Reply Form */}
                     {selectedTicket.status === "Closed" ? (
                       <div className="p-3 text-center border border-slate-850 bg-slate-900/25 rounded-2xl text-slate-500 text-xs font-semibold">
-                        This support ticket has been closed. If you have any follow-up questions, please file a new ticket.
+                        This support ticket has been closed. If you have any
+                        follow-up questions, please file a new ticket.
                       </div>
                     ) : (
-                      <form onSubmit={submitReply} className="flex-shrink-0 bg-slate-900 border border-slate-850 p-2.5 rounded-2xl">
+                      <form
+                        onSubmit={submitReply}
+                        className="flex-shrink-0 bg-slate-900 border border-slate-850 p-2.5 rounded-2xl"
+                      >
                         {replyAttachment && (
                           <div className="mb-2 flex items-center justify-between text-xs px-2.5 py-1.5 bg-slate-950 rounded-xl border border-slate-850">
                             <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
                               <Paperclip className="h-3.5 w-3.5 text-pink-400" />
                               {replyAttachment.name}
                             </span>
-                            <button type="button" onClick={() => setReplyAttachment(null)} className="text-slate-500 hover:text-white">
+                            <button
+                              type="button"
+                              onClick={() => setReplyAttachment(null)}
+                              className="text-slate-500 hover:text-white"
+                            >
                               <X className="h-4 w-4" />
                             </button>
                           </div>
@@ -870,7 +1041,11 @@ export default function HelpSupportCenter({ user, onLogin }) {
                         <div className="flex items-center gap-2">
                           <label className="grid h-9 w-9 place-items-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer transition">
                             <Paperclip className="h-4.5 w-4.5" />
-                            <input type="file" className="hidden" onChange={(e) => handleFileChange(e, true)} />
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => handleFileChange(e, true)}
+                            />
                           </label>
 
                           <input
@@ -883,10 +1058,17 @@ export default function HelpSupportCenter({ user, onLogin }) {
 
                           <button
                             type="submit"
-                            disabled={replySubmitting || (!replyMessage.trim() && !replyAttachment)}
+                            disabled={
+                              replySubmitting ||
+                              (!replyMessage.trim() && !replyAttachment)
+                            }
                             className="grid h-9 w-9 place-items-center rounded-xl bg-violet-600 hover:bg-violet-750 text-white disabled:opacity-45 transition"
                           >
-                            {replySubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4.5 w-4.5" />}
+                            {replySubmitting ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="h-4.5 w-4.5" />
+                            )}
                           </button>
                         </div>
                       </form>
@@ -904,15 +1086,22 @@ export default function HelpSupportCenter({ user, onLogin }) {
                       <ArrowLeft className="h-3.5 w-3.5" /> Back to menu
                     </button>
 
-                    <h3 className="text-base font-black text-white mb-4">Frequently Asked Questions</h3>
+                    <h3 className="text-base font-black text-white mb-4">
+                      Frequently Asked Questions
+                    </h3>
                     <div className="space-y-4">
                       {faqs.map((faq, idx) => (
-                        <div key={idx} className="p-4 border border-slate-900 bg-slate-900/10 rounded-2xl">
+                        <div
+                          key={idx}
+                          className="p-4 border border-slate-900 bg-slate-900/10 rounded-2xl"
+                        >
                           <h4 className="text-xs font-extrabold text-white mb-2 flex items-start gap-2">
                             <HelpCircle className="h-4 w-4 text-pink-400 flex-shrink-0 mt-0.5" />
                             <span>{faq.q}</span>
                           </h4>
-                          <p className="text-[11px] text-slate-400 leading-relaxed pl-6">{faq.a}</p>
+                          <p className="text-[11px] text-slate-400 leading-relaxed pl-6">
+                            {faq.a}
+                          </p>
                         </div>
                       ))}
                     </div>
