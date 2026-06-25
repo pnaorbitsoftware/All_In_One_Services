@@ -617,7 +617,7 @@ const formatBookingTime = (value) => {
 const clientCancelWindowMs = 10 * 60 * 1000;
 
 const getClientCancelState = (booking, now = Date.now()) => {
-  if (["completed", "cancelled"].includes(booking.status)) {
+  if (["completed", "cancelled", "rejected"].includes(booking.status)) {
     return { canCancel: false, label: "Cancel unavailable" };
   }
 
@@ -1872,6 +1872,42 @@ export default function Home() {
     }
   };
 
+  const rejectProviderRequest = async (bookingId, reason = "") => {
+    try {
+      const response = await authenticatedFetch(
+        `${API_URL}/providers/bookings/${bookingId}/reject`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason }),
+        },
+      );
+      const data = await parseApiResponse(
+        response,
+        "Booking request could not be rejected.",
+      );
+      if (!response.ok)
+        throw new Error(
+          data.message || "Booking request could not be rejected.",
+        );
+      setProviderData((current) => ({
+        ...normalizeProviderDashboard(current || {}),
+        availableRequests: (current?.availableRequests || []).filter(
+          (booking) => booking._id !== bookingId,
+        ),
+      }));
+      setStatusMessage("Request rejected.");
+      refreshAfterAction({ provider: true });
+      return data.booking || true;
+    } catch (error) {
+      setStatusMessage(error.message);
+      return false;
+    }
+  };
+
   const updateProviderBookingStatus = async (
     bookingId,
     status,
@@ -2369,6 +2405,7 @@ export default function Home() {
             providerBookings={providerBookings}
             providerEarnings={providerEarnings}
             acceptProviderRequest={acceptProviderRequest}
+            rejectProviderRequest={rejectProviderRequest}
             updateProviderBookingStatus={updateProviderBookingStatus}
             submitEstimate={handleSubmitProviderEstimate}
             refreshDashboard={loadProviderDashboard}
@@ -3338,9 +3375,11 @@ function ClientDashboard({
       bookings: bookings.filter((booking) => booking.status === "completed"),
     },
     {
-      title: "Cancelled services",
-      copy: "Cancelled bookings appear here.",
-      bookings: bookings.filter((booking) => booking.status === "cancelled"),
+      title: "Cancelled / Rejected services",
+      copy: "Cancelled and rejected bookings appear here.",
+      bookings: bookings.filter((booking) =>
+        ["cancelled", "rejected"].includes(booking.status),
+      ),
     },
   ];
   const statusBlocks = [
@@ -3531,13 +3570,14 @@ function ClientDashboard({
               <div><span>Scheduled</span><strong>{formatBookingDate(booking.preferredDate)}</strong><small>{formatBookingTime(booking.preferredTime)}</small></div>
               <div><span>Estimate</span><strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong><small>{booking.paymentStatus || "unpaid"}</small></div>
             </div>
-            {booking.status !== "cancelled" && <section className="client-booking-section"><h3>Service progress</h3><ClientJobProgress booking={booking} /></section>}
+            {!["cancelled", "rejected"].includes(booking.status) && <section className="client-booking-section"><h3>Service progress</h3><ClientJobProgress booking={booking} /></section>}
             <section className="client-booking-section client-booking-address"><h3>Service information</h3><p><MapPin size={16} /> {booking.address}</p><p><MessageCircle size={16} /> {booking.problemDescription || "No problem description"}</p></section>
             <ClientPaymentSection booking={booking} providerStartingPrice={providerPrice} onAcceptEstimate={onAcceptEstimate} onRejectClick={() => setRejectTargetBooking(booking)} onPayNow={onPayNow} isPaying={payingBookingId === booking._id} />
             {booking.status === "cancelled" && <section className="client-booking-section client-booking-cancelled"><h3>Cancellation details</h3><p>Cancelled by: <strong>{booking.cancelledBy || "Not recorded"}</strong></p><p>Cancelled: {booking.cancelledAt ? formatBookingDate(booking.cancelledAt) : "Not recorded"}</p><p>Reason: {booking.cancellationReason || booking.adminRejectionReason || "Reason not provided"}</p></section>}
+            {booking.status === "rejected" && <section className="client-booking-section client-booking-cancelled"><h3>Request rejected</h3><p>The provider was unable to accept this request.</p><p>Rejected: {booking.rejectedAt ? formatBookingDate(booking.rejectedAt) : "Not recorded"}</p><p>Reason: {booking.rejectionReason || "Reason not provided"}</p></section>}
             {booking.status === "completed" && <ClientReviewPanel booking={booking} form={reviewForms[booking._id]} submitting={reviewSubmittingId === booking._id} onChange={(updates) => updateReviewForm(booking._id, updates)} onSubmit={() => submitReview(booking)} />}
           </div>
-          {!['completed', 'cancelled'].includes(booking.status) && <footer><p>{booking.acceptedAt ? "Cancellation closes 10 minutes after acceptance." : "You can cancel until a provider accepts."}</p><button type="button" disabled={!cancelState.canCancel} onClick={async () => { const cancelled = await cancelClientBooking(booking._id); if (cancelled) { setSelectedBooking(null); setCancelledPageOpen(true); } }}>{cancelState.label}</button></footer>}
+          {!['completed', 'cancelled', 'rejected'].includes(booking.status) && <footer><p>{booking.acceptedAt ? "Cancellation closes 10 minutes after acceptance." : "You can cancel until a provider accepts."}</p><button type="button" disabled={!cancelState.canCancel} onClick={async () => { const cancelled = await cancelClientBooking(booking._id); if (cancelled) { setSelectedBooking(null); setCancelledPageOpen(true); } }}>{cancelState.label}</button></footer>}
         </motion.aside>
       </motion.div>
     );
@@ -4254,6 +4294,7 @@ function ProviderDashboard({
   providerBookings,
   providerEarnings,
   acceptProviderRequest,
+  rejectProviderRequest,
   updateProviderBookingStatus,
   submitEstimate,
   refreshDashboard,
@@ -4264,15 +4305,16 @@ function ProviderDashboard({
   onLogout,
 }) {
   const [cancelTargetBooking, setCancelTargetBooking] = useState(null);
+  const [rejectTargetBooking, setRejectTargetBooking] = useState(null);
   const [estimateTargetBooking, setEstimateTargetBooking] = useState(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [historyPageOpen, setHistoryPageOpen] = useState(false);
   const [providerPage, setProviderPage] = useState("overview");
   const confirmedJobs = providerBookings.filter(
-    (booking) => !["completed", "cancelled"].includes(booking.status),
+    (booking) => !["completed", "cancelled", "rejected"].includes(booking.status),
   );
   const historyJobs = providerBookings.filter((booking) =>
-    ["completed", "cancelled"].includes(booking.status),
+    ["completed", "cancelled", "rejected"].includes(booking.status),
   );
   const earningsSummary = providerEarnings?.summary || {};
   const awaitingClientPayment = providerBookings.filter(
@@ -4540,6 +4582,8 @@ function ProviderDashboard({
                         booking={booking}
                         actionLabel="Accept request"
                         onAction={() => acceptProviderRequest(booking._id)}
+                        secondaryActionLabel="Reject request"
+                        secondaryAction={() => setRejectTargetBooking(booking)}
                         alertMode
                       />
                     ))
@@ -4699,6 +4743,19 @@ function ProviderDashboard({
             }}
           />
         )}
+        {!isDashboardLocked && rejectTargetBooking && (
+          <ProviderRejectModal
+            booking={rejectTargetBooking}
+            onClose={() => setRejectTargetBooking(null)}
+            onSubmit={async (reason) => {
+              const updated = await rejectProviderRequest(
+                rejectTargetBooking._id,
+                reason,
+              );
+              if (updated) setRejectTargetBooking(null);
+            }}
+          />
+        )}
         {!isDashboardLocked && estimateTargetBooking && (
           <ProviderEstimateModal
             booking={estimateTargetBooking}
@@ -4738,8 +4795,8 @@ function ProviderClientHistoryPage({
   const completedCount = historyJobs.filter(
     (booking) => booking.status === "completed",
   ).length;
-  const cancelledCount = historyJobs.filter(
-    (booking) => booking.status === "cancelled",
+  const cancelledCount = historyJobs.filter((booking) =>
+    ["cancelled", "rejected"].includes(booking.status),
   ).length;
 
   return (
@@ -4783,7 +4840,7 @@ function ProviderClientHistoryPage({
         />
         <StatCard
           icon={XCircle}
-          label="Cancelled jobs"
+          label="Cancelled / Rejected"
           value={cancelledCount}
         />
       </div>
@@ -5782,6 +5839,7 @@ function JobCard({
   actionLabel,
   onAction,
   secondaryAction,
+  secondaryActionLabel = "Cancel",
   disabled,
   onEstimateClick,
   alertMode = false,
@@ -5856,6 +5914,12 @@ function JobCard({
               {booking.cancellationReason || "Reason not provided"}
             </span>
           )}
+        {booking.status === "rejected" && (
+          <span className="font-black text-rose-600">
+            Rejected by you:{" "}
+            {booking.rejectionReason || "Reason not provided"}
+          </span>
+        )}
       </div>
       {Boolean(onEstimateClick || booking.finalEstimateAmount) && (
         <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50 p-4 dark:border-teal-400/20 dark:bg-teal-400/10">
@@ -5908,7 +5972,7 @@ function JobCard({
       {!canSubmitFinalEstimate &&
         !canUpdateFinalEstimate &&
         !booking.finalEstimateAmount &&
-        !["completed", "cancelled"].includes(booking.status) && (
+        !["completed", "cancelled", "rejected"].includes(booking.status) && (
           <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-black text-amber-800 dark:bg-amber-300/10 dark:text-amber-100">
             Mark arrived before sending the final estimate.
           </p>
@@ -5927,9 +5991,13 @@ function JobCard({
             <button
               type="button"
               onClick={secondaryAction}
-              className="rounded-xl bg-slate-100 px-4 py-3 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
+              className={
+                secondaryActionLabel === "Reject request"
+                  ? "rounded-xl bg-rose-50 px-4 py-3 font-black text-rose-700 transition hover:bg-rose-100 dark:bg-rose-400/10 dark:text-rose-200 dark:hover:bg-rose-400/20"
+                  : "rounded-xl bg-slate-100 px-4 py-3 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
+              }
             >
-              Cancel
+              {secondaryActionLabel}
             </button>
           )}
         </div>
@@ -6012,6 +6080,91 @@ function ProviderCancelModal({ booking, onClose, onSubmit }) {
             className="rounded-xl bg-rose-600 px-5 py-3 font-black text-white shadow-lg shadow-rose-600/15 transition hover:-translate-y-0.5 disabled:opacity-60"
           >
             {submitting ? "Cancelling..." : "Cancel booking"}
+          </button>
+        </div>
+      </motion.form>
+    </motion.div>
+  );
+}
+
+function ProviderRejectModal({ booking, onClose, onSubmit }) {
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      await onSubmit(reason);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/70 p-4 backdrop-blur"
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.form
+        onSubmit={submit}
+        onClick={(event) => event.stopPropagation()}
+        initial={{ opacity: 0, y: 24, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.97 }}
+        className="w-full max-w-xl rounded-[2rem] bg-white p-6 shadow-2xl dark:bg-slate-900"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.16em] text-rose-600">
+              Reject request
+            </p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
+              {booking.service}
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-slate-500">
+              {booking.address || "Address not available"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:bg-amber-300/10 dark:text-amber-100">
+          This request will be removed from your dashboard. You will not be
+          able to accept it again later.
+        </p>
+        <label className="mt-5 grid gap-2 font-bold">
+          Reason (optional)
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            rows="4"
+            placeholder="Let the client know why you cannot take this request."
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-400 dark:border-white/10 dark:bg-slate-950"
+          />
+        </label>
+        <div className="mt-5 flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+          >
+            Go back
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-xl bg-rose-600 px-5 py-3 font-black text-white shadow-lg shadow-rose-600/15 transition hover:-translate-y-0.5 disabled:opacity-60"
+          >
+            {submitting ? "Rejecting..." : "Reject request"}
           </button>
         </div>
       </motion.form>

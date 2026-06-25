@@ -32,7 +32,7 @@ const durationCostMap = {
 const clientCancelWindowMs = 10 * 60 * 1000;
 
 const canClientCancelBooking = (booking) => {
-  if (["completed", "cancelled"].includes(booking.status)) return false;
+  if (["completed", "cancelled", "rejected"].includes(booking.status)) return false;
   if (!booking.acceptedAt) return true;
 
   return Date.now() - new Date(booking.acceptedAt).getTime() <= clientCancelWindowMs;

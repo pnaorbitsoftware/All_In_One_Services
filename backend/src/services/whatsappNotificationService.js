@@ -64,3 +64,9 @@ export const sendCancellationWhatsApp = ({ to, booking, reason, cancelledBy = "S
     to,
     body: `ServiceHub booking ${bookingRef(booking)} for ${bookingService(booking)} was cancelled by ${cancelledBy}. Reason: ${reason || "Not specified"}.`,
   });
+
+export const sendProviderRequestRejectedWhatsApp = ({ to, name, booking, providerName, reason }) =>
+  sendOptionalWhatsApp({
+    to,
+    body: `Hi ${name || booking?.name || "there"}, ${providerName || "the provider"} could not accept your ServiceHub request ${bookingRef(booking)} for ${bookingService(booking)}.${reason ? ` Reason: ${reason}.` : ""} You can choose another provider on ServiceHub.`,
+  });
