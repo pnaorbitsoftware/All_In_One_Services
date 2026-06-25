@@ -8,11 +8,13 @@ import {
   sendProviderCancellationEmail,
   sendProviderAcceptedEmail,
   sendServiceCompletedEmail,
+  sendProviderRequestRejectedEmail,
 } from "../services/mailService.js";
 import {
   sendBookingAcceptedWhatsApp,
   sendCancellationWhatsApp,
   sendServiceCompletedWhatsApp,
+  sendProviderRequestRejectedWhatsApp,
 } from "../services/whatsappNotificationService.js";
 import { emitStatusChange } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
@@ -127,6 +129,7 @@ const buildAvailableBookingFilter = (provider) => ({
     },
   ],
   status: { $in: ["pending", "accepted"] },
+  rejectedByProviders: { $ne: provider._id },
   ...(provider.owner ? { user: { $ne: provider.owner } } : {}),
 });
 
@@ -182,7 +185,7 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
       Booking.find({
         $or: [
           { assignedProvider: provider._id },
-          { requestedProvider: provider._id, status: "cancelled" },
+          { requestedProvider: provider._id, status: { $in: ["cancelled", "rejected"] } },
         ],
       }).select("-workImage").sort({ createdAt: -1 }).lean(),
       provider.isActive
@@ -381,6 +384,94 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
     res.status(500).json({ message: "Booking request could not be accepted." });
   }
 });
+
+router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const { reason = "" } = req.body || {};
+
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    if (provider.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Provider profile is waiting for admin approval." });
+    }
+
+    const existingBooking = await Booking.findOne({
+      _id: req.params.bookingId,
+      ...buildAvailableBookingFilter(provider),
+    });
+
+    if (!existingBooking) {
+      return res.status(404).json({ message: "Booking request is no longer available." });
+    }
+
+    const isDirectRequest = String(existingBooking.requestedProvider || "") === String(provider._id);
+
+    let booking;
+
+    if (isDirectRequest) {
+      // Client requested this specific provider. Since no one else can take it,
+      // the booking itself is marked rejected so the client is notified clearly.
+      booking = await Booking.findOneAndUpdate(
+        {
+          _id: req.params.bookingId,
+          requestedProvider: provider._id,
+          assignedProvider: null,
+        },
+        {
+          status: "rejected",
+          rejectedAt: new Date(),
+          rejectionReason: reason.trim(),
+          $addToSet: { rejectedByProviders: provider._id },
+        },
+        { new: true }
+      );
+    } else {
+      // General request visible to multiple providers in this category.
+      // Only hide it from this provider; other providers should still see it.
+      booking = await Booking.findOneAndUpdate(
+        {
+          _id: req.params.bookingId,
+          assignedProvider: null,
+        },
+        {
+          $addToSet: { rejectedByProviders: provider._id },
+        },
+        { new: true }
+      );
+    }
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking request is no longer available." });
+    }
+
+    if (isDirectRequest) {
+      const client = await User.findById(booking.user);
+      sendProviderRequestRejectedEmail({
+        to: client?.email,
+        booking,
+        reason: booking.rejectionReason,
+      }).catch((error) => console.warn(`Reject email failed: ${error.message}`));
+      sendProviderRequestRejectedWhatsApp({
+        to: client?.phone || booking.phone,
+        name: client?.name || booking.name,
+        booking,
+        providerName: provider.name,
+        reason: booking.rejectionReason,
+      }).catch(() => {});
+
+      emitStatusChange(req.app.get("io"), booking);
+    }
+
+    res.json({ message: "Booking request rejected.", booking });
+  } catch (error) {
+    res.status(500).json({ message: "Booking request could not be rejected." });
+  }
+});
+
 
 router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async (req, res) => {
   try {

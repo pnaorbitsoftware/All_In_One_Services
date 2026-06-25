@@ -155,6 +155,7 @@ const bookingSchema = new mongoose.Schema(
         "job_started",
         "completed",
         "cancelled",
+        "rejected",
       ],
       default: "pending",
     },
@@ -193,6 +194,15 @@ const bookingSchema = new mongoose.Schema(
       ref: "Provider",
       default: null,
     },
+    rejectedByProviders: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Provider",
+        },
+      ],
+      default: [],
+    },
     requestedProviderName: {
       type: String,
       default: "",
@@ -221,6 +231,15 @@ const bookingSchema = new mongoose.Schema(
       default: null,
     },
     cancellationReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+    rejectionReason: {
       type: String,
       default: "",
       trim: true,

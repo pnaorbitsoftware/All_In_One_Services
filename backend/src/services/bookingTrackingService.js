@@ -19,7 +19,7 @@ export const normalizeBookingStatus = (status) => {
 };
 
 export const assertStatusTransition = (currentStatus = "pending", nextStatus) => {
-  if (nextStatus === "cancelled") {
+  if (nextStatus === "cancelled" || nextStatus === "rejected") {
     if (currentStatus === "completed") {
       throw new Error("Completed bookings cannot be cancelled.");
     }

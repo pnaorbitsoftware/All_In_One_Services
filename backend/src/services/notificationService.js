@@ -7,6 +7,7 @@ const statusCopy = {
   job_started: "Your service job has started.",
   completed: "Your service is complete.",
   cancelled: "Your booking was cancelled.",
+  rejected: "The provider could not accept your request.",
 };
 
 export const sendStatusChangeNotification = async (booking) => {
