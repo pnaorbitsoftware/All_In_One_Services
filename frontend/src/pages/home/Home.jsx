@@ -82,11 +82,6 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 let catalogRequestPromise = null;
-let clientBookingsRequestActive = false;
-let providerDashboardRequestActive = false;
-let adminDashboardRequestActive = false;
-let providerEarningsLastFetchedAt = 0;
-const providerActionsInFlight = new Set();
 const fetchCatalogSnapshot = () => {
   if (!catalogRequestPromise) {
     catalogRequestPromise = fetch(`${API_URL}/catalog`)
@@ -100,9 +95,8 @@ const fetchCatalogSnapshot = () => {
 const AUTH_API_URLS = [
   ...new Set([
     API_URL,
-    ...(import.meta.env.DEV
-      ? ["http://localhost:5000/api", "http://localhost:5001/api"]
-      : []),
+    "http://localhost:5000/api",
+    "http://localhost:5001/api",
   ]),
 ];
 const SERVICEHUB_ICON = "/servicehub-icon.png";
@@ -1055,9 +1049,8 @@ export default function Home() {
 
   const refreshClientBookings = useCallback(async () => {
     const currentToken = localStorage.getItem("servicehub_token");
-    if (!currentToken || clientBookingsRequestActive) return;
+    if (!currentToken) return;
 
-    clientBookingsRequestActive = true;
     try {
       const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
         headers: { Authorization: `Bearer ${currentToken}` },
@@ -1066,31 +1059,36 @@ export default function Home() {
       setBookings(data.bookings || []);
     } catch {
       setBookings([]);
-    } finally {
-      clientBookingsRequestActive = false;
     }
   }, []);
 
   useEffect(() => {
-    const shouldRefreshClient =
-      Boolean(token) &&
-      activeView === "client" &&
-      (user?.role === "user" || (user?.role === "provider" && providerClientMode));
-    if (!shouldRefreshClient) return undefined;
+    if (!user || !token || !["user", "provider"].includes(user.role))
+      return undefined;
 
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refreshClientBookings();
+    let stopped = false;
+    const loadClientBookings = async () => {
+      try {
+        const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = response.ok ? await response.json() : { bookings: [] };
+        if (!stopped) setBookings(data.bookings || []);
+      } catch {
+        if (!stopped) setBookings([]);
+      }
     };
 
-    const initialTimer = window.setTimeout(refreshClientBookings, 0);
-    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
+    loadClientBookings();
+    const intervalId = window.setInterval(
+      loadClientBookings,
+      activeView === "client" ? 5000 : 15000,
+    );
     return () => {
-      window.clearTimeout(initialTimer);
+      stopped = true;
       window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [activeView, providerClientMode, refreshClientBookings, user?.role, token]);
+  }, [activeView, user, token]);
 
   const marketplaceServices = useMemo(() => {
     const fallback = services.map((service) => ({
@@ -1222,8 +1220,7 @@ export default function Home() {
       return;
     }
     const currentToken = localStorage.getItem("servicehub_token");
-    if (!currentToken || providerDashboardRequestActive) return;
-    providerDashboardRequestActive = true;
+    if (!currentToken) return;
     try {
       setProviderClientMode(false);
       const response = await authenticatedFetch(
@@ -1246,12 +1243,9 @@ export default function Home() {
         !nextProviderDashboard.dashboardLocked &&
         nextProviderDashboard.provider?.approvalStatus === "approved"
       ) {
-        if (Date.now() - providerEarningsLastFetchedAt >= 60_000) {
-          providerEarningsLastFetchedAt = Date.now();
-          getProviderEarnings()
-            .then(setProviderEarnings)
-            .catch(() => setProviderEarnings(null));
-        }
+        getProviderEarnings()
+          .then(setProviderEarnings)
+          .catch(() => setProviderEarnings(null));
       } else {
         setProviderEarnings(null);
       }
@@ -1294,8 +1288,6 @@ export default function Home() {
       }
       setStatusMessage(error.message);
       setActiveView("provider");
-    } finally {
-      providerDashboardRequestActive = false;
     }
   }, [user]);
 
@@ -1326,17 +1318,16 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (activeView !== "provider" || user?.role !== "provider") return undefined;
+    const isWaitingForApproval =
+      activeView === "provider" &&
+      user?.role === "provider" &&
+      providerProfile?.approvalStatus &&
+      providerProfile.approvalStatus !== "approved";
 
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") loadProviderDashboard();
-    };
-    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
+    if (!isWaitingForApproval) return undefined;
+
+    const intervalId = window.setInterval(loadProviderDashboard, 10000);
+    return () => window.clearInterval(intervalId);
   }, [
     activeView,
     loadProviderDashboard,
@@ -1438,8 +1429,6 @@ export default function Home() {
   };
 
   const loadAdminDashboard = useCallback(async () => {
-    if (adminDashboardRequestActive) return;
-    adminDashboardRequestActive = true;
     try {
       if (user?.role !== "admin") throw new Error("Admin access required.");
       const currentToken = localStorage.getItem("servicehub_token");
@@ -1465,8 +1454,6 @@ export default function Home() {
       setActiveView("admin");
     } catch (error) {
       setStatusMessage(error.message);
-    } finally {
-      adminDashboardRequestActive = false;
     }
   }, [user]);
 
@@ -1510,18 +1497,21 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (activeView !== "admin" || user?.role !== "admin") return undefined;
+    if (activeView !== "admin") return undefined;
 
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") loadAdminDashboard();
-    };
-    const timer = window.setInterval(refreshWhenVisible, 120_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
+    const initialRefresh = window.setTimeout(
+      () => refreshAdminContactMessages({ silent: true }),
+      0,
+    );
+    const timer = window.setInterval(
+      () => refreshAdminContactMessages({ silent: true }),
+      30000,
+    );
     return () => {
+      window.clearTimeout(initialRefresh);
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [activeView, loadAdminDashboard, user?.role]);
+  }, [activeView]);
 
   const refreshAfterAction = ({
     client = false,
@@ -1531,6 +1521,11 @@ export default function Home() {
     if (client) refreshClientBookings();
     if (provider) loadProviderDashboard();
     if (admin) loadAdminDashboard();
+
+    window.setTimeout(() => {
+      if (client) refreshClientBookings();
+      if (provider) loadProviderDashboard();
+    }, 900);
   };
 
   const handleLogout = () => {
@@ -1847,8 +1842,6 @@ export default function Home() {
   };
 
   const acceptProviderRequest = async (bookingId) => {
-    if (providerActionsInFlight.has(`accept:${bookingId}`)) return;
-    providerActionsInFlight.add(`accept:${bookingId}`);
     try {
       const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/accept`,
@@ -1873,10 +1866,9 @@ export default function Home() {
         bookings: [data.booking, ...(current?.bookings || [])],
       }));
       setStatusMessage("Request accepted. The client has been notified.");
+      refreshAfterAction({ provider: true });
     } catch (error) {
       setStatusMessage(error.message);
-    } finally {
-      providerActionsInFlight.delete(`accept:${bookingId}`);
     }
   };
 
@@ -1921,9 +1913,6 @@ export default function Home() {
     status,
     cancellationReason = "",
   ) => {
-    const actionKey = `status:${bookingId}`;
-    if (providerActionsInFlight.has(actionKey)) return false;
-    providerActionsInFlight.add(actionKey);
     try {
       const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/status`,
@@ -1953,12 +1942,11 @@ export default function Home() {
           ? "Booking marked work completed."
           : `Booking marked ${status}.`,
       );
+      refreshAfterAction({ provider: true });
       return data.booking;
     } catch (error) {
       setStatusMessage(error.message);
       return false;
-    } finally {
-      providerActionsInFlight.delete(actionKey);
     }
   };
 
@@ -3400,28 +3388,24 @@ function ClientDashboard({
       value: bookingSections[0].bookings.length,
       copy: "Waiting for provider response.",
       tone: "from-amber-50 to-white text-amber-700",
-      icon: Clock,
     },
     {
       title: "Active",
       value: bookingSections[1].bookings.length,
       copy: "Provider accepted and live work.",
       tone: "from-blue-50 to-white text-blue-700",
-      icon: CheckCircle,
     },
     {
       title: "Completed",
       value: bookingSections[2].bookings.length,
       copy: "Finished service records.",
       tone: "from-emerald-50 to-white text-emerald-700",
-      icon: CheckCircle,
     },
     {
       title: "Cancelled",
       value: bookingSections[3].bookings.length,
       copy: "Cancelled request records.",
       tone: "from-rose-50 to-white text-rose-700",
-      icon: XCircle,
     },
   ];
   const clientSidebarItems = [
@@ -3576,20 +3560,15 @@ function ClientDashboard({
       <motion.div className="client-booking-drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setSelectedBooking(null)}>
         <motion.aside className="client-booking-drawer" initial={{ x: 36, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 36, opacity: 0 }} role="dialog" aria-modal="true" aria-label="Booking details">
           <header>
-            <div><span>ServiceHub booking</span><h2>Booking Details</h2><p>#{booking.bookingId || booking._id}</p></div>
+            <div><span>Booking details</span><h2>{booking.service}</h2><p>#{booking.bookingId || booking._id}</p></div>
             <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details"><X size={20} /></button>
           </header>
           <div className="client-booking-drawer-body">
-            <section className="client-booking-provider">
-              <div className="client-booking-provider-avatar" aria-hidden="true"><UserRound size={24} /></div>
-              <div><span>Assigned professional</span><strong>{providerName}</strong><small>{provider?.phone || "Contact available after acceptance"}</small></div>
-              <StatusBadge status={booking.status} />
-            </section>
             <div className="client-booking-summary">
-              <div><span>Service</span><strong>{booking.service}</strong></div>
+              <div><span>Status</span><StatusBadge status={booking.status} /></div>
+              <div><span>Provider</span><strong>{providerName}</strong><small>{provider?.phone || "Contact available after acceptance"}</small></div>
               <div><span>Scheduled</span><strong>{formatBookingDate(booking.preferredDate)}</strong><small>{formatBookingTime(booking.preferredTime)}</small></div>
               <div><span>Estimate</span><strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong><small>{booking.paymentStatus || "unpaid"}</small></div>
-              <div><span>Payment status</span><PaymentStatusBadge status={booking.paymentStatus || "unpaid"} /></div>
             </div>
             {!["cancelled", "rejected"].includes(booking.status) && <section className="client-booking-section"><h3>Service progress</h3><ClientJobProgress booking={booking} /></section>}
             <section className="client-booking-section client-booking-address"><h3>Service information</h3><p><MapPin size={16} /> {booking.address}</p><p><MessageCircle size={16} /> {booking.problemDescription || "No problem description"}</p></section>
@@ -3802,7 +3781,7 @@ function ClientDashboard({
         <button
           type="button"
           onClick={onBrowseServices}
-          className="client-browse-button rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
+          className="rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
         >
           {t("browseServices")}
         </button>
@@ -3818,7 +3797,7 @@ function ClientDashboard({
           </>
         )}
       </div>
-      <div className="client-stats-grid grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         <StatCard
           icon={CalendarCheck}
           label="My bookings"
@@ -3858,9 +3837,6 @@ function ClientDashboard({
             }}
             className={`dashboard-status-card rounded-2xl border border-slate-200 bg-gradient-to-br ${block.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:from-white/10 dark:to-white/5`}
           >
-            <span className={`dashboard-status-icon dashboard-status-icon-${block.title.toLowerCase()}`} aria-hidden="true">
-              <block.icon size={20} />
-            </span>
             <p className="text-3xl font-black text-slate-950 dark:text-white">
               {block.value}
             </p>
@@ -3869,13 +3845,13 @@ function ClientDashboard({
               {block.copy}
             </p>
             {block.title === "Cancelled" && (
-              <span className="dashboard-status-link mt-3 inline-flex rounded-full bg-rose-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15">
-                View Cancelled
+              <span className="mt-3 inline-flex rounded-full bg-rose-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15">
+                Cancelled services
               </span>
             )}
             {block.title === "Completed" && (
-              <span className="dashboard-status-link mt-3 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-600/15">
-                View Completed
+              <span className="mt-3 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-600/15">
+                Completed services
               </span>
             )}
           </button>
@@ -4474,6 +4450,7 @@ function ProviderDashboard({
           approvalCopy={approvalCopy}
           providerProfile={providerProfile}
           refreshDashboard={refreshDashboard}
+          setStatusMessage={setStatusMessage}
         />
       </DashboardShell>
     );
@@ -4894,10 +4871,14 @@ function ProviderApprovalWaitCard({
   approvalCopy,
   providerProfile,
   refreshDashboard,
+  setStatusMessage,
 }) {
+  const [resubmitOpen, setResubmitOpen] = useState(false);
+  const isRejected = approvalStatus === "rejected";
+
   return (
     <section className="mx-auto mt-8 grid min-h-[52vh] max-w-3xl place-items-center rounded-[2rem] border border-amber-200 bg-white p-6 text-center text-slate-950 shadow-xl shadow-slate-950/10 dark:border-amber-300/30 dark:bg-white/5 dark:text-white sm:p-10">
-      <div>
+      <div className="w-full">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
           <Clock size={30} />
         </div>
@@ -4928,15 +4909,349 @@ function ProviderApprovalWaitCard({
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={refreshDashboard}
-          className="mt-7 rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
-        >
-          Check approval status
-        </button>
+
+        {isRejected && !resubmitOpen && (
+          <div className="mx-auto mt-4 flex max-w-xl flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={refreshDashboard}
+              className="rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+            >
+              Check approval status
+            </button>
+            <button
+              type="button"
+              onClick={() => setResubmitOpen(true)}
+              className="rounded-2xl border-2 border-amber-600 px-6 py-4 text-sm font-black text-amber-700 transition hover:-translate-y-0.5 dark:border-amber-300 dark:text-amber-200"
+            >
+              Fix details &amp; resubmit
+            </button>
+          </div>
+        )}
+
+        {isRejected && resubmitOpen && (
+          <ProviderResubmitVerification
+            providerProfile={providerProfile}
+            onCancel={() => setResubmitOpen(false)}
+            onSuccess={() => {
+              setResubmitOpen(false);
+              refreshDashboard?.();
+            }}
+            setStatusMessage={setStatusMessage}
+          />
+        )}
+
+        {!isRejected && (
+          <button
+            type="button"
+            onClick={refreshDashboard}
+            className="mt-7 rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+          >
+            Check approval status
+          </button>
+        )}
       </div>
     </section>
+  );
+}
+
+function ProviderResubmitField({ label, hint, accept, value, fileName, onChange, onRemove, required = false, isDocument = false }) {
+  return (
+    <div className="text-left">
+      <span className="mb-1.5 flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+        {label}
+        {required && <em className="text-rose-600 dark:text-rose-300">Required</em>}
+      </span>
+      <label
+        className={`flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-dashed p-3 transition ${
+          value
+            ? "border-emerald-400 bg-emerald-50 dark:border-emerald-300/40 dark:bg-emerald-400/10"
+            : "border-slate-300 bg-white hover:border-amber-400 dark:border-white/15 dark:bg-white/5"
+        }`}
+      >
+        <input type="file" accept={accept} onChange={onChange} className="hidden" />
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+          <UploadCloud size={18} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <strong className="block truncate text-sm font-bold text-slate-900 dark:text-white">
+            {value ? fileName || "File selected" : "Choose file"}
+          </strong>
+          <small className="block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {value ? "Ready to upload" : hint}
+          </small>
+        </span>
+        {value && <CheckCircle className="flex-none text-emerald-600 dark:text-emerald-300" size={18} />}
+      </label>
+      {value && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="mt-1.5 flex items-center gap-1 text-xs font-bold text-rose-600 hover:underline dark:text-rose-300"
+        >
+          <Trash2 size={12} /> Remove
+        </button>
+      )}
+      {!isDocument && value && (
+        <img src={value} alt="" className="mt-2 h-16 w-16 rounded-lg border border-slate-200 object-cover dark:border-white/10" />
+      )}
+    </div>
+  );
+}
+
+function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, setStatusMessage }) {
+  const [form, setForm] = useState({
+    name: providerProfile?.name || "",
+    category: providerProfile?.category || "",
+    customCategory: providerProfile?.customCategory || "",
+    location: providerProfile?.location || "",
+    preferredWorkLocation: providerProfile?.preferredWorkLocation || "",
+    phone: providerProfile?.phone || "",
+    price: providerProfile?.price || "",
+    aadhaarNumber: "",
+    aadhaarFrontUrl: "",
+    aadhaarDocumentName: "",
+    aadhaarBackUrl: "",
+    aadhaarBackDocumentName: "",
+  });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const readDocument = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Selected file could not be read."));
+      reader.readAsDataURL(file);
+    });
+
+  const handleAadhaarChange = (field, nameField) => async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setForm((prev) => ({ ...prev, [field]: "", [nameField]: "" }));
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Upload Aadhaar as PNG, JPG, WEBP, or PDF.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Aadhaar document must be under 4MB.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const dataUrl = await readDocument(file);
+      setError("");
+      setForm((prev) => ({ ...prev, [field]: dataUrl, [nameField]: file.name }));
+    } catch (readError) {
+      setError(readError.message || "Aadhaar document could not be prepared.");
+      event.target.value = "";
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    const aadhaarDigits = form.aadhaarNumber.replace(/\D/g, "");
+    if (aadhaarDigits.length !== 12) {
+      setError("Enter a valid 12-digit Aadhaar number.");
+      return;
+    }
+    if (!form.aadhaarFrontUrl) {
+      setError("Upload Aadhaar front image or PDF before resubmitting.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const response = await authenticatedFetch(`${API_URL}/providers/resubmit-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: form.name,
+          category: form.category,
+          customCategory: form.customCategory,
+          location: form.location,
+          preferredWorkLocation: form.preferredWorkLocation,
+          phone: form.phone,
+          price: form.price,
+          aadhaarNumber: aadhaarDigits,
+          aadhaarFrontUrl: form.aadhaarFrontUrl,
+          aadhaarDocumentName: form.aadhaarDocumentName,
+          aadhaarBackUrl: form.aadhaarBackUrl,
+          aadhaarBackDocumentName: form.aadhaarBackDocumentName,
+        }),
+      });
+      const data = await parseApiResponse(response, "Registration could not be resubmitted.");
+      if (!response.ok) {
+        throw new Error(data.message || "Registration could not be resubmitted.");
+      }
+      setStatusMessage?.(
+        data.message || "Your registration has been resubmitted and is now waiting for admin review.",
+      );
+      onSuccess?.();
+    } catch (submitError) {
+      setError(submitError.message || "Registration could not be resubmitted. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mx-auto mt-5 grid max-w-xl gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm dark:border-white/10 dark:bg-white/5"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-black text-slate-900 dark:text-white">Resubmit your registration</h3>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <p className="-mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+        Update what admin flagged (most often the Aadhaar upload) and send your profile back for review.
+        You don&apos;t need to create a new account.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Business / provider name
+          <input
+            type="text"
+            value={form.name}
+            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Phone
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Service category
+          <input
+            type="text"
+            value={form.category}
+            onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Location
+          <input
+            type="text"
+            value={form.location}
+            onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Preferred work location
+          <input
+            type="text"
+            value={form.preferredWorkLocation}
+            onChange={(event) => setForm((prev) => ({ ...prev, preferredWorkLocation: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Price
+          <input
+            type="text"
+            value={form.price}
+            onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+          />
+        </label>
+      </div>
+
+      <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+        Aadhaar number
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength="14"
+          value={form.aadhaarNumber}
+          onChange={(event) => {
+            const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
+            const formatted = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+            setForm((prev) => ({ ...prev, aadhaarNumber: formatted }));
+          }}
+          placeholder="XXXX XXXX 1234"
+          className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+          required
+        />
+      </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ProviderResubmitField
+          label="Aadhaar front or PDF"
+          hint="Image or PDF up to 4MB"
+          accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+          value={form.aadhaarFrontUrl}
+          fileName={form.aadhaarDocumentName}
+          onChange={handleAadhaarChange("aadhaarFrontUrl", "aadhaarDocumentName")}
+          onRemove={() => setForm((prev) => ({ ...prev, aadhaarFrontUrl: "", aadhaarDocumentName: "" }))}
+          required
+          isDocument={form.aadhaarDocumentName?.toLowerCase().endsWith(".pdf")}
+        />
+        <ProviderResubmitField
+          label="Aadhaar back"
+          hint="Optional with a complete Aadhaar PDF"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          value={form.aadhaarBackUrl}
+          fileName={form.aadhaarBackDocumentName}
+          onChange={handleAadhaarChange("aadhaarBackUrl", "aadhaarBackDocumentName")}
+          onRemove={() => setForm((prev) => ({ ...prev, aadhaarBackUrl: "", aadhaarBackDocumentName: "" }))}
+        />
+      </div>
+
+      {error && (
+        <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">
+          {error}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-xl px-5 py-3 text-sm font-black text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded-xl bg-amber-600 px-6 py-3 text-sm font-black text-white shadow-lg shadow-amber-600/20 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? "Resubmitting..." : "Resubmit for review"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -6215,9 +6530,6 @@ function StatusBadge({ status = "pending" }) {
 function EmptyState({ title, copy }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-white/15">
-      <span className="dashboard-empty-icon" aria-hidden="true">
-        <ListChecks size={30} />
-      </span>
       <p className="font-black">{title}</p>
       <p className="mt-2 text-sm text-slate-500">{copy}</p>
     </div>
