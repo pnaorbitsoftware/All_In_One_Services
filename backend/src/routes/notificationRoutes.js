@@ -112,6 +112,24 @@ async function getProviderNotifications(userId) {
   return [...requests, ...assigned].sort((a, b) => String(b.time).localeCompare(String(a.time)));
 }
 
+
+router.post("/push-token", requireAuth, async (req, res) => {
+  try {
+    const token = String(req.body.expoPushToken || "").trim();
+
+    if (!token || !token.startsWith("ExponentPushToken[")) {
+      return res.status(400).json({ message: "Valid Expo push token is required." });
+    }
+
+    req.user.expoPushTokens = Array.from(new Set([...(req.user.expoPushTokens || []), token])).slice(-5);
+    await req.user.save();
+
+    res.json({ message: "Push token saved.", pushTokenSaved: true });
+  } catch (error) {
+    res.status(500).json({ message: "Push token could not be saved." });
+  }
+});
+
 router.get("/", requireAuth, async (req, res) => {
   try {
     const notifications =

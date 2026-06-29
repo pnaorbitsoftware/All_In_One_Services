@@ -20,6 +20,10 @@ import { buildStatusUpdateOperation } from "../services/bookingTrackingService.j
 import { emitStatusChange } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
 import { invalidateCatalogCache } from "./catalogRoutes.js";
+import { buildServiceRegexes, normalizeServiceName } from "../utils/serviceMatching.js";
+import { buildProviderPaymentSummary, DEFAULT_PROVIDER_SHARE_PERCENT } from "../utils/paymentSummary.js";
+import { buildTrackingEvent, ensureTrackingHistory, normalizeTrackingStatus } from "../utils/tracking.js";
+import { sendPushNotification } from "../utils/pushNotifications.js";
 
 const router = express.Router();
 const providerIdentityCache = new Map();
@@ -461,6 +465,18 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
     }).catch(() => {});
 
     emitStatusChange(req.app.get("io"), booking);
+
+
+      sendPushNotification({
+        tokens: client?.expoPushTokens || [],
+        title: "Provider assigned",
+        body: `${provider.name} accepted your ${booking.service} booking.`,
+        data: {
+          type: "booking",
+          bookingId: String(booking._id),
+          status: "Provider Assigned",
+        },
+      });
 
     res.json({ booking });
   } catch (error) {
