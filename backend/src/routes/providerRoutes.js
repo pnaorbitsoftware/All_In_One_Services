@@ -11,6 +11,7 @@ import {
 import { buildServiceRegexes, normalizeServiceName } from "../utils/serviceMatching.js";
 import { buildProviderPaymentSummary, DEFAULT_PROVIDER_SHARE_PERCENT } from "../utils/paymentSummary.js";
 import { buildTrackingEvent, ensureTrackingHistory, normalizeTrackingStatus } from "../utils/tracking.js";
+import { sendPushNotification } from "../utils/pushNotifications.js";
 
 const router = express.Router();
 const availabilityStatuses = ["active", "inactive", "absent", "available"];
@@ -327,6 +328,18 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
       booking,
       provider,
     });
+
+
+      sendPushNotification({
+        tokens: client?.expoPushTokens || [],
+        title: "Provider assigned",
+        body: `${provider.name} accepted your ${booking.service} booking.`,
+        data: {
+          type: "booking",
+          bookingId: String(booking._id),
+          status: "Provider Assigned",
+        },
+      });
 
     res.json({ booking });
   } catch (error) {

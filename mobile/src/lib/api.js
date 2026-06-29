@@ -302,6 +302,12 @@ export const contactApi = {
 };
 export const notificationApi = {
   list: (token) => apiRequest("/notifications", { token }),
+  savePushToken: (token, expoPushToken) =>
+    apiRequest("/notifications/push-token", {
+      method: "POST",
+      token,
+      body: { expoPushToken },
+    }),
   markRead: (token, notificationId) => apiRequest(`/notifications/${notificationId}/read`, { method: "PATCH", token }),
   markAllRead: (token) => apiRequest("/notifications/read-all", { method: "PATCH", token }),
 };

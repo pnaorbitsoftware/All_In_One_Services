@@ -4,12 +4,14 @@ import express from "express";
 import requireAuth from "../middleware/requireAuth.js";
 import Booking from "../models/Booking.js";
 import Provider from "../models/Provider.js";
+import User from "../models/User.js";
 import {
   applyPaymentSplit,
   buildProviderPaymentSummary,
   DEFAULT_PROVIDER_SHARE_PERCENT,
   getProviderPayoutAmount,
 } from "../utils/paymentSummary.js";
+import { sendPushNotification } from "../utils/pushNotifications.js";
 
 const router = express.Router();
 const currency = process.env.PAYMENT_CURRENCY || "INR";
@@ -205,6 +207,18 @@ router.post("/bookings/:bookingId/estimate", requireAuth, requireProviderRole, a
     applyPaymentSplit(booking);
     await booking.save();
 
+      const client = await User.findById(booking.user);
+      sendPushNotification({
+        tokens: client?.expoPushTokens || [],
+        title: "Estimate received",
+        body: `${provider.name} sent ₹${booking.finalEstimateAmount} estimate for ${booking.service}.`,
+        data: {
+          type: "estimate",
+          bookingId: String(booking._id),
+          status: "estimate-submitted",
+        },
+      });
+
     res.json({ message: "Estimate sent to client.", booking });
   } catch (error) {
     res.status(500).json({ message: "Estimate could not be sent." });
@@ -351,6 +365,29 @@ router.post("/verify", requireAuth, requireClientRole, async (req, res) => {
     booking.adminPayoutStatus = "pending";
     applyPaymentSplit(booking);
     await booking.save();
+
+      const provider = booking.assignedProvider ? await Provider.findById(booking.assignedProvider).populate("owner") : null;
+      sendPushNotification({
+        tokens: req.user.expoPushTokens || [],
+        title: "Payment completed",
+        body: `Payment completed for ${booking.service}. Your provider can start the work now.`,
+        data: {
+          type: "payment",
+          bookingId: String(booking._id),
+          status: "paid",
+        },
+      });
+
+      sendPushNotification({
+        tokens: provider?.owner?.expoPushTokens || [],
+        title: "Client payment received",
+        body: `${booking.name} completed payment for ${booking.service}. You can start the service.`,
+        data: {
+          type: "payment",
+          bookingId: String(booking._id),
+          status: "paid",
+        },
+      });
 
     res.json({ message: "Payment verified. Amount received by admin and provider payout is pending admin release.", booking, payment: buildPaymentMeta(booking) });
   } catch (error) {

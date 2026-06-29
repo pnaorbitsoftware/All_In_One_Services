@@ -43,6 +43,10 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    expoPushTokens: {
+      type: [String],
+      default: [],
+    },
     role: {
       type: String,
       enum: ["user", "provider", "admin"],
@@ -55,7 +59,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
   },
-  { collection: "users", timestamps: true }
+  { collection: "users", timestamps: true },
 );
 
 userSchema.pre("save", async function hashPassword(next) {

@@ -21,7 +21,7 @@ import {
 } from "./src/lib/api";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
 import { getCurrentReadableLocation, watchProviderLocation } from "./src/lib/location";
-import { setupNotificationSoundChannel } from "./src/lib/pushNotifications";
+import { getExpoPushTokenSafely, setupNotificationSoundChannel } from "./src/lib/pushNotifications";
 import { useNetworkStatus } from "./src/lib/network";
 import {
   clearSession,
@@ -234,6 +234,23 @@ function ServiceHubApp() {
 
   const [toast, setToast] = useState("");
 
+  const registerPushToken = useCallback(
+    async (sessionToken) => {
+      if (!sessionToken) return;
+
+      try {
+        const expoPushToken = await getExpoPushTokenSafely();
+        if (expoPushToken) {
+          await notificationApi.savePushToken(sessionToken, expoPushToken);
+        }
+      } catch {
+        // Push notification registration should never block login or app startup.
+      }
+    },
+    []
+  );
+
+
   useEffect(() => {
     let mounted = true;
 
@@ -258,6 +275,7 @@ function ServiceHubApp() {
         if (!mounted) return;
         setToken(restoredToken);
         setUser(restoredUser);
+          registerPushToken(restoredToken);
         setSettings(savedSettings);
         setPersistedSettings(savedSettings);
         setAddresses(savedAddresses);
@@ -727,6 +745,7 @@ function ServiceHubApp() {
         await saveSession(data.token, nextUser);
         setToken(data.token);
         setUser(nextUser);
+          registerPushToken(data.token);
         setAuthOpen(false);
 
         if (nextUser?.role === "user" && pendingBookingContext?.service) {
