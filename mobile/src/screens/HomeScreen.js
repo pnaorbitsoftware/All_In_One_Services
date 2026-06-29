@@ -671,7 +671,7 @@ function SearchBar({ value, onChangeText, suggestion, onSuggestionPress, t }) {
           autoCorrect={false}
         />
         {showSuggestion ? (
-          <View style={[styles.searchPlaceholderRow, { pointerEvents: "box-none" }]}>
+          <View pointerEvents="box-none" style={styles.searchPlaceholderRow}>
             <Text style={[styles.searchPlaceholderLead, { color: theme.textMuted }]}>{t("search.searchFor", "Search for")}</Text>
             <Pressable accessibilityRole="button" onPress={() => onSuggestionPress(suggestion)} style={({ pressed }) => [styles.searchSuggestionPill, { backgroundColor: theme.tealSoft }, pressed && styles.pressed]}>
               <Text style={[styles.searchSuggestionText, { color: theme.teal }]} numberOfLines={1}>{suggestion}</Text>
