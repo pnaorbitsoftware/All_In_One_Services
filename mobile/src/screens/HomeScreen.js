@@ -117,6 +117,42 @@ function createServicePayload(item, marketplaceServices = []) {
   };
 }
 
+// ====== AnimatedPressable – reusable for press animation ======
+const AnimatedPressable = ({ onPress, style, children, ...props }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onPress}
+      {...props}
+    >
+      <Animated.View style={[style, { transform: [{ scale: scaleAnim }] }]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+};
+
 export default function HomeScreen({
   catalogProviders,
   catalogLoading,
@@ -246,7 +282,7 @@ export default function HomeScreen({
 
       <ProfileCompletionBanner visible={profileIncomplete} onPress={onCompleteProfile} />
 
-      {/* ---- NEW ORDER: Search Bar first ---- */}
+      {/* ---- SEARCH BAR ---- */}
       <SearchBar
         value={searchTerm}
         onChangeText={onSearchChange}
@@ -257,12 +293,13 @@ export default function HomeScreen({
 
       {searchResults.length ? <SearchResults results={searchResults} onPress={openServiceProviders} /> : null}
 
-      {/* ---- NEW: Category Grid (below search) ---- */}
+      {/* ---- TOP CATEGORY GRID (compact) ---- */}
       <CategoryGrid categories={serviceCategories} onPress={openServiceProviders} />
 
-      {/* ---- Hero Carousel (now below search) ---- */}
+      {/* ---- HERO CAROUSEL ---- */}
       <HeroCarousel onPress={() => openServiceProviders({ name: "Full Home Cleaning", category: "Bathroom & Kitchen Cleaning" })} />
 
+      {/* ---- BOTTOM CATEGORY STICKERS (compact) ---- */}
       <DiscoveryStickers onPress={openServiceProviders} />
 
       <SectionHeader title="Popular services" actionLabel="View all" onAction={() => openServiceProviders({ name: "Providers", category: "Home services" })} />
@@ -334,33 +371,73 @@ function LocationHeader({ location, unreadCount, onOpenLocation, onOpenNotificat
   );
 }
 
-// ====== NEW: Category Grid (emoji cards) ======
+// ====== CategoryGrid – updated with compact design and animation ======
 function CategoryGrid({ categories, onPress }) {
   const theme = useThemeColors();
   const emojiMap = CATEGORY_EMOJIS;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryGrid}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.categoryGrid}
+    >
       {categories.map((category) => {
         const emoji = emojiMap[category.title] || "🛠️";
         return (
-          <Pressable
+          <AnimatedPressable
             key={category.id || category.title}
-            style={({ pressed }) => [styles.categoryCard, { backgroundColor: theme.surface }, pressed && styles.pressed]}
             onPress={() => onPress({ name: category.title, category: category.title })}
+            style={[styles.categoryCard, { backgroundColor: theme.surface }]}
           >
             <Text style={styles.categoryEmoji}>{emoji}</Text>
             <Text style={[styles.categoryName, { color: theme.text }]} numberOfLines={2}>
               {category.title}
             </Text>
-          </Pressable>
+          </AnimatedPressable>
         );
       })}
     </ScrollView>
   );
 }
 
-// ====== REDESIGNED HERO CAROUSEL ======
+// ====== DiscoveryStickers – updated with compact design and animation ======
+function DiscoveryStickers({ onPress }) {
+  const theme = useThemeColors();
+  const stickers = [
+    { emoji: "🌧️", label: "Monsoon Ready", service: { name: "AC Repair", category: "AC & Appliance Repair" } },
+    { emoji: "🧹", label: "Deep Clean", service: { name: "Bathroom Cleaning", category: "Bathroom & Kitchen Cleaning" } },
+    { emoji: "🛠️", label: "Appliance Repair", service: { name: "Electrician", category: "Electrician, Plumber & Carpenter" } },
+    { emoji: "🚿", label: "Bathroom Cleaning", service: { name: "Bathroom Cleaning", category: "Bathroom & Kitchen Cleaning" } },
+    { emoji: "❄️", label: "AC Service", service: { name: "AC Repair", category: "AC & Appliance Repair" } },
+    { emoji: "🚗", label: "Car Wash", service: { name: "Car Wash", category: "Car Wash & Service" } },
+    { emoji: "🐜", label: "Pest Control", service: { name: "Pest Control", category: "Pest Control" } },
+    { emoji: "🧺", label: "Laundry", service: { name: "Laundry", category: "Laundry & Dry Cleaning" } },
+  ];
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.stickerRail}
+    >
+      {stickers.map((item) => (
+        <AnimatedPressable
+          key={item.label}
+          onPress={() => onPress(item.service)}
+          style={[styles.discoverySticker, { backgroundColor: theme.surface }]}
+        >
+          <Text style={styles.stickerEmoji}>{item.emoji}</Text>
+          <Text style={[styles.discoveryStickerText, { color: theme.text }]}>
+            {item.label}
+          </Text>
+        </AnimatedPressable>
+      ))}
+    </ScrollView>
+  );
+}
+
+// ====== HeroCarousel – unchanged (kept as is) ======
 function HeroCarousel({ onPress }) {
   const { width } = useWindowDimensions();
   const theme = useThemeColors();
@@ -575,32 +652,7 @@ function HeroCarousel({ onPress }) {
   );
 }
 
-// ====== REDESIGNED DiscoveryStickers (emoji-based) ======
-function DiscoveryStickers({ onPress }) {
-  const theme = useThemeColors();
-  const stickers = [
-    { emoji: "🌧️", label: "Monsoon Ready", service: { name: "AC Repair", category: "AC & Appliance Repair" } },
-    { emoji: "🧹", label: "Deep Clean", service: { name: "Bathroom Cleaning", category: "Bathroom & Kitchen Cleaning" } },
-    { emoji: "🛠️", label: "Appliance Repair", service: { name: "Electrician", category: "Electrician, Plumber & Carpenter" } },
-    { emoji: "🚿", label: "Bathroom Cleaning", service: { name: "Bathroom Cleaning", category: "Bathroom & Kitchen Cleaning" } },
-    { emoji: "❄️", label: "AC Service", service: { name: "AC Repair", category: "AC & Appliance Repair" } },
-    { emoji: "🚗", label: "Car Wash", service: { name: "Car Wash", category: "Car Wash & Service" } },
-    { emoji: "🐜", label: "Pest Control", service: { name: "Pest Control", category: "Pest Control" } },
-    { emoji: "🧺", label: "Laundry", service: { name: "Laundry", category: "Laundry & Dry Cleaning" } },
-  ];
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickerRail}>
-      {stickers.map((item) => (
-        <Pressable key={item.label} onPress={() => onPress(item.service)} style={({ pressed }) => [styles.discoverySticker, { backgroundColor: theme.surface }, pressed && styles.pressed]}>
-          <Text style={styles.stickerEmoji}>{item.emoji}</Text>
-          <Text style={[styles.discoveryStickerText, { color: theme.text }]}>{item.label}</Text>
-        </Pressable>
-      ))}
-    </ScrollView>
-  );
-}
-
-// ====== Search Bar – redesigned ======
+// ====== SearchBar – unchanged ======
 function SearchBar({ value, onChangeText, suggestion, onSuggestionPress, t }) {
   const theme = useThemeColors();
   const showSuggestion = !value;
@@ -650,7 +702,7 @@ function SearchResults({ results, onPress }) {
   );
 }
 
-// ====== OfferCarousel – with images ======
+// ====== OfferCarousel – unchanged ======
 function OfferCarousel({ banners, bannerWidth, activeIndex, onScroll, onAction, scrollRef }) {
   const theme = useThemeColors();
   return (
@@ -675,10 +727,9 @@ function OfferCarousel({ banners, bannerWidth, activeIndex, onScroll, onAction, 
   );
 }
 
-// ====== OfferBanner – with real image ======
+// ====== OfferBanner – unchanged ======
 function OfferBanner({ banner, width, onAction }) {
   const theme = useThemeColors();
-  // Pick a relevant image from POPULAR_SERVICE_IMAGES or fallback
   const imageKey = banner.serviceName || banner.title;
   const imageSource = POPULAR_SERVICE_IMAGES[imageKey] || HERO_ART;
 
@@ -718,7 +769,7 @@ function SectionHeader({ title, actionLabel, onAction }) {
   );
 }
 
-// ====== ServiceGrid – improved styling ======
+// ====== ServiceGrid – unchanged ======
 function ServiceGrid({ services, onPress }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickGrid}>
@@ -779,7 +830,7 @@ function FooterExperienceCard({ onPress }) {
   );
 }
 
-// ====== ProviderMiniCard – improved styling ======
+// ====== ProviderMiniCard – unchanged ======
 function ProviderMiniCard({ provider, onPress, onBook }) {
   const theme = useThemeColors();
   const profileImage = provider.profileImage || "";
@@ -896,7 +947,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  // ----- Search Bar (new) -----
+  // ----- Search Bar -----
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -970,35 +1021,61 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  // ----- Category Grid (new) -----
+  // ----- Category Grid (updated: compact) -----
   categoryGrid: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
     paddingVertical: 4,
   },
   categoryCard: {
-    width: 100,
+    width: 76,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     ...shadow,
   },
   categoryEmoji: {
-    fontSize: 36,
-    marginBottom: 6,
+    fontSize: 24,
+    marginBottom: 4,
   },
   categoryName: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "800",
     textAlign: "center",
-    lineHeight: 16,
+    lineHeight: 13,
   },
 
-  // ----- Hero Carousel (redesigned) -----
+  // ----- Discovery Stickers (updated: compact) -----
+  stickerRail: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  discoverySticker: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minWidth: 72,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow,
+  },
+  stickerEmoji: {
+    fontSize: 24,
+    marginBottom: 2,
+  },
+  discoveryStickerText: {
+    fontSize: 10,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  // ----- Hero Carousel -----
   heroWrapper: {
     marginVertical: 0,
     borderRadius: 28,
@@ -1136,32 +1213,6 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: 'rgba(255,255,255,0.6)',
     transition: 'width 0.2s',
-  },
-
-  // ----- Discovery Stickers (emoji) -----
-  stickerRail: {
-    gap: 8,
-    paddingRight: 4,
-  },
-  discoverySticker: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    minWidth: 90,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadow,
-  },
-  stickerEmoji: {
-    fontSize: 32,
-    marginBottom: 4,
-  },
-  discoveryStickerText: {
-    fontSize: 12,
-    fontWeight: "800",
-    textAlign: "center",
   },
 
   // ----- Popular Services (ServiceGrid) -----
