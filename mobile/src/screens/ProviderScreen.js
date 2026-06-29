@@ -232,12 +232,13 @@ export default function ProviderScreen({
                   <ActionButton title="Start Duty" icon="map-marker-radius-outline" onPress={onStartTracking} style={styles.statusAction} />
                   <ActionButton title="Stop Tracking" icon="stop-circle-outline" variant="secondary" onPress={onStopTracking} style={styles.statusAction} />
                 </View>
-              </View>              <View style={styles.profileStats}>
-                <ProfileStat label="Rating" value={String(provider.rating || 0)} />
-                <ProfileStat label="Reviews" value={String(provider.reviews || 0)} />
-                <ProfileStat label="Price" value={provider.price || "Set price"} />
               </View>
-            </View>
+                <View style={styles.profileStats}>
+                  <ProfileStat label="Rating" value={String(provider.rating || 0)} />
+                  <ProfileStat label="Reviews" value={String(provider.reviews || 0)} />
+                  <ProfileStat label="Price" value={provider.price || "Set price"} />
+                </View>
+              </View>
           ) : null}
           <Pressable
             accessibilityRole="button"

@@ -41,7 +41,6 @@ import {
 import AccountScreen from "./src/screens/AccountScreen";
 import BookingsScreen from "./src/screens/BookingsScreen";
 import HomeScreen from "./src/screens/HomeScreen";
-import MobileOtpGate from "./src/screens/MobileOtpGate";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import PaymentsScreen from "./src/screens/PaymentsScreen";
 import ProviderScreen from "./src/screens/ProviderScreen";
@@ -208,10 +207,6 @@ function ServiceHubApp() {
   const [authRole, setAuthRole] = useState("user");
   const [authSessionKey, setAuthSessionKey] = useState(0);
   const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [mobileOtpSending, setMobileOtpSending] = useState(false);
-  const [mobileOtpVerifying, setMobileOtpVerifying] = useState(false);
-  const [mobileOtpError, setMobileOtpError] = useState("");
-  const [mobileOtpDevCode, setMobileOtpDevCode] = useState("");
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [accountProfileOpen, setAccountProfileOpen] = useState(false);
   const [accountSubmitting, setAccountSubmitting] = useState(false);
@@ -727,8 +722,23 @@ function ServiceHubApp() {
         setToken(data.token);
         setUser(nextUser);
         setAuthOpen(false);
-        setToast(mode === "login" ? "Logged in successfully." : role === "provider" ? "Provider profile submitted. Wait for website admin approval." : "Account created successfully.");
-        setActiveTab(nextUser?.role === "provider" ? "provider" : "home");
+
+        if (nextUser?.role === "user" && pendingBookingContext?.service) {
+          if (nextUser.profileComplete === true) {
+            setActiveTab(pendingBookingContext.sourceTab || "providers");
+            setBookingService(pendingBookingContext.service);
+            setPendingBookingContext(null);
+            setToast("Logged in successfully. Continue your booking.");
+          } else {
+            setActiveTab(pendingBookingContext.sourceTab || "providers");
+            setAccountProfileOpen(true);
+            setToast("Logged in successfully. Complete your profile to continue booking.");
+          }
+        } else {
+          setToast(mode === "login" ? "Logged in successfully." : role === "provider" ? "Provider profile submitted. Wait for website admin approval." : "Account created successfully.");
+          setActiveTab(nextUser?.role === "provider" ? "provider" : "home");
+        }
+
         return data;
       } catch (error) {
         setToast(error.message);
@@ -737,7 +747,7 @@ function ServiceHubApp() {
         setAuthSubmitting(false);
       }
     },
-    []
+    [pendingBookingContext]
   );
 
   const requestPasswordResetOtp = useCallback(async ({ role, identifier }) => {
@@ -863,7 +873,9 @@ function ServiceHubApp() {
       }
 
       if (!token || !user) {
-        setToast("Please login before booking a service.");
+        setPendingBookingContext({ service, form: null, sourceTab: activeTab });
+        setSelectedService(null);
+        setToast("Please login or create a client account to continue booking.");
         openAuth("login", "user");
         return;
       }
@@ -1516,23 +1528,6 @@ function ServiceHubApp() {
       );
     }
 
-    if (!user) {
-      return (
-        <MobileOtpGate
-          sending={mobileOtpSending}
-          verifying={mobileOtpVerifying}
-          error={mobileOtpError}
-          devOtp={mobileOtpDevCode}
-          onSendOtp={sendMobileOtp}
-          onVerifyOtp={verifyMobileOtp}
-          onClientLogin={() => openAuth("login", "user")}
-          onClientRegister={() => openAuth("register", "user")}
-          onProviderLogin={() => openAuth("login", "provider")}
-          onProviderRegister={() => openAuth("register", "provider")}
-        />
-      );
-    }
-
     if (activeTab === "notifications") {
       return (
         <NotificationsScreen
@@ -1699,10 +1694,6 @@ function ServiceHubApp() {
     loadNotifications,
     markAllNotificationsRead,
     markNotificationRead,
-    mobileOtpDevCode,
-    mobileOtpError,
-    mobileOtpSending,
-    mobileOtpVerifying,
     notifications,
     notificationsError,
     notificationsLoading,
@@ -1762,7 +1753,7 @@ function ServiceHubApp() {
             }}
           />
           <View style={styles.screen}>{screen}</View>
-          {user ? <BottomNav activeTab={activeTab} onChange={setActiveTab} user={user} t={t} /> : null}
+          <BottomNav activeTab={activeTab} onChange={setActiveTab} user={user} t={t} />
           <AuthSheet
             visible={authOpen}
             sessionKey={authSessionKey}
