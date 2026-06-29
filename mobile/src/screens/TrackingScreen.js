@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import TrackingTimeline from "../components/TrackingTimeline";
+import TrackingMap from "../components/TrackingMap";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateView";
 import { bookingApi } from "../lib/api";
 import { formatBookingDate, formatBookingTime } from "../lib/formatters";
@@ -121,6 +122,7 @@ function LocationPanel({ tracking }) {
           <Text style={[styles.locationCopy, { color: theme.textMuted }]}>Open coordinates in maps when available.</Text>
         </View>
       </View>
+      <TrackingMap providerLocation={providerLocation} clientLocation={clientLocation} />
       <LocationRow
         title="Provider"
         icon="account-hard-hat-outline"
