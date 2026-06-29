@@ -21,6 +21,7 @@ import {
 } from "./src/lib/api";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
 import { getCurrentReadableLocation, watchProviderLocation } from "./src/lib/location";
+import { setupNotificationSoundChannel } from "./src/lib/pushNotifications";
 import { useNetworkStatus } from "./src/lib/network";
 import {
   clearSession,
@@ -218,6 +219,11 @@ function ServiceHubApp() {
   const [paymentMethodsSubmitting, setPaymentMethodsSubmitting] = useState(false);
   const [locatingAddress, setLocatingAddress] = useState(false);
   const [paymentCheckout, setPaymentCheckout] = useState(null);
+
+  useEffect(() => {
+    setupNotificationSoundChannel().catch(() => {});
+  }, []);
+
   const [paymentCheckoutError, setPaymentCheckoutError] = useState("");
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [paymentConfirmation, setPaymentConfirmation] = useState(null);
