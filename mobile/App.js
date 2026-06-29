@@ -999,6 +999,11 @@ function ServiceHubApp() {
   const submitBooking = useCallback(
     async (form) => {
       if (!token) {
+        setPendingBookingContext({
+          service: bookingService,
+          form,
+          sourceTab: activeTab,
+        });
         openAuth("login", "user");
         return;
       }
