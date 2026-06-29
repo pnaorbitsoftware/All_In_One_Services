@@ -1,0 +1,190 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+
+import { formatBookingDate, formatBookingTime, formatPrice } from "../lib/formatters";
+import { colors, radius, shadow, useThemeColors } from "../theme";
+import ActionButton from "./ActionButton";
+import StatusPill from "./StatusPill";
+
+function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, onUpdateTrackingStatus }) {
+  const theme = useThemeColors();
+  const isAvailable = type === "available";
+  const normalizedStatus = normalizeTrackingStatus(booking.status);
+  const canComplete = !["Completed", "Cancelled"].includes(normalizedStatus);
+  const nextTrackingAction = getNextTrackingAction(normalizedStatus);
+  const estimateAccepted = booking.estimateStatus === "accepted";
+  const paymentPaid = booking.paymentStatus === "paid" || booking.clientPaymentStatus === "paid";
+  const startWorkLocked = nextTrackingAction?.status === "Service Started" && (!estimateAccepted || !paymentPaid);
+  const canEstimate =
+    !isAvailable &&
+    canComplete &&
+    !["submitted", "accepted"].includes(String(booking.estimateStatus || "not_submitted"));
+
+  return (
+    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.header}>
+        <View style={styles.titleWrap}>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
+            {booking.service}
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.textMuted }]} numberOfLines={1}>
+            {booking.name} | {booking.phone}
+          </Text>
+        </View>
+        <StatusPill status={booking.status} />
+      </View>
+      <View style={styles.lines}>
+        <View style={styles.line}>
+          <MaterialCommunityIcons name="map-marker-outline" size={16} color={theme.textMuted} />
+          <Text style={[styles.lineText, { color: theme.textMuted }]} numberOfLines={2}>{booking.address}</Text>
+        </View>
+        <View style={styles.line}>
+          <MaterialCommunityIcons name="calendar-clock" size={16} color={theme.textMuted} />
+          <Text style={[styles.lineText, { color: theme.textMuted }]} numberOfLines={1}>
+            {formatBookingDate(booking.preferredDate)} at {formatBookingTime(booking.preferredTime)}
+          </Text>
+        </View>
+        <View style={styles.line}>
+          <MaterialCommunityIcons name="cash" size={16} color={theme.textMuted} />
+          <Text style={[styles.lineText, { color: theme.textMuted }]} numberOfLines={1}>
+            {booking.serviceDuration} | {formatPrice(booking.costEstimate)}
+          </Text>
+        </View>
+      </View>
+      {isAvailable ? (
+        <ActionButton title="Accept request" icon="check-circle-outline" onPress={() => onAccept(booking)} />
+      ) : canComplete ? (
+        <View style={styles.actions}>
+          {canEstimate ? (
+            <ActionButton
+              title="Estimate"
+              icon="cash-check"
+              variant="secondary"
+              onPress={() => onEstimate(booking)}
+              style={styles.action}
+            />
+          ) : null}
+          {startWorkLocked ? (
+            <Text style={[styles.workflowMessage, { color: theme.rose, backgroundColor: theme.roseSoft }]}>
+              Submit estimate and wait for client payment before starting work.
+            </Text>
+          ) : null}
+          {nextTrackingAction ? (
+            <ActionButton
+              title={nextTrackingAction.label}
+              icon={nextTrackingAction.icon}
+              disabled={startWorkLocked}
+              onPress={() => onUpdateTrackingStatus?.(booking, nextTrackingAction.status)}
+              style={styles.action}
+            />
+          ) : null}
+          <ActionButton
+            title="Cancel"
+            icon="close-circle-outline"
+            variant="danger"
+            onPress={() => onCancel(booking)}
+            style={styles.action}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+
+function normalizeTrackingStatus(status = "") {
+  const lower = String(status || "").toLowerCase();
+  if (lower === "confirmed") return "Confirmed";
+  if (["accepted", "assigned", "provider assigned"].includes(lower)) return "Provider Assigned";
+  if (lower === "on the way") return "On The Way";
+  if (lower === "arrived") return "Arrived";
+  if (lower === "service started") return "Service Started";
+  if (lower === "completed") return "Completed";
+  if (lower === "cancelled") return "Cancelled";
+  return "Confirmed";
+}
+
+function getNextTrackingAction(status) {
+  switch (status) {
+    case "Confirmed":
+      return { status: "Provider Assigned", label: "Mark as Assigned", icon: "account-check-outline" };
+    case "Provider Assigned":
+      return { status: "On The Way", label: "Mark as On The Way", icon: "truck-fast-outline" };
+    case "On The Way":
+      return { status: "Arrived", label: "Mark as Arrived", icon: "map-marker-check-outline" };
+    case "Arrived":
+      return { status: "Service Started", label: "Start Service", icon: "play-circle-outline" };
+    case "Service Started":
+      return { status: "Completed", label: "Complete Service", icon: "check-decagram-outline" };
+    default:
+      return null;
+  }
+}
+export default React.memo(JobCard);
+
+const styles = StyleSheet.create({
+  action: {
+    flex: 1,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: 14,
+    padding: 15,
+    ...shadow,
+  },
+  header: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  line: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 8,
+  },
+  lineText: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+  workflowMessage: {
+    borderRadius: radius.md,
+    flexBasis: "100%",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  lines: {
+    gap: 8,
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  title: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  titleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+});
+
