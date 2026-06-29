@@ -1545,6 +1545,10 @@ function ServiceHubApp() {
     if (activeTab === "services") {
       return (
         <ServicesScreen
+          catalogProviders={catalogProviders}
+          catalogLoading={catalogLoading}
+          catalogError={catalogError}
+          onRefresh={() => loadCatalog(true)}
           onViewDetails={setSelectedService}
           onOpenProvidersForService={openProvidersForService}
           t={t}
