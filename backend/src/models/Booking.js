@@ -105,6 +105,10 @@ const bookingSchema = new mongoose.Schema(
       type: locationSchema,
       default: () => ({}),
     },
+    clientLocationUpdatedAt: {
+      type: Date,
+      default: null,
+    },
     problemDescription: {
       type: String,
       required: true,
@@ -177,6 +181,21 @@ const bookingSchema = new mongoose.Schema(
       default: "",
     },
     completedAt: {
+      type: Date,
+      default: null,
+    },
+    clientRating: {
+      type: Number,
+      min: 0,
+      max: 5,
+      default: 0,
+    },
+    clientReview: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    reviewedAt: {
       type: Date,
       default: null,
     },
@@ -285,5 +304,4 @@ const bookingSchema = new mongoose.Schema(
 const Booking = mongoose.model("Booking", bookingSchema);
 
 export default Booking;
-
 

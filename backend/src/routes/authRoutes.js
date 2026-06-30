@@ -42,6 +42,7 @@ const sanitizeUser = (user) => ({
   email: user.profileComplete && !isGeneratedMobileEmail(user.email) ? user.email : "",
   phone: user.phone,
   address: user.address || "",
+  currentLocation: user.currentLocation || {},
   avatar: user.avatar || "",
   role: user.role,
   profileComplete: Boolean(user.profileComplete),
@@ -603,6 +604,7 @@ router.patch("/profile", async (req, res) => {
     user.email = normalizedEmail;
     user.phone = user.mobileVerifiedAt ? user.phone : phone.trim();
     user.address = String(address || "").trim();
+    user.currentLocation = currentLocation && typeof currentLocation === "object" ? currentLocation : user.currentLocation || {};
     user.avatar = typeof avatar === "string" ? avatar : "";
     if (user.role === "user") user.profileComplete = true;
     await user.save();
@@ -628,12 +630,36 @@ router.patch("/profile", async (req, res) => {
   }
 });
 
+router.patch("/profile-image", async (req, res) => {
+  try {
+    const user = await getTokenUser(req);
+    const profileImage = typeof req.body.profileImage === "string" ? req.body.profileImage : "";
+
+    user.avatar = profileImage;
+    await user.save();
+
+    if (user.role === "provider") {
+      const provider = await Provider.findOne({ owner: user._id });
+
+      if (provider) {
+        provider.image = profileImage;
+        await provider.save();
+      }
+    }
+
+    res.json({ message: "Profile image updated successfully.", user: sanitizeUser(user) });
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message || "Profile image could not be updated." });
+  }
+});
+
 router.patch("/profile/complete", async (req, res) => {
   try {
     const user = await getTokenUser(req);
     const name = String(req.body.name || "").trim();
     const normalizedEmail = String(req.body.email || "").trim().toLowerCase();
     const address = String(req.body.address || "").trim();
+    const currentLocation = req.body.currentLocation;
 
     if (user.role !== "user") {
       return res.status(403).json({ message: "Client profile completion is available only for client accounts." });
@@ -656,6 +682,7 @@ router.patch("/profile/complete", async (req, res) => {
     user.email = normalizedEmail;
     user.address = address;
     user.avatar = typeof req.body.avatar === "string" ? req.body.avatar : user.avatar || "";
+    user.currentLocation = currentLocation && typeof currentLocation === "object" ? currentLocation : user.currentLocation || {};
     user.profileComplete = true;
     await user.save();
 

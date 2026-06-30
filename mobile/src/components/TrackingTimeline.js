@@ -75,7 +75,8 @@ export function buildTimelineSteps(history = [], currentStatus = "Confirmed") {
     historyByStatus.set(normalizeStatus(event.status), event);
   });
 
-  const activeStatus = normalizeStatus(currentStatus || normalizedHistory.at(-1)?.status || "Confirmed");
+  const lastHistoryItem = normalizedHistory.length ? normalizedHistory[normalizedHistory.length - 1] : null;
+  const activeStatus = normalizeStatus(currentStatus || lastHistoryItem?.status || "Confirmed");
   const activeIndex = Math.max(TRACKING_STEPS.indexOf(activeStatus), 0);
 
   return TRACKING_STEPS.map((status, index) => {

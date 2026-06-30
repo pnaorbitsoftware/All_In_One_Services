@@ -296,6 +296,61 @@ router.patch("/:bookingId/tracking", requireAuth, async (req, res) => {
     res.status(500).json({ message: "Tracking could not be updated." });
   }
 });
+
+router.patch("/:bookingId/client-location", requireAuth, async (req, res) => {
+  try {
+    const booking = await Booking.findOne({ _id: req.params.bookingId, user: req.user._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    const location = req.body && typeof req.body === "object" ? req.body : {};
+    booking.addressLocation = {
+      latitude: Number.isFinite(Number(location.latitude)) ? Number(location.latitude) : null,
+      longitude: Number.isFinite(Number(location.longitude)) ? Number(location.longitude) : null,
+      address: String(location.address || booking.address || "").trim(),
+      timestamp: location.timestamp ? new Date(location.timestamp) : new Date(),
+    };
+    booking.clientLocationUpdatedAt = new Date();
+    await booking.save();
+
+    res.json({ message: "Client location updated.", booking, tracking: buildTrackingResponse(booking) });
+  } catch (error) {
+    res.status(500).json({ message: "Client location could not be updated." });
+  }
+});
+
+router.patch("/:bookingId/review", requireAuth, async (req, res) => {
+  try {
+    const rating = Number(req.body.rating);
+    const review = String(req.body.review || req.body.comment || "").trim();
+
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: "Select a rating between 1 and 5." });
+    }
+
+    const booking = await Booking.findOne({ _id: req.params.bookingId, user: req.user._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (normalizeTrackingStatus(booking.status) !== "Completed") {
+      return res.status(400).json({ message: "Review is available after service completion." });
+    }
+
+    booking.clientRating = rating;
+    booking.clientReview = review;
+    booking.reviewedAt = new Date();
+    await booking.save();
+
+    res.json({ message: "Review saved successfully.", booking });
+  } catch (error) {
+    res.status(500).json({ message: "Review could not be saved." });
+  }
+});
+
 router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   try {
     const booking = await Booking.findOne({ _id: req.params.bookingId, user: req.user._id });
@@ -358,4 +413,3 @@ router.patch("/:bookingId/payment-confirmation", requireAuth, async (req, res) =
   }
 });
 export default router;
-

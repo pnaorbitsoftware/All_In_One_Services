@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Appearance, BackHandler, Dimensions, Keyboard, Linking, Platform, Share, StatusBar, StyleSheet, useColorScheme, View } from "react-native";
+import { Alert, Appearance, BackHandler, Dimensions, Keyboard, Linking, Platform, Pressable, Share, StatusBar, StyleSheet, Text, useColorScheme, View } from "react-native";
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 
@@ -21,7 +21,6 @@ import {
 } from "./src/lib/api";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
 import { getCurrentReadableLocation, watchProviderLocation } from "./src/lib/location";
-import { getExpoPushTokenSafely, setupNotificationSoundChannel } from "./src/lib/pushNotifications";
 import { useNetworkStatus } from "./src/lib/network";
 import {
   clearSession,
@@ -88,6 +87,42 @@ const UNAVAILABLE_STATUSES = ["inactive", "absent"];
 const PROVIDER_DEFAULT_TAB = "provider";
 const USER_DEFAULT_TAB = "home";
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    console.error("ServiceHub app render error", error);
+    SplashScreen.hideAsync().catch(() => {});
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={styles.errorBoundary}>
+          <Text style={styles.errorBoundaryTitle}>ServiceHub could not open this screen.</Text>
+          <Text style={styles.errorBoundaryCopy}>Please try again. Your login and bookings are safe.</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => this.setState({ error: null })}
+            style={({ pressed }) => [styles.errorBoundaryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.errorBoundaryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function validateAuthForm({ mode, role, form, otpSent }) {
   const email = form.email.trim();
@@ -220,10 +255,6 @@ function ServiceHubApp() {
   const [locatingAddress, setLocatingAddress] = useState(false);
   const [paymentCheckout, setPaymentCheckout] = useState(null);
 
-  useEffect(() => {
-    setupNotificationSoundChannel().catch(() => {});
-  }, []);
-
   const [paymentCheckoutError, setPaymentCheckoutError] = useState("");
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [paymentConfirmation, setPaymentConfirmation] = useState(null);
@@ -233,23 +264,6 @@ function ServiceHubApp() {
   const [notificationsError, setNotificationsError] = useState("");
 
   const [toast, setToast] = useState("");
-
-  const registerPushToken = useCallback(
-    async (sessionToken) => {
-      if (!sessionToken) return;
-
-      try {
-        const expoPushToken = await getExpoPushTokenSafely();
-        if (expoPushToken) {
-          await notificationApi.savePushToken(sessionToken, expoPushToken);
-        }
-      } catch {
-        // Push notification registration should never block login or app startup.
-      }
-    },
-    []
-  );
-
 
   useEffect(() => {
     let mounted = true;
@@ -275,7 +289,6 @@ function ServiceHubApp() {
         if (!mounted) return;
         setToken(restoredToken);
         setUser(restoredUser);
-          registerPushToken(restoredToken);
         setSettings(savedSettings);
         setPersistedSettings(savedSettings);
         setAddresses(savedAddresses);
@@ -283,6 +296,23 @@ function ServiceHubApp() {
         setSelectedLocation(savedLocation);
         setRecentLocations(savedRecentLocations);
         if (restoredUser?.role === "provider") setActiveTab("provider");
+      })
+      .catch(async () => {
+        try {
+          await clearSession();
+        } catch {
+          // If storage itself is unavailable, continue with in-memory defaults.
+        }
+
+        if (!mounted) return;
+        setToken("");
+        setUser(null);
+        setSettings(defaultSettings);
+        setPersistedSettings(defaultSettings);
+        setAddresses([]);
+        setPaymentMethods([]);
+        setSelectedLocation(null);
+        setRecentLocations([]);
       })
       .finally(() => {
         if (mounted) setBooting(false);
@@ -745,7 +775,6 @@ function ServiceHubApp() {
         await saveSession(data.token, nextUser);
         setToken(data.token);
         setUser(nextUser);
-          registerPushToken(data.token);
         setAuthOpen(false);
 
         if (nextUser?.role === "user" && pendingBookingContext?.service) {
@@ -1357,13 +1386,28 @@ function ServiceHubApp() {
           email: form.email.trim(),
           phone: form.phone.trim(),
           address: form.address?.trim() || user?.address || "",
+          avatar: form.avatar || "",
           currentLocation: form.currentLocation || user?.currentLocation || null,
         });
         const imageData =
           (form.avatar || "") !== (user?.avatar || user?.profileImage || "")
             ? await authApi.updateProfileImage(token, form.avatar || "")
             : profileData;
-        const nextUser = normalizeUser(imageData.user || profileData.user);
+        const normalizedProfileUser = normalizeUser(imageData.user || profileData.user);
+        const nextUser = completingClientProfile
+          ? {
+              ...normalizedProfileUser,
+              role: normalizedProfileUser?.role || user?.role || "user",
+              name: normalizedProfileUser?.name || form.name.trim(),
+              email: normalizedProfileUser?.email || form.email.trim(),
+              phone: normalizedProfileUser?.phone || user?.phone || form.phone.trim(),
+              address: normalizedProfileUser?.address || form.address?.trim() || user?.address || "",
+              avatar: normalizedProfileUser?.avatar || form.avatar || "",
+              profileImage: normalizedProfileUser?.profileImage || normalizedProfileUser?.avatar || form.avatar || "",
+              profileComplete: true,
+              mobileVerified: normalizedProfileUser?.mobileVerified ?? user?.mobileVerified ?? true,
+            }
+          : normalizedProfileUser;
 
         setUser(nextUser);
         await saveSession(token, nextUser);
@@ -1390,10 +1434,28 @@ function ServiceHubApp() {
 
         setAccountProfileOpen(false);
         if (completingClientProfile && pendingBookingContext?.service) {
-          setActiveTab(pendingBookingContext.sourceTab || "providers");
-          setBookingService(pendingBookingContext.service);
-          setPendingBookingContext(null);
-          setToast("Profile completed. Continue your booking.");
+          if (pendingBookingContext.form) {
+            setBookingSubmitting(true);
+            try {
+              const data = await bookingApi.create(token, pendingBookingContext.form);
+              setBookings((current) => [data.booking, ...current]);
+              setBookingService(null);
+              setPendingBookingContext(null);
+              setActiveTab("providers");
+              setToast("Profile completed and booking placed.");
+            } catch (error) {
+              setActiveTab(pendingBookingContext.sourceTab || "providers");
+              setBookingService(pendingBookingContext.service);
+              setToast(error.message || "Profile completed, but booking could not be placed.");
+            } finally {
+              setBookingSubmitting(false);
+            }
+          } else {
+            setActiveTab(pendingBookingContext.sourceTab || "providers");
+            setBookingService(pendingBookingContext.service);
+            setPendingBookingContext(null);
+            setToast("Profile completed. Continue your booking.");
+          }
         } else {
           setToast(completingClientProfile ? "Client profile completed." : "Account profile updated.");
         }
@@ -1963,7 +2025,9 @@ function ServiceHubApp() {
 export default function App() {
   return (
     <SafeAreaProvider initialMetrics={safeAreaInitialMetrics}>
-      <ServiceHubApp />
+      <AppErrorBoundary>
+        <ServiceHubApp />
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }
@@ -1984,13 +2048,42 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
   },
+  errorBoundary: {
+    alignItems: "center",
+    backgroundColor: colors.background,
+    flex: 1,
+    justifyContent: "center",
+    padding: 24,
+  },
+  errorBoundaryTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  errorBoundaryCopy: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  errorBoundaryButton: {
+    alignItems: "center",
+    backgroundColor: colors.teal,
+    borderRadius: 12,
+    justifyContent: "center",
+    marginTop: 18,
+    minHeight: 48,
+    paddingHorizontal: 18,
+  },
+  errorBoundaryButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+  },
 });
-
-
-
-
-
-
 
 
 
