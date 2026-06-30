@@ -31,6 +31,15 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    currentLocation: {
+      type: Object,
+      default: {},
+    },
+    profileComplete: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     profileImage: {
       type: String,
       default: "",

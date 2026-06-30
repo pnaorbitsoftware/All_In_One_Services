@@ -174,6 +174,7 @@ export async function apiRequest(path, options = {}) {
           }
 
           const apiError = new Error(message);
+          apiError.status = response.status;
           apiError.noFallback = true;
           throw apiError;
         }
@@ -230,9 +231,28 @@ export const authApi = {
   register: (body) => apiRequest("/auth/register", { body, timeoutMs: AUTH_REQUEST_TIMEOUT_MS }),
   me: (token) => apiRequest("/auth/me", { token }),
   updateProfile: (token, body) => apiRequest("/auth/profile", { method: "PATCH", token, body }),
-  completeClientProfile: (token, body) => apiRequest("/auth/profile/complete", { method: "PATCH", token, body }),
-  updateProfileImage: (token, profileImage) =>
-    apiRequest("/auth/profile-image", { method: "PATCH", token, body: { profileImage } }),
+  completeClientProfile: async (token, body) => {
+    try {
+      return await apiRequest("/auth/profile/complete", { method: "PATCH", token, body });
+    } catch (error) {
+      if (isMissingApiRoute(error?.status, error?.message)) {
+        return apiRequest("/auth/profile", { method: "PATCH", token, body });
+      }
+
+      throw error;
+    }
+  },
+  updateProfileImage: async (token, profileImage) => {
+    try {
+      return await apiRequest("/auth/profile-image", { method: "PATCH", token, body: { profileImage } });
+    } catch (error) {
+      if (isMissingApiRoute(error?.status, error?.message)) {
+        return { skippedProfileImage: true };
+      }
+
+      throw error;
+    }
+  },
   forgotPasswordOtp: (body) => apiRequest("/auth/forgot-password/otp", { body, timeoutMs: AUTH_REQUEST_TIMEOUT_MS }),
   forgotPasswordVerify: (body) => apiRequest("/auth/forgot-password/verify", { body, timeoutMs: AUTH_REQUEST_TIMEOUT_MS }),
   resetPassword: (body) => apiRequest("/auth/reset-password", { body, timeoutMs: AUTH_REQUEST_TIMEOUT_MS }),
@@ -311,4 +331,3 @@ export const notificationApi = {
   markRead: (token, notificationId) => apiRequest(`/notifications/${notificationId}/read`, { method: "PATCH", token }),
   markAllRead: (token) => apiRequest("/notifications/read-all", { method: "PATCH", token }),
 };
-

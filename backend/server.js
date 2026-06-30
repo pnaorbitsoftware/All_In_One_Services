@@ -215,7 +215,9 @@ app.use((error, req, res, _next) => {
   }
 
   if (error?.type === "entity.too.large") {
-    return res.status(413).json({ message: "Request payload is too large." });
+    return res.status(413).json({
+      message: "The selected image is too large to upload. Choose a smaller image and try again.",
+    });
   }
 
   console.error(`Unhandled ${req.method} ${req.originalUrl}: ${error?.message || "Unknown error"}`);

@@ -12,12 +12,17 @@ export function useNetworkStatus() {
       });
     });
 
-    NetInfo.fetch().then((nextState) => {
-      setState({
-        isConnected: nextState.isConnected !== false,
-        isInternetReachable: nextState.isInternetReachable !== false,
+    NetInfo.fetch()
+      .then((nextState) => {
+        setState({
+          isConnected: nextState.isConnected !== false,
+          isInternetReachable: nextState.isInternetReachable !== false,
+        });
+      })
+      .catch(() => {
+        // The subscription will supply the next state. Avoid an unhandled
+        // rejection if Android's initial connectivity query is unavailable.
       });
-    });
 
     return unsubscribe;
   }, []);

@@ -47,6 +47,28 @@ const rememberProviderIdentity = (provider) => {
   });
 };
 
+const isProviderApproved = (provider) => provider?.approvalStatus === "approved";
+const isProviderBookable = (provider) =>
+  Boolean(provider?.isActive && isProviderApproved(provider) && ["active", "available"].includes(provider.availabilityStatus || "available"));
+
+const lockedDashboardPayload = (provider) => ({
+  provider,
+  bookings: [],
+  availableRequests: [],
+  dashboardLocked: true,
+  message:
+    provider.approvalStatus === "rejected"
+      ? provider.rejectionReason || "Provider profile was not approved by admin. Edit your profile and resubmit it."
+      : "Provider profile is waiting for admin approval.",
+});
+
+const unavailableProviderResponse = (res, provider) =>
+  res.status(403).json({
+    dashboardLocked: true,
+    provider,
+    message: "Provider is currently unavailable.",
+  });
+
 const getProviderIdentity = async (ownerId) => {
   const cacheKey = String(ownerId);
   const cached = providerIdentityCache.get(cacheKey);
@@ -219,6 +241,9 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       responseTime,
       description,
       about,
+      image = "",
+      aadhaarCardImage,
+      availabilityStatus,
       features = "",
       bankDetails = {},
       aadhaarNumber,
@@ -245,18 +270,31 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
 
     const submittedFront = aadhaarFrontUrl || aadhaarDocumentUrl || "";
     const submittedBack = aadhaarBackUrl || "";
-    const aadhaarDigits = String(aadhaarNumber || "").replace(/\D/g, "");
+
+    const nextAadhaarImage = typeof aadhaarCardImage === "string" && aadhaarCardImage.trim()
+      ? aadhaarCardImage.trim()
+      : provider.aadhaarCardImage;
+    const nextAadhaarNumber = aadhaarNumber === undefined
+      ? provider.aadhaarNumber
+      : String(aadhaarNumber || "").replace(/\D/g, "");
+
     if (submittedFront && !isValidIdentityDocument(submittedFront)) {
       return res.status(400).json({ message: "Aadhaar front document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
     }
     if (submittedBack && !isValidIdentityDocument(submittedBack)) {
       return res.status(400).json({ message: "Aadhaar back document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
     }
-    if (aadhaarNumber !== undefined && aadhaarDigits.length !== 12) {
+    if (aadhaarNumber !== undefined && nextAadhaarNumber.length !== 12) {
       return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required." });
     }
-    if ((submittedFront || submittedBack) && (!(submittedFront || provider.aadhaarFrontUrl) || !(submittedBack || provider.aadhaarBackUrl))) {
-      return res.status(400).json({ message: "Both Aadhaar front and back documents are required for verification." });
+
+    if (provider.approvalStatus !== "approved") {
+      const hasSingleCard = Boolean(nextAadhaarImage);
+      const hasFrontBack = (submittedFront || provider.aadhaarFrontUrl) && (submittedBack || provider.aadhaarBackUrl);
+
+      if (!hasSingleCard && !hasFrontBack) {
+        return res.status(400).json({ message: "Aadhaar card image or documents are required for verification." });
+      }
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -276,6 +314,10 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.responseTime = responseTime?.trim() || provider.responseTime || "";
     provider.description = description.trim();
     provider.about = about?.trim() || description.trim();
+    provider.image = typeof image === "string" ? image : provider.image || "";
+    provider.aadhaarCardImage = nextAadhaarImage;
+    provider.aadhaarNumber = nextAadhaarNumber;
+
     if (submittedFront) {
       provider.aadhaarFrontUrl = submittedFront;
       provider.aadhaarFrontUploadedAt = new Date();
@@ -284,15 +326,24 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       provider.aadhaarBackUrl = submittedBack;
       provider.aadhaarBackUploadedAt = new Date();
     }
-    if (aadhaarDigits.length === 12) provider.aadhaarNumberMasked = `XXXX XXXX ${aadhaarDigits.slice(-4)}`;
+    if (nextAadhaarNumber.length === 12) {
+      provider.aadhaarNumberMasked = `XXXX XXXX ${nextAadhaarNumber.slice(-4)}`;
+    }
     if (aadhaarDocumentName) provider.aadhaarDocumentName = String(aadhaarDocumentName).trim();
     if (aadhaarBackDocumentName) provider.aadhaarBackDocumentName = String(aadhaarBackDocumentName).trim();
-    if (submittedFront || submittedBack) {
+
+    if (submittedFront || submittedBack || (aadhaarCardImage && provider.approvalStatus !== "approved")) {
       provider.verificationStatus = "pending";
       provider.approvalStatus = "pending";
       provider.isActive = false;
       provider.verificationRejectedReason = "";
       provider.requestedAt = new Date();
+    }
+
+    if (availabilityStatus && ["active", "inactive", "absent", "available"].includes(availabilityStatus)) {
+      provider.availabilityStatus = availabilityStatus;
+      provider.isActive = availabilityStatus !== "inactive";
+    }
     }
     provider.features = Array.isArray(features)
       ? features.map((feature) => String(feature).trim()).filter(Boolean)
@@ -304,6 +355,15 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       accountNumber: String(bankDetails.accountNumber || provider.bankDetails?.accountNumber || "").replace(/\s+/g, ""),
       ifscCode: String(bankDetails.ifscCode || provider.bankDetails?.ifscCode || "").trim().toUpperCase(),
     };
+
+    if (provider.approvalStatus === "rejected") {
+      provider.approvalStatus = "pending";
+      provider.isActive = false;
+      provider.rejectionReason = "";
+      provider.rejectedAt = null;
+      provider.approvedAt = null;
+      provider.resubmittedAt = new Date();
+    }
 
     await provider.save();
     invalidateCatalogCache();
@@ -760,6 +820,65 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
     }
 
     res.status(500).json({ message: "Booking status could not be updated." });
+  }
+});
+
+router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    const booking = await Booking.findOne({ _id: req.params.bookingId, assignedProvider: provider._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found for this provider." });
+    }
+
+    provider.currentLocation = normalizeLocationPayload(req.body);
+    provider.trackingConsent = true;
+    provider.trackingActive = true;
+    await provider.save();
+
+    res.json({ message: "Provider location updated.", provider, booking });
+  } catch (error) {
+    res.status(500).json({ message: "Provider location could not be updated." });
+  }
+});
+
+router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async (req, res) => {
+  try {
+    const provider = await Provider.findOne({ owner: req.user._id });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    const booking = await Booking.findOne({ _id: req.params.bookingId, assignedProvider: provider._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found for this provider." });
+    }
+
+    ensureTrackingHistory(booking);
+    await booking.save();
+
+    res.json({
+      booking,
+      tracking: {
+        bookingId: booking._id,
+        serviceName: booking.service,
+        providerName: provider.name,
+        currentStatus: normalizeTrackingStatus(booking.status),
+        trackingHistory: booking.trackingHistory,
+        providerLocation: provider.currentLocation || null,
+        clientLocation: booking.addressLocation || null,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Provider booking tracking could not be loaded." });
   }
 });
 

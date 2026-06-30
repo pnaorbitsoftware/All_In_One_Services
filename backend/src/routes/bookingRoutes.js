@@ -16,6 +16,7 @@ import {
 import { buildStatusUpdateOperation } from "../services/bookingTrackingService.js";
 import { emitStatusChange, getProviderRoomId } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
+import { applyPaymentSplit } from "../utils/paymentSummary.js";
 
 const router = express.Router();
 
@@ -296,7 +297,7 @@ router.patch("/:bookingId/client-location", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Share GPS or provide an address for provider navigation." });
     }
 
-    const update = {};
+    const update = { clientLocationUpdatedAt: new Date() };
     if (clientLocation) update.clientLocation = clientLocation;
     if (address.trim()) update.address = address.trim();
 
@@ -329,7 +330,7 @@ router.patch("/:bookingId/client-location", requireAuth, async (req, res) => {
 router.patch("/:bookingId/review", requireAuth, async (req, res) => {
   try {
     const rating = Number(req.body?.rating);
-    const review = String(req.body?.review || "").trim();
+    const review = String(req.body?.review || req.body?.comment || "").trim();
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({ message: "Rating must be between 1 and 5 stars." });
@@ -422,6 +423,7 @@ router.patch("/:bookingId/status", requireAuth, async (req, res) => {
   }
 });
 
+
 router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   try {
     const booking = await Booking.findOne({
@@ -468,4 +470,41 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
 export default router;
 
 
+router.patch("/:bookingId/payment-confirmation", requireAuth, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === "production" || process.env.ALLOW_MANUAL_PAYMENT_CONFIRMATION !== "true") {
+      return res.status(403).json({ message: "Manual payment confirmation is disabled. Use the verified payment endpoint." });
+    }
 
+    const { paymentReference = "", receiptUrl = "" } = req.body;
+    const booking = await Booking.findOne({ _id: req.params.bookingId, user: req.user._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (booking.estimateStatus !== "accepted") {
+      return res.status(400).json({ message: "Accept the provider final estimate before payment." });
+    }
+
+    if (!paymentReference) {
+      return res.status(400).json({ message: "Payment reference is required after gateway confirmation." });
+    }
+
+    booking.paymentStatus = "paid";
+    booking.clientPaymentStatus = "paid";
+    booking.clientPaidAt = new Date();
+    booking.paymentReference = paymentReference;
+    booking.receiptUrl = receiptUrl;
+    booking.paymentGateway = booking.paymentGateway || "external";
+    booking.adminPayoutStatus = "pending";
+    applyPaymentSplit(booking);
+    await booking.save();
+
+    res.json({ message: "Payment confirmed. Amount received by admin and provider payout is pending admin release.", booking });
+  } catch (error) {
+    res.status(500).json({ message: "Payment confirmation could not be saved." });
+  }
+});
+
+export default router;

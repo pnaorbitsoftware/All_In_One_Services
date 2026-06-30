@@ -15,6 +15,7 @@ import { getSmsOtpDiagnostics, sendSmsOtp, verifySmsOtp } from "../services/twil
 import { getWhatsAppDiagnostics, sendOtpWhatsApp } from "../services/whatsappService.js";
 import { sendWelcomeWhatsApp } from "../services/whatsappNotificationService.js";
 import { setJsonWithTtl } from "../utils/redis.js";
+import { normalizeServiceName } from "../utils/serviceMatching.js";
 
 const router = express.Router();
 const passwordResetOtps = new Map();
@@ -54,6 +55,8 @@ const sanitizeUser = (user) => ({
   phone: user.phone,
   address: user.address || "",
   profileImage: user.profileImage || "",
+  currentLocation: user.currentLocation || {},
+  avatar: user.avatar || "",
   role: user.role,
 });
 
@@ -208,8 +211,15 @@ router.post("/register", async (req, res) => {
       price,
       responseTime,
       otpChannel = "email",
+      aadhaarCardImage = "",
+      aadhaarFrontUrl = "",
+      aadhaarDocumentUrl = "",
+      aadhaarNumber = "",
       otp,
     } = req.body;
+    const providerAadhaarImage = aadhaarCardImage || aadhaarFrontUrl || aadhaarDocumentUrl;
+    const normalizedAadhaarNumber = String(aadhaarNumber || "").replace(/\D/g, "");
+    const normalizedEmail = email?.trim().toLowerCase();
 
     const normalizedCategory = String(category || "").trim();
     const normalizedCustomCategory = String(customCategory || "").trim();
@@ -235,13 +245,16 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Password and confirm password must match." });
     }
 
-    if (
-      role === "provider" &&
-      (!providerName || !providerCategory || !location || !preferredWorkLocation || !phone || !price)
-    ) {
+    if (role === "provider" && (!providerName || !category || !location || !phone || !price || !responseTime || !providerAadhaarImage || normalizedAadhaarNumber.length !== 12)) {
       return res.status(400).json({
-        message: "Provider name, phone, service category, location, preferred work location, and price are required.",
+        message: "Provider name, phone, category, location, price, response time, 12-digit Aadhaar number, and Aadhaar card are required.",
       });
+    }
+
+    const submittedProviderCategory = category === "Other" ? customCategory : category;
+    const normalizedProviderCategory = role === "provider" ? normalizeServiceName(submittedProviderCategory) : "";
+    if (role === "provider" && normalizedProviderCategory.trim().length < 2) {
+      return res.status(400).json({ message: "Please enter a valid ServiceHub service category." });
     }
 
     if (role === "user" && !String(address || "").trim()) {
@@ -368,6 +381,8 @@ router.post("/register", async (req, res) => {
         about: `${providerName} is registered on ServiceHub as a ${providerCategory} provider.`,
         features: [providerCategory],
         profileImage: normalizedWorkImage,
+        aadhaarCardImage: aadhaarFrontUrl,
+        aadhaarNumber: aadhaarDigits,
         isActive: false,
         approvalStatus: "pending",
       });
@@ -657,5 +672,116 @@ const getAuthenticatedProfile = (req, res) => {
 
 router.get("/profile", requireAuth, getAuthenticatedProfile);
 router.get("/me", requireAuth, getAuthenticatedProfile);
+
+router.patch("/profile", requireAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    const { name, email, phone = "", avatar = "", address = "", currentLocation = null } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!name?.trim() || !normalizedEmail) {
+      return res.status(400).json({ message: "Name and email are required." });
+    }
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user._id },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ message: "This email is already used by another account." });
+    }
+
+    user.name = name.trim();
+    user.email = normalizedEmail;
+    user.phone = user.mobileVerifiedAt ? user.phone : phone.trim();
+    user.address = String(address || "").trim();
+    user.currentLocation = currentLocation && typeof currentLocation === "object" ? currentLocation : user.currentLocation || {};
+    user.avatar = typeof avatar === "string" ? avatar : "";
+    if (user.role === "user") user.profileComplete = true;
+    await user.save();
+
+    if (user.role === "provider") {
+      const provider = await Provider.findOne({ owner: user._id });
+
+      if (provider) {
+        provider.name = user.name;
+        provider.email = user.email;
+        provider.phone = user.phone;
+        provider.image = user.avatar;
+        await provider.save();
+      }
+    }
+
+    res.json({
+      message: "Profile updated successfully.",
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message || "Profile could not be updated." });
+  }
+});
+
+router.patch("/profile-image", requireAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    const profileImage = typeof req.body.profileImage === "string" ? req.body.profileImage : "";
+
+    user.avatar = profileImage;
+    await user.save();
+
+    if (user.role === "provider") {
+      const provider = await Provider.findOne({ owner: user._id });
+
+      if (provider) {
+        provider.image = profileImage;
+        await provider.save();
+      }
+    }
+
+    res.json({ message: "Profile image updated successfully.", user: sanitizeUser(user) });
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message || "Profile image could not be updated." });
+  }
+});
+
+router.patch("/profile/complete", requireAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    const name = String(req.body.name || "").trim();
+    const normalizedEmail = String(req.body.email || "").trim().toLowerCase();
+    const address = String(req.body.address || "").trim();
+    const currentLocation = req.body.currentLocation;
+
+    if (user.role !== "user") {
+      return res.status(403).json({ message: "Client profile completion is available only for client accounts." });
+    }
+
+    if (!user.mobileVerifiedAt || !/^\d{10}$/.test(String(user.phone || ""))) {
+      return res.status(403).json({ message: "Verify your mobile number before completing the client profile." });
+    }
+
+    if (name.length < 2 || !/^\S+@\S+\.\S+$/.test(normalizedEmail) || address.length < 5) {
+      return res.status(400).json({ message: "Enter your real name, a valid email, and complete service address." });
+    }
+
+    const existingUser = await User.findOne({ email: normalizedEmail, _id: { $ne: user._id } });
+    if (existingUser) {
+      return res.status(409).json({ message: "This email is already used by another account." });
+    }
+
+    user.name = name;
+    user.email = normalizedEmail;
+    user.address = address;
+    user.avatar = typeof req.body.avatar === "string" ? req.body.avatar : user.avatar || "";
+    user.currentLocation = currentLocation && typeof currentLocation === "object" ? currentLocation : user.currentLocation || {};
+    user.profileComplete = true;
+    await user.save();
+
+    res.json({ message: "Client profile completed successfully.", user: sanitizeUser(user) });
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message || "Client profile could not be completed." });
+  }
+});
 
 export default router;

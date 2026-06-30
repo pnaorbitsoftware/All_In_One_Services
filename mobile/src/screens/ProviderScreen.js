@@ -33,6 +33,7 @@ export default function ProviderScreen({
   onUpdateAvailability,
   onStartTracking,
   onStopTracking,
+  onEditProfile,
 }) {
   const { width } = useWindowDimensions();
   const theme = useThemeColors();
@@ -146,6 +147,9 @@ export default function ProviderScreen({
         </Text>
         <Text style={[styles.title, { color: theme.text }]}>{approvalTitle}</Text>
         <Text style={[styles.copy, { color: theme.textMuted }]}>{providerData?.message || approvalCopy}</Text>
+        {approvalStatus === "rejected" && provider?.rejectionReason ? (
+          <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>Reason: {provider.rejectionReason}</Text>
+        ) : null}
         {provider ? (
           <View style={[styles.profileCard, { backgroundColor: theme.surface, borderColor: theme.border, width: "100%" }]}>
             <View style={styles.profileTop}>
@@ -167,6 +171,9 @@ export default function ProviderScreen({
         ) : null}
         {error ? <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>{error}</Text> : null}
         <ActionButton title="Check approval status" icon="refresh" onPress={onRefresh} />
+        {approvalStatus === "rejected" ? (
+          <ActionButton title="Edit and resubmit" icon="account-edit-outline" variant="secondary" onPress={onEditProfile} />
+        ) : null}
       </View>
     );
   }
@@ -522,6 +529,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-
 
 

@@ -137,6 +137,10 @@ const bookingSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
+    clientLocationUpdatedAt: {
+      type: Date,
+      default: null,
+    },
     problemDescription: {
       type: String,
       required: true,
@@ -276,6 +280,11 @@ const bookingSchema = new mongoose.Schema(
     reviewedAt: {
       type: Date,
       default: null,
+    },
+    clientPaymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "refunded"],
+      default: "pending",
     },
     finalEstimateAmount: {
       type: Number,

@@ -30,6 +30,12 @@
                                  "expo-location",
                                  "expo-notifications",
                                  [
+                                     "expo-image-picker",
+                                     {
+                                         "photosPermission": "Allow ServiceHub to select profile and Aadhaar images for upload."
+                                     }
+                                 ],
+                                 [
                                      "expo-splash-screen",
                                      {
                                          "backgroundColor":  "#0F766E",

@@ -20,6 +20,8 @@ const emptyProfile = {
   about: "",
   features: "",
   image: "",
+  aadhaarNumber: "",
+  aadhaarCardImage: "",
 };
 
 function toProfileForm(provider = {}) {
@@ -35,6 +37,8 @@ function toProfileForm(provider = {}) {
     about: provider.about || "",
     features: Array.isArray(provider.features) ? provider.features.join(", ") : provider.features || "",
     image: provider.image || provider.profileImage || "",
+    aadhaarNumber: provider.aadhaarNumber || "",
+    aadhaarCardImage: provider.aadhaarCardImage || "",
   };
 }
 
@@ -78,6 +82,36 @@ export default function ProviderProfileSheet({ visible, provider, submitting, on
   };
 
   const removeProviderImage = () => setForm((current) => ({ ...current, image: "" }));
+
+  const pickAadhaarCard = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Aadhaar upload", "Allow photo access to upload your Aadhaar card.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [16, 10],
+        base64: true,
+        mediaTypes: ["images"],
+        quality: 0.42,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.base64) {
+        Alert.alert("Aadhaar upload", "This image could not be prepared for upload. Please choose another image.");
+        return;
+      }
+
+      const mimeType = asset.mimeType || "image/jpeg";
+      setForm((current) => ({ ...current, aadhaarCardImage: `data:${mimeType};base64,${asset.base64}` }));
+    } catch {
+      Alert.alert("Aadhaar upload", "Could not select this image. Please try another photo.");
+    }
+  };
 
   return (
     <ModalSheet
@@ -142,11 +176,36 @@ export default function ProviderProfileSheet({ visible, provider, submitting, on
       <TextField label="Short description" value={form.description} onChangeText={update("description")} placeholder="Describe your service" multiline />
       <TextField label="About provider" value={form.about} onChangeText={update("about")} placeholder="Experience and service style" multiline />
       <TextField label="Included work" value={form.features} onChangeText={update("features")} placeholder="Repair, installation, inspection" multiline />
+      <TextField label="Aadhaar number" value={form.aadhaarNumber} onChangeText={(value) => update("aadhaarNumber")(value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digit Aadhaar number" keyboardType="number-pad" />
+      <View style={styles.documentCard}>
+        {form.aadhaarCardImage ? <Image source={{ uri: form.aadhaarCardImage }} style={styles.documentImage} /> : null}
+        <View style={styles.photoText}>
+          <Text style={styles.photoTitle}>Aadhaar card</Text>
+          <Text style={styles.photoCopy}>Required for admin review and resubmission.</Text>
+          <ActionButton title={form.aadhaarCardImage ? "Change Aadhaar" : "Upload Aadhaar"} icon="card-account-details-outline" variant="secondary" onPress={pickAadhaarCard} />
+        </View>
+      </View>
     </ModalSheet>
   );
 }
 
 const styles = StyleSheet.create({
+  documentCard: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 13,
+    marginTop: 12,
+    padding: 12,
+  },
+  documentImage: {
+    borderRadius: 12,
+    height: 72,
+    width: 96,
+  },
   cameraBadge: {
     alignItems: "center",
     backgroundColor: colors.teal,
