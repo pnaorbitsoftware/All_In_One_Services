@@ -12,7 +12,9 @@ router.get("/", async (_req, res) => {
     const [categories, services, providers, siteContents] = await Promise.all([
       Category.find({ isActive: true }).sort({ displayOrder: 1, title: 1 }),
       Service.find({ isActive: true }).sort({ title: 1 }),
-      Provider.find({ approvalStatus: "approved", isActive: true }).sort({ rating: -1, reviews: -1 }),
+      Provider.find({ approvalStatus: "approved", isActive: true })
+        .select("-aadhaarCardImage -aadhaarNumber -rejectionReason -rejectedAt -resubmittedAt")
+        .sort({ rating: -1, reviews: -1 }),
       SiteContent.find({ isActive: true }).sort({ sectionKey: 1 }),
     ]);
 
@@ -23,4 +25,3 @@ router.get("/", async (_req, res) => {
 });
 
 export default router;
-

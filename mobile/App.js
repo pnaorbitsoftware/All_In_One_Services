@@ -1717,6 +1717,7 @@ function ServiceHubApp() {
           onUpdateAvailability={updateProviderAvailability}
           onStartTracking={startProviderTracking}
           onStopTracking={stopProviderTracking}
+          onEditProfile={openProviderProfileEditor}
         />
       );
     }
@@ -2084,7 +2085,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 });
-
 
 
 

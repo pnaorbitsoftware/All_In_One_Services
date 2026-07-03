@@ -172,15 +172,18 @@ router.post("/register", async (req, res) => {
       phone = "",
       providerName,
       category,
+      customCategory = "",
       location,
       price,
       responseTime,
       aadhaarCardImage = "",
       aadhaarFrontUrl = "",
       aadhaarDocumentUrl = "",
+      aadhaarNumber = "",
       otp,
     } = req.body;
     const providerAadhaarImage = aadhaarCardImage || aadhaarFrontUrl || aadhaarDocumentUrl;
+    const normalizedAadhaarNumber = String(aadhaarNumber || "").replace(/\D/g, "");
     const normalizedEmail = email?.trim().toLowerCase();
 
     if (!name || !normalizedEmail || !password) {
@@ -195,13 +198,14 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Password must be at least 6 characters." });
     }
 
-    if (role === "provider" && (!providerName || !category || !location || !phone || !price || !responseTime || !providerAadhaarImage)) {
+    if (role === "provider" && (!providerName || !category || !location || !phone || !price || !responseTime || !providerAadhaarImage || normalizedAadhaarNumber.length !== 12)) {
       return res.status(400).json({
-        message: "Provider name, phone, category, location, price, response time, and Aadhaar card are required.",
+        message: "Provider name, phone, category, location, price, response time, 12-digit Aadhaar number, and Aadhaar card are required.",
       });
     }
 
-    const normalizedProviderCategory = role === "provider" ? normalizeServiceName(category) : "";
+    const submittedProviderCategory = category === "Other" ? customCategory : category;
+    const normalizedProviderCategory = role === "provider" ? normalizeServiceName(submittedProviderCategory) : "";
     if (role === "provider" && normalizedProviderCategory.trim().length < 2) {
       return res.status(400).json({ message: "Please enter a valid ServiceHub service category." });
     }
@@ -284,6 +288,7 @@ router.post("/register", async (req, res) => {
         about: `${providerName} is registered on ServiceHub as a ${normalizedProviderCategory} provider.`,
         features: [normalizedProviderCategory],
         aadhaarCardImage: typeof providerAadhaarImage === "string" ? providerAadhaarImage : "",
+        aadhaarNumber: normalizedAadhaarNumber,
         isActive: false,
         approvalStatus: "pending",
         approvedAt: null,

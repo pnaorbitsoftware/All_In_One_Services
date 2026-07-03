@@ -276,6 +276,11 @@ app.use("/api", (_req, res) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error.message);
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      message: "The selected image is too large to upload. Choose a smaller image and try again.",
+    });
+  }
   res.status(500).json({
     message: "Server error.",
   });

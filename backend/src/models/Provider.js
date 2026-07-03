@@ -86,6 +86,11 @@ const providerSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    aadhaarNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     isActive: {
       type: Boolean,
       default: false,
@@ -101,6 +106,19 @@ const providerSchema = new mongoose.Schema(
       default: "pending",
     },
     approvedAt: {
+      type: Date,
+      default: null,
+    },
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+    rejectionReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    resubmittedAt: {
       type: Date,
       default: null,
     },

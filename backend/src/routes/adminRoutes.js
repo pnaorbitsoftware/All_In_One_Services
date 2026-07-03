@@ -65,25 +65,34 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
 
 router.patch("/providers/:providerId/approval", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { approvalStatus } = req.body;
+    const { approvalStatus, rejectionReason = "" } = req.body;
 
     if (!["approved", "rejected"].includes(approvalStatus)) {
       return res.status(400).json({ message: "Invalid provider approval status." });
     }
 
-    const provider = await Provider.findByIdAndUpdate(
-      req.params.providerId,
-      {
-        approvalStatus,
-        isActive: approvalStatus === "approved",
-        approvedAt: approvalStatus === "approved" ? new Date() : null,
-      },
-      { new: true }
-    );
+    const provider = await Provider.findById(req.params.providerId);
 
     if (!provider) {
       return res.status(404).json({ message: "Provider not found." });
     }
+
+    if (!provider.aadhaarCardImage?.trim()) {
+      return res.status(400).json({ message: "Aadhaar document is required before this provider can be reviewed." });
+    }
+
+    const normalizedRejectionReason = String(rejectionReason || "").trim();
+    if (approvalStatus === "rejected" && !normalizedRejectionReason) {
+      return res.status(400).json({ message: "A rejection reason is required." });
+    }
+
+    const now = new Date();
+    provider.approvalStatus = approvalStatus;
+    provider.isActive = approvalStatus === "approved";
+    provider.approvedAt = approvalStatus === "approved" ? now : null;
+    provider.rejectedAt = approvalStatus === "rejected" ? now : null;
+    provider.rejectionReason = approvalStatus === "rejected" ? normalizedRejectionReason : "";
+    await provider.save();
 
     res.json({ provider });
   } catch (error) {
@@ -254,6 +263,5 @@ router.patch("/bookings/:bookingId/payout/release", requireAuth, requireAdmin, a
   }
 });
 export default router;
-
 
 

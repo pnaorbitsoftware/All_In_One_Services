@@ -28,7 +28,7 @@ const lockedDashboardPayload = (provider) => ({
   dashboardLocked: true,
   message:
     provider.approvalStatus === "rejected"
-      ? "Provider profile was not approved by admin."
+      ? provider.rejectionReason || "Provider profile was not approved by admin. Edit your profile and resubmit it."
       : "Provider profile is waiting for admin approval.",
 });
 
@@ -134,6 +134,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       about,
       image = "",
       aadhaarCardImage,
+      aadhaarNumber,
       features = "",
       availabilityStatus,
     } = req.body;
@@ -153,6 +154,17 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       return res.status(404).json({ message: "Provider profile not found." });
     }
 
+    const nextAadhaarImage = typeof aadhaarCardImage === "string" && aadhaarCardImage.trim()
+      ? aadhaarCardImage.trim()
+      : provider.aadhaarCardImage;
+    const nextAadhaarNumber = aadhaarNumber === undefined
+      ? provider.aadhaarNumber
+      : String(aadhaarNumber || "").replace(/\D/g, "");
+
+    if (provider.approvalStatus !== "approved" && (!nextAadhaarImage || String(nextAadhaarNumber || "").length !== 12)) {
+      return res.status(400).json({ message: "A 12-digit Aadhaar number and Aadhaar card image are required." });
+    }
+
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await User.findOne({ email: normalizedEmail, _id: { $ne: req.user._id } });
 
@@ -170,9 +182,8 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.description = description.trim();
     provider.about = about?.trim() || description.trim();
     provider.image = typeof image === "string" ? image : "";
-    if (typeof aadhaarCardImage === "string" && aadhaarCardImage.trim()) {
-      provider.aadhaarCardImage = aadhaarCardImage;
-    }
+    provider.aadhaarCardImage = nextAadhaarImage;
+    provider.aadhaarNumber = nextAadhaarNumber;
     if (availabilityStatus && availabilityStatuses.includes(availabilityStatus)) {
       provider.availabilityStatus = availabilityStatus;
       provider.isActive = availabilityStatus !== "inactive";
@@ -181,6 +192,15 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.features = Array.isArray(features)
       ? features.map((feature) => String(feature).trim()).filter(Boolean)
       : String(features).split(",").map((feature) => feature.trim()).filter(Boolean);
+
+    if (provider.approvalStatus === "rejected") {
+      provider.approvalStatus = "pending";
+      provider.isActive = false;
+      provider.rejectionReason = "";
+      provider.rejectedAt = null;
+      provider.approvedAt = null;
+      provider.resubmittedAt = new Date();
+    }
 
     await provider.save();
 

@@ -122,7 +122,11 @@ export default function AuthSheet({
       if (!asset) return;
 
       const mimeType = asset.mimeType || "image/jpeg";
-      const aadhaarCardImage = asset.base64 ? `data:${mimeType};base64,${asset.base64}` : asset.uri;
+      if (!asset.base64) {
+        Alert.alert("Aadhaar upload", "This image could not be prepared for upload. Please choose another image.");
+        return;
+      }
+      const aadhaarCardImage = `data:${mimeType};base64,${asset.base64}`;
       setForm((current) => ({ ...current, aadhaarCardImage }));
     } catch {
       Alert.alert("Aadhaar upload", "Could not select this image. Please try another photo.");

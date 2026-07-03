@@ -530,11 +530,10 @@ function HeroCarousel({ onPress }) {
     }
   };
 
-  // Parallax effect: scale each image based on scroll position
-  const onScrollAnimated = Animated.event(
-    [{ nativeEvent: { contentOffset: { x: new Animated.Value(0) } } }],
-    { useNativeDriver: Platform.OS !== 'web', listener: handleScroll }
-  );
+  // Keep this as a plain function: ScrollView expects a callable onScroll prop.
+  const onScrollAnimated = (event) => {
+    handleScroll(event);
+  };
 
   // Animated pagination dots
   const renderDot = (index) => {
