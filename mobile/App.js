@@ -1,4 +1,5 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Appearance, BackHandler, Dimensions, Keyboard, Linking, Platform, Pressable, Share, StatusBar, StyleSheet, Text, useColorScheme, View } from "react-native";
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -64,6 +65,7 @@ import ServiceDetailSheet from "./src/sheets/ServiceDetailSheet";
 import SettingsSheet from "./src/sheets/SettingsSheet";
 import ShareFallbackSheet from "./src/sheets/ShareFallbackSheet";
 import { applyAppearanceMode, colors, getAppearanceColors, ThemeColorsProvider } from "./src/theme";
+
 
 const windowMetrics = Dimensions.get("window");
 const safeAreaInitialMetrics = initialWindowMetrics || {
@@ -1698,6 +1700,16 @@ function ServiceHubApp() {
         />
       );
     }
+
+    if (activeTab === "tracking") {
+  return (
+    <TrackingScreen
+      token={token}
+      bookingId={trackingBookingId}
+      onBack={closeTrackingScreen}
+    />
+  );
+}
 
     if (activeTab === "provider") {
       return (
