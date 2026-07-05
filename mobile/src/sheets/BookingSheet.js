@@ -1,4 +1,4 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
+﻿import DateTimePicker from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -122,15 +122,12 @@ export default function BookingSheet({ visible, service, user, initialForm = nul
       ...emptyForm,
       name: user?.name || "",
       phone: user?.phone || "",
-      service:
-        service?.category === "Other" || service?.category === "Other services"
-          ? service?.name || ""
-          : finalServiceNames.includes(service?.name)
-            ? service?.name
-            : finalServiceNames.includes(service?.category)
-              ? service?.category
-              : service?.category || service?.name || "",
-      providerId: service?.providerId || service?._id || "",
+      service: finalServiceNames.includes(service?.name)
+        ? service.name
+        : finalServiceNames.includes(service?.category)
+          ? service.category
+          : service?.name || service?.category || "",
+      providerId: service?.providerId || "",
       date: formatDisplayDate(startOfToday()),
       ...(initialForm || {}),
     });
