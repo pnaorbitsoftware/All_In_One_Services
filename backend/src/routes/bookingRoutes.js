@@ -97,6 +97,20 @@ const geocodeAddress = async (address) => {
   }
 };
 router.post("/", requireAuth, async (req, res) => {
+  console.log("=== POST /api/bookings req.body ===");
+  console.log(JSON.stringify(req.body, null, 2));
+
+  const debugService = req.body?.service || "";
+  const debugProviderId = req.body?.providerId || "";
+  const debugNormalized = normalizeServiceName(debugService);
+  const debugAllowed = isAllowedServiceName(debugNormalized);
+
+  console.log(`providerId: "${debugProviderId}"`);
+  console.log(`service: "${debugService}"`);
+  console.log(`normalizedService: "${debugNormalized}"`);
+  console.log(`isAllowedServiceName(normalizedService): ${debugAllowed}`);
+  console.log("=====================================");
+
   try {
     const { name, phone, service, address, problemDescription, date, time, duration, providerId = "", clientLatitude, clientLongitude, clientLocationAccuracy } = req.body;
 
