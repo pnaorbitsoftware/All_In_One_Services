@@ -70,6 +70,24 @@ const corsOptions = {
       return callback(null, true);
     }
 
+    // ✅ Allow any Vercel preview deployment for your project
+    try {
+      const url = new URL(origin);
+      const hostname = url.hostname;
+      
+      // Match: anything ending with -pnaorbitsoftwares-projects.vercel.app
+      if (hostname.endsWith('-pnaorbitsoftwares-projects.vercel.app')) {
+        return callback(null, true);
+      }
+      
+      // Also match your custom domain and www
+      if (['servicehub.aparaitech.org', 'www.servicehub.aparaitech.org'].includes(hostname)) {
+        return callback(null, true);
+      }
+    } catch {
+      return callback(new Error("Invalid request origin."));
+    }
+
     if (!isProduction) {
       try {
         const { hostname } = new URL(origin);
@@ -87,7 +105,6 @@ const corsOptions = {
   credentials: true,
   maxAge: 86400,
 };
-
 app.set("trust proxy", 1);
 app.use((req, res, next) => {
   if (isProduction && process.env.FORCE_HTTPS !== "false" && req.headers["x-forwarded-proto"] === "http") {
