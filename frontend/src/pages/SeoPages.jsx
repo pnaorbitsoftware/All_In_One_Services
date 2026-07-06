@@ -18,6 +18,7 @@ import {
   Info
 } from "lucide-react";
 import SEO from "../seo/SEO";
+import { API_URL } from "../config/api";
 import {
   buildBreadcrumbSchema,
   citySeoPages,
@@ -28,8 +29,6 @@ import {
   serviceSchema,
   targetKeywords,
 } from "../seo/seoData";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 function SeoPageNavbar({ theme, setTheme }) {
   const isDark = theme === "dark";

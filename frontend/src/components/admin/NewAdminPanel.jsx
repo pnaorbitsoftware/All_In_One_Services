@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { releaseProviderPayment } from "../../api/payments";
+import { API_URL } from "../../config/api";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -29,8 +30,6 @@ import {
   Inbox,
   Download,
 } from "lucide-react";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const normalizeText = (value) =>
   String(value || "")
