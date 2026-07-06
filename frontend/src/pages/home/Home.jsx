@@ -68,7 +68,7 @@ import {
 } from "../../components/tracking/trackingShared";
 import useProviderAlerts from "../../components/tracking/useProviderAlerts";
 import SEO from "../../seo/SEO";
-import { API_URL, AUTH_API_URLS } from "../../config/api";
+import { API_URL, AUTH_API_URLS, SOCKET_API_URL } from "../../config/api";
 import {
   buildBreadcrumbSchema,
   faqItems,
@@ -4611,7 +4611,7 @@ function ProviderDashboard({
   );
 
   useProviderAlerts({
-    apiUrl: API_URL,
+    apiUrl: SOCKET_API_URL,
     token,
     enabled: Boolean(providerProfile) && !isDashboardLocked,
     onBookingAlert: handleBookingAlert,
@@ -4808,7 +4808,7 @@ function ProviderDashboard({
                             updateProviderBookingStatus
                           }
                           setStatusMessage={setStatusMessage}
-                          apiUrl={API_URL}
+                          apiUrl={SOCKET_API_URL}
                         />
                       </div>
                     ))
