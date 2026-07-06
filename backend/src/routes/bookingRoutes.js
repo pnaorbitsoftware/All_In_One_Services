@@ -504,8 +504,6 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   }
 });
 
-export default router;
-
 
 router.patch("/:bookingId/payment-confirmation", requireAuth, async (req, res) => {
   try {
