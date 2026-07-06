@@ -17,16 +17,8 @@ import {
   User,
   X,
 } from "lucide-react";
+import { AUTH_API_URLS } from "../../config/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-const AUTH_API_URLS = [
-  ...new Set([
-    API_URL,
-    ...(import.meta.env.DEV
-      ? ["http://localhost:5000/api", "http://localhost:5001/api"]
-      : []),
-  ]),
-];
 const providerCategories = [
   "Plumber",
   "Electrician",

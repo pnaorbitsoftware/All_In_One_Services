@@ -68,6 +68,7 @@ import {
 } from "../../components/tracking/trackingShared";
 import useProviderAlerts from "../../components/tracking/useProviderAlerts";
 import SEO from "../../seo/SEO";
+import { API_URL, AUTH_API_URLS } from "../../config/api";
 import {
   buildBreadcrumbSchema,
   faqItems,
@@ -79,7 +80,6 @@ import {
   targetKeywords,
 } from "../../seo/seoData";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 let catalogRequestPromise = null;
 const fetchCatalogSnapshot = () => {
   if (!catalogRequestPromise) {
@@ -91,13 +91,6 @@ const fetchCatalogSnapshot = () => {
   }
   return catalogRequestPromise;
 };
-const AUTH_API_URLS = [
-  ...new Set([
-    API_URL,
-    "http://localhost:5000/api",
-    "http://localhost:5001/api",
-  ]),
-];
 const SERVICEHUB_ICON = "/servicehub-icon.png";
 
 const supportedLanguages = [
@@ -2092,7 +2085,9 @@ export default function Home() {
       setAdminData((current) => ({
         ...current,
         providers: current.providers.map((provider) =>
-          provider._id === providerId ? { ...provider, ...data.provider, documents: provider.documents } : provider,
+          provider._id === providerId
+            ? { ...provider, ...data.provider, documents: provider.documents }
+            : provider,
         ),
       }));
       setStatusMessage(`Provider ${approvalStatus}.`);
@@ -2351,6 +2346,10 @@ export default function Home() {
           </main>
         )}
 
+        {activeView === "client" && !user && (
+          <WorkspaceRecovery message="Your session could not be restored. Please log in again." onRecover={() => clearSessionState()} />
+        )}
+
         {activeView === "client" &&
           ["user", "provider"].includes(user?.role) && (
             <ClientDashboard
@@ -2376,6 +2375,10 @@ export default function Home() {
               onLogout={handleLogout}
             />
           )}
+
+        {activeView === "provider" && user?.role !== "provider" && (
+          <WorkspaceRecovery message="Provider session could not be restored." onRecover={() => clearSessionState()} />
+        )}
 
         {activeView === "provider" && user?.role === "provider" && (
           <ProviderDashboard
@@ -2405,6 +2408,10 @@ export default function Home() {
             onOpenProfile={openProviderAccount}
             onLogout={handleLogout}
           />
+        )}
+
+        {activeView === "admin" && user?.role !== "admin" && (
+          <WorkspaceRecovery message="Admin session could not be restored." onRecover={() => clearSessionState()} />
         )}
 
         {activeView === "admin" && user?.role === "admin" && (
@@ -2537,6 +2544,29 @@ export default function Home() {
         />
       )}
     </div>
+  );
+}
+
+function WorkspaceRecovery({ message, onRecover }) {
+  return (
+    <main className="grid min-h-screen place-items-center bg-slate-50 px-4 dark:bg-slate-950">
+      <section className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-white/10 dark:bg-slate-900">
+        <ShieldCheck className="mx-auto h-12 w-12 text-teal-600" />
+        <h1 className="mt-5 text-2xl font-black text-slate-950 dark:text-white">
+          Workspace needs a fresh login
+        </h1>
+        <p className="mt-3 font-semibold text-slate-500 dark:text-slate-300">
+          {message}
+        </p>
+        <button
+          type="button"
+          onClick={onRecover}
+          className="mt-6 rounded-2xl bg-gradient-to-r from-teal-600 to-blue-600 px-6 py-3 font-black text-white"
+        >
+          Return to login
+        </button>
+      </section>
+    </main>
   );
 }
 

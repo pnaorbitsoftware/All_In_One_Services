@@ -281,6 +281,7 @@ router.post("/register", async (req, res) => {
         otp: otpChannel === "sms" ? "__twilio_verify__" : registrationOtp,
         phone,
         expiresAt: Date.now() + 5 * 60 * 1000,
+          registrationBody: { ...req.body },
       });
 
       return res.status(202).json({
@@ -304,13 +305,18 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Invalid registration OTP." });
     }
 
-    let aadhaarDigits = "";
-    let aadhaarFrontUrl = "";
-    let aadhaarBackUrl = "";
-    if (role === "provider") {
-      aadhaarDigits = String(req.body.aadhaarNumber || "").replace(/\D/g, "");
-      aadhaarFrontUrl = req.body.aadhaarFrontUrl || req.body.aadhaarDocumentUrl || "";
-      aadhaarBackUrl = req.body.aadhaarBackUrl || "";
+      const registrationBody = {
+        ...(registrationRecord.registrationBody || {}),
+        ...req.body,
+      };
+
+      let aadhaarDigits = "";
+      let aadhaarFrontUrl = "";
+      let aadhaarBackUrl = "";
+      if (role === "provider") {
+        aadhaarDigits = String(registrationBody.aadhaarNumber || "").replace(/\D/g, "");
+        aadhaarFrontUrl = registrationBody.aadhaarFrontUrl || registrationBody.aadhaarDocumentUrl || registrationBody.aadhaarCardImage || "";
+        aadhaarBackUrl = registrationBody.aadhaarBackUrl || "";
 
       if (aadhaarDigits.length !== 12) {
         return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required for provider registration." });
@@ -348,8 +354,8 @@ router.post("/register", async (req, res) => {
         aadhaarNumberMasked: `XXXX XXXX ${aadhaarDigits.slice(-4)}`,
         aadhaarFrontUrl,
         aadhaarBackUrl,
-        aadhaarDocumentName: req.body.aadhaarDocumentName || "",
-        aadhaarBackDocumentName: req.body.aadhaarBackDocumentName || "",
+        aadhaarDocumentName: registrationBody.aadhaarDocumentName || "",
+        aadhaarBackDocumentName: registrationBody.aadhaarBackDocumentName || "",
         aadhaarFrontUploadedAt: new Date(),
         aadhaarBackUploadedAt: aadhaarBackUrl ? new Date() : null,
         verificationStatus: "pending",
