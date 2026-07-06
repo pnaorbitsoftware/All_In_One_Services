@@ -81,11 +81,6 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 let catalogRequestPromise = null;
-let clientBookingsRequestActive = false;
-let providerDashboardRequestActive = false;
-let adminDashboardRequestActive = false;
-let providerEarningsLastFetchedAt = 0;
-const providerActionsInFlight = new Set();
 const fetchCatalogSnapshot = () => {
   if (!catalogRequestPromise) {
     catalogRequestPromise = fetch(`${API_URL}/catalog`)
@@ -99,9 +94,8 @@ const fetchCatalogSnapshot = () => {
 const AUTH_API_URLS = [
   ...new Set([
     API_URL,
-    ...(import.meta.env.DEV
-      ? ["http://localhost:5000/api", "http://localhost:5001/api"]
-      : []),
+    "http://localhost:5000/api",
+    "http://localhost:5001/api",
   ]),
 ];
 const SERVICEHUB_ICON = "/servicehub-icon.png";
@@ -622,7 +616,7 @@ const formatBookingTime = (value) => {
 const clientCancelWindowMs = 10 * 60 * 1000;
 
 const getClientCancelState = (booking, now = Date.now()) => {
-  if (["completed", "cancelled"].includes(booking.status)) {
+  if (["completed", "cancelled", "rejected"].includes(booking.status)) {
     return { canCancel: false, label: "Cancel unavailable" };
   }
 
@@ -1054,9 +1048,8 @@ export default function Home() {
 
   const refreshClientBookings = useCallback(async () => {
     const currentToken = localStorage.getItem("servicehub_token");
-    if (!currentToken || clientBookingsRequestActive) return;
+    if (!currentToken) return;
 
-    clientBookingsRequestActive = true;
     try {
       const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
         headers: { Authorization: `Bearer ${currentToken}` },
@@ -1065,8 +1058,6 @@ export default function Home() {
       setBookings(data.bookings || []);
     } catch {
       setBookings([]);
-    } finally {
-      clientBookingsRequestActive = false;
     }
   }, []);
 
@@ -1082,13 +1073,14 @@ export default function Home() {
       if (document.visibilityState === "visible") refreshClientBookings();
     };
 
-    const initialTimer = window.setTimeout(refreshClientBookings, 0);
-    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
+    loadClientBookings();
+    const intervalId = window.setInterval(
+      loadClientBookings,
+      activeView === "client" ? 5000 : 15000,
+    );
     return () => {
-      window.clearTimeout(initialTimer);
+      stopped = true;
       window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [
     activeView,
@@ -1218,8 +1210,7 @@ export default function Home() {
       return;
     }
     const currentToken = localStorage.getItem("servicehub_token");
-    if (!currentToken || providerDashboardRequestActive) return;
-    providerDashboardRequestActive = true;
+    if (!currentToken) return;
     try {
       setProviderClientMode(false);
       const response = await authenticatedFetch(
@@ -1242,12 +1233,9 @@ export default function Home() {
         !nextProviderDashboard.dashboardLocked &&
         nextProviderDashboard.provider?.approvalStatus === "approved"
       ) {
-        if (Date.now() - providerEarningsLastFetchedAt >= 60_000) {
-          providerEarningsLastFetchedAt = Date.now();
-          getProviderEarnings()
-            .then(setProviderEarnings)
-            .catch(() => setProviderEarnings(null));
-        }
+        getProviderEarnings()
+          .then(setProviderEarnings)
+          .catch(() => setProviderEarnings(null));
       } else {
         setProviderEarnings(null);
       }
@@ -1290,8 +1278,6 @@ export default function Home() {
       }
       setStatusMessage(error.message);
       setActiveView("provider");
-    } finally {
-      providerDashboardRequestActive = false;
     }
   }, [user]);
 
@@ -1325,15 +1311,10 @@ export default function Home() {
     if (activeView !== "provider" || user?.role !== "provider")
       return undefined;
 
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") loadProviderDashboard();
-    };
-    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
+    if (!isWaitingForApproval) return undefined;
+
+    const intervalId = window.setInterval(loadProviderDashboard, 10000);
+    return () => window.clearInterval(intervalId);
   }, [
     activeView,
     loadProviderDashboard,
@@ -1435,8 +1416,6 @@ export default function Home() {
   };
 
   const loadAdminDashboard = useCallback(async () => {
-    if (adminDashboardRequestActive) return;
-    adminDashboardRequestActive = true;
     try {
       if (user?.role !== "admin") throw new Error("Admin access required.");
       const currentToken = localStorage.getItem("servicehub_token");
@@ -1462,8 +1441,6 @@ export default function Home() {
       setActiveView("admin");
     } catch (error) {
       setStatusMessage(error.message);
-    } finally {
-      adminDashboardRequestActive = false;
     }
   }, [user]);
 
@@ -1507,18 +1484,21 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (activeView !== "admin" || user?.role !== "admin") return undefined;
+    if (activeView !== "admin") return undefined;
 
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") loadAdminDashboard();
-    };
-    const timer = window.setInterval(refreshWhenVisible, 120_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
+    const initialRefresh = window.setTimeout(
+      () => refreshAdminContactMessages({ silent: true }),
+      0,
+    );
+    const timer = window.setInterval(
+      () => refreshAdminContactMessages({ silent: true }),
+      30000,
+    );
     return () => {
+      window.clearTimeout(initialRefresh);
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [activeView, loadAdminDashboard, user?.role]);
+  }, [activeView]);
 
   const refreshAfterAction = ({
     client = false,
@@ -1528,6 +1508,11 @@ export default function Home() {
     if (client) refreshClientBookings();
     if (provider) loadProviderDashboard();
     if (admin) loadAdminDashboard();
+
+    window.setTimeout(() => {
+      if (client) refreshClientBookings();
+      if (provider) loadProviderDashboard();
+    }, 900);
   };
 
   const handleLogout = () => {
@@ -1844,8 +1829,6 @@ export default function Home() {
   };
 
   const acceptProviderRequest = async (bookingId) => {
-    if (providerActionsInFlight.has(`accept:${bookingId}`)) return;
-    providerActionsInFlight.add(`accept:${bookingId}`);
     try {
       const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/accept`,
@@ -1870,10 +1853,45 @@ export default function Home() {
         bookings: [data.booking, ...(current?.bookings || [])],
       }));
       setStatusMessage("Request accepted. The client has been notified.");
+      refreshAfterAction({ provider: true });
     } catch (error) {
       setStatusMessage(error.message);
-    } finally {
-      providerActionsInFlight.delete(`accept:${bookingId}`);
+    }
+  };
+
+  const rejectProviderRequest = async (bookingId, reason = "") => {
+    try {
+      const response = await authenticatedFetch(
+        `${API_URL}/providers/bookings/${bookingId}/reject`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason }),
+        },
+      );
+      const data = await parseApiResponse(
+        response,
+        "Booking request could not be rejected.",
+      );
+      if (!response.ok)
+        throw new Error(
+          data.message || "Booking request could not be rejected.",
+        );
+      setProviderData((current) => ({
+        ...normalizeProviderDashboard(current || {}),
+        availableRequests: (current?.availableRequests || []).filter(
+          (booking) => booking._id !== bookingId,
+        ),
+      }));
+      setStatusMessage("Request rejected.");
+      refreshAfterAction({ provider: true });
+      return data.booking || true;
+    } catch (error) {
+      setStatusMessage(error.message);
+      return false;
     }
   };
 
@@ -1882,9 +1900,6 @@ export default function Home() {
     status,
     cancellationReason = "",
   ) => {
-    const actionKey = `status:${bookingId}`;
-    if (providerActionsInFlight.has(actionKey)) return false;
-    providerActionsInFlight.add(actionKey);
     try {
       const response = await authenticatedFetch(
         `${API_URL}/providers/bookings/${bookingId}/status`,
@@ -1914,12 +1929,11 @@ export default function Home() {
           ? "Booking marked work completed."
           : `Booking marked ${status}.`,
       );
+      refreshAfterAction({ provider: true });
       return data.booking;
     } catch (error) {
       setStatusMessage(error.message);
       return false;
-    } finally {
-      providerActionsInFlight.delete(actionKey);
     }
   };
 
@@ -2378,6 +2392,7 @@ export default function Home() {
             providerBookings={providerBookings}
             providerEarnings={providerEarnings}
             acceptProviderRequest={acceptProviderRequest}
+            rejectProviderRequest={rejectProviderRequest}
             updateProviderBookingStatus={updateProviderBookingStatus}
             submitEstimate={handleSubmitProviderEstimate}
             refreshDashboard={loadProviderDashboard}
@@ -2845,18 +2860,35 @@ function ProfileImageModal({
     </motion.div>
   );
 }
+// import { ChevronRight } from "lucide-react";
 
 function Categories({ categories, selectedCategory, setSelectedCategory }) {
+  const categoryIcons = {
+    Plumber: "🚰",
+    Electrician: "⚡",
+    Carpenter: "🪚",
+    Painter: "🎨",
+    "AC Repair": "❄️",
+    "Refrigerator Repair": "🧊",
+    "Washing Machine Repair": "🧺",
+    "TV Repair": "📺",
+  };
+
   return (
     <>
-      <div className="border-b border-[#ded7ca] bg-[#fffdf8] px-4 py-4 dark:border-white/10 dark:bg-slate-900 lg:hidden">
-        <label className="mb-2 block text-sm font-black text-slate-700 dark:text-slate-200">
-          Select service category
+      {/* ================= Mobile ================= */}
+      <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-900 lg:hidden">
+        <label
+          htmlFor="category-select"
+          className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300"
+        >
+          Select Service Category
         </label>
         <select
+          id="category-select"
           value={selectedCategory}
-          onChange={(event) => setSelectedCategory(event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-blue-800"
         >
           {categories.map((category) => (
             <option key={category} value={category}>
@@ -2866,23 +2898,55 @@ function Categories({ categories, selectedCategory, setSelectedCategory }) {
         </select>
       </div>
 
-      <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-full overflow-hidden rounded-tr-[1.75rem] border border-l-0 border-[#ded7ca] bg-[#fffdf8]/80 px-6 py-7 shadow-sm dark:border-white/10 dark:bg-slate-900/90 lg:block">
-        <h2 className="home-section-title font-display text-3xl font-black leading-tight text-slate-900 dark:text-white">
-          Providers category
-        </h2>
-        <div className="scrollbar-hidden mt-7 grid max-h-[calc(100vh-14rem)] gap-2.5 overflow-y-auto pr-1">
+      {/* ================= Desktop Sidebar ================= */}
+      <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900 lg:block">
+        {/* Header */}
+        <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 to-white px-6 py-6 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+          <span className="inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+            Categories
+          </span>
+          <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Find Professionals
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Choose a category to explore trusted local service providers.
+          </p>
+        </div>
+
+        {/* Category List */}
+        <div className="scrollbar-hidden max-h-[calc(100vh-15rem)] space-y-1.5 overflow-y-auto p-4">
           {categories.map((category) => (
             <button
               key={category}
               type="button"
               onClick={() => setSelectedCategory(category)}
-              className={`border-b border-slate-200/70 px-1 py-3 text-left text-base font-black transition last:border-b-0 dark:border-white/10 ${
+              className={`group flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-all duration-200 ${
                 selectedCategory === category
-                  ? "text-teal-700 dark:text-amber-300"
-                  : "text-slate-950 hover:translate-x-1 hover:text-teal-700 dark:text-slate-200 dark:hover:text-amber-300"
+                  ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200/50 dark:shadow-blue-900/30"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-700"
               }`}
             >
-              {category}
+              <div className="flex items-center gap-3">
+                <span
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg text-lg transition-all ${
+                    selectedCategory === category
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600 dark:bg-slate-700 dark:text-slate-300 dark:group-hover:bg-slate-600 dark:group-hover:text-white"
+                  }`}
+                >
+                  {categoryIcons[category] || "🔧"}
+                </span>
+                <span className="font-semibold">{category}</span>
+              </div>
+              <ChevronRight
+                size={18}
+                strokeWidth={2.5}
+                className={`transition-all duration-200 ${
+                  selectedCategory === category
+                    ? "translate-x-1 text-white"
+                    : "text-slate-400 group-hover:translate-x-1 group-hover:text-blue-500 dark:group-hover:text-blue-400"
+                }`}
+              />
             </button>
           ))}
         </div>
@@ -2890,6 +2954,10 @@ function Categories({ categories, selectedCategory, setSelectedCategory }) {
     </>
   );
 }
+
+// import { motion } from "framer-motion";
+// import { Star, Sparkles } from "lucide-react";
+// import { categoryImages } from "../utils/categoryImages";
 
 function Providers({
   services,
@@ -2904,6 +2972,7 @@ function Providers({
   const visibleServices = services.slice(0, visibleCount);
   const hasMoreProviders = visibleCount < services.length;
   const canShowLessProviders = visibleCount > providerBatchSize;
+
   const scrollToProvidersGrid = () => {
     window.setTimeout(() => {
       providersGridRef.current?.scrollIntoView({
@@ -2916,45 +2985,56 @@ function Providers({
   return (
     <div
       id="providers"
-      className="home-section bg-[#fbfaf6] px-4 pb-16 pt-7 dark:bg-slate-950 sm:px-6 lg:px-8 lg:pb-20 lg:pt-7"
+      className="home-section bg-white px-4 pb-16 pt-7 dark:bg-slate-950 sm:px-6 lg:px-8 lg:pb-20 lg:pt-7"
     >
       <div className="mx-auto max-w-[1500px]">
-        <div className="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-start">
+        {/* Header */}
+        <div className="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h2 className="home-section-title font-display text-3xl font-black tracking-[-0.02em] text-slate-950 dark:text-white md:text-4xl">
+            <h2 className="home-section-title text-3xl font-bold tracking-tight text-slate-900 dark:text-white md:text-4xl">
               Most booked services
             </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Trusted professionals at your service
+            </p>
           </div>
-          <div className="rounded-full border border-[#ded7ca] bg-white px-4 py-2 text-sm font-black text-slate-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm font-semibold text-slate-600 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300">
             {services.length} available
           </div>
         </div>
+
+        {/* Grid */}
         {visibleServices.length ? (
           <div
             ref={providersGridRef}
-            className="scroll-mt-24 grid gap-8 sm:grid-cols-2 xl:grid-cols-4"
+            className="scroll-mt-24 grid gap-6 sm:grid-cols-2 xl:grid-cols-4"
           >
             {visibleServices.map((service, index) => {
               const isOwnProviderCard = Boolean(
                 service.providerId &&
-                ownProviderId &&
-                String(service.providerId) === String(ownProviderId),
+                  ownProviderId &&
+                  String(service.providerId) === String(ownProviderId),
               );
 
               return (
                 <motion.article
                   key={service.id || service.providerId || service.name}
                   data-provider-card="true"
-                  initial={{ opacity: 0, y: 24 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.04 }}
-                  className="group min-w-0 overflow-hidden rounded-2xl border border-[#ded7ca] bg-[#fffefb] p-3 shadow-sm transition hover:-translate-y-1 hover:border-teal-200 hover:shadow-xl dark:border-white/10 dark:bg-white/5"
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true, margin: "-30px" }}
+                  transition={{
+                    delay: index * 0.05,
+                    duration: 0.35,
+                    ease: "easeOut",
+                  }}
+                  className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md dark:border-white/10 dark:bg-slate-900 dark:hover:border-blue-400/30 dark:hover:shadow-xl"
                 >
+                  {/* Image */}
                   <button
                     type="button"
                     onClick={() => setSelectedService(service)}
-                    className="block w-full overflow-hidden rounded-xl bg-slate-100 text-left ring-1 ring-slate-100 transition focus:outline-none focus:ring-4 focus:ring-teal-200 dark:bg-white/10 dark:ring-white/10"
+                    className="block w-full overflow-hidden bg-slate-100 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800"
                     aria-label={`Open ${service.name} profile`}
                   >
                     <span className="relative block aspect-square overflow-hidden">
@@ -2972,34 +3052,43 @@ function Providers({
                             categoryImages[service.category] ||
                             categoryImages.Cleaning;
                         }}
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                      {service.featured && (
+                        <span className="absolute left-3 top-3 rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white shadow-md">
+                          Featured
+                        </span>
+                      )}
                     </span>
                   </button>
-                  <div className="px-1 pt-4">
+
+                  {/* Content */}
+                  <div className="px-4 pb-4 pt-3">
                     <button
                       type="button"
                       onClick={() => setSelectedService(service)}
-                      className="text-left text-lg font-black leading-7 text-slate-950 transition hover:text-teal-700 dark:text-white dark:hover:text-amber-300"
+                      className="text-left text-xl font-bold leading-7 text-slate-900 transition-colors hover:text-blue-600 dark:text-white dark:hover:text-blue-400"
                     >
                       {service.name}
                     </button>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-slate-600 dark:text-slate-300">
+
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-medium text-slate-600 dark:text-slate-300">
                       <span className="inline-flex items-center gap-1">
                         <Star
                           size={15}
-                          className="fill-slate-800 text-slate-800 dark:fill-amber-300 dark:text-amber-300"
-                        />{" "}
+                          className="fill-slate-700 text-slate-700 dark:fill-amber-300 dark:text-amber-300"
+                        />
                         {service.rating || 4.8}
                       </span>
                       {service.responseTime && (
                         <>
-                          <span aria-hidden="true">|</span>
+                          <span aria-hidden="true">•</span>
                           <span className="inline-flex items-center gap-1">
                             <Sparkles
                               size={14}
-                              className="fill-teal-600 text-teal-600"
-                            />{" "}
+                              className="fill-blue-500 text-blue-500 dark:fill-blue-400 dark:text-blue-400"
+                            />
                             {service.responseTime.includes("Instant")
                               ? service.responseTime
                               : "Instant"}
@@ -3008,20 +3097,26 @@ function Providers({
                       )}
                       {service.location && (
                         <>
-                          <span aria-hidden="true">|</span>
-                          <span>{service.location}</span>
+                          <span aria-hidden="true">•</span>
+                          <span className="truncate">{service.location}</span>
                         </>
                       )}
                     </div>
-                    <p className="mt-2 text-base font-semibold text-slate-950 dark:text-white">
-                      {formatServiceChargeLabel(service.price)}
-                    </p>
-                    {isOwnProviderCard && (
-                      <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-300">
-                        Your provider profile
+
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                        {formatServiceChargeLabel(service.price)}
                       </p>
-                    )}
+                      {isOwnProviderCard && (
+                        <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-sm font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          Your profile
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Decorative corner accent */}
+                  <div className="absolute -right-8 -top-8 h-16 w-16 rounded-full bg-blue-100/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:bg-blue-400/10" />
                 </motion.article>
               );
             })}
@@ -3032,34 +3127,40 @@ function Providers({
             copy="Try another service category or clear the search box."
           />
         )}
+
+        {/* Load more buttons */}
         {(hasMoreProviders || canShowLessProviders) && (
-          <div className="mt-7 flex flex-wrap justify-center gap-3">
+          <div className="mt-10 flex flex-wrap justify-center gap-3">
             {canShowLessProviders && (
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   setProviderVisibleCount((current) =>
                     Math.max(providerBatchSize, current - providerBatchSize),
                   );
                   scrollToProvidersGrid();
                 }}
-                className="rounded-full border border-[#ded7ca] bg-white px-7 py-3.5 text-base font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:text-teal-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
+                className="rounded-full border border-slate-300 bg-white px-7 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 dark:border-white/20 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-white/40 dark:hover:bg-slate-700"
               >
                 View less
-              </button>
+              </motion.button>
             )}
             {hasMoreProviders && (
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() =>
                   setProviderVisibleCount((current) =>
                     Math.min(services.length, current + providerBatchSize),
                   )
                 }
-                className="rounded-full bg-gradient-to-r from-teal-600 to-blue-600 px-7 py-3.5 text-base font-black text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5"
+                className="rounded-full bg-blue-600 px-7 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600"
               >
                 View more
-              </button>
+              </motion.button>
             )}
           </div>
         )}
@@ -3070,35 +3171,97 @@ function Providers({
 
 function FAQ() {
   return (
-    <section
-      id="faq"
-      className="home-section bg-[#fbfaf6] px-4 py-16 dark:bg-slate-950 sm:px-6 lg:px-8 lg:py-24"
-    >
-      <div className="mx-auto max-w-6xl">
-        <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-black text-teal-700">
-          FAQ
+ <section
+  id="faq"
+  className="relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-blue-50 px-4 py-24 sm:px-6 lg:px-8 lg:py-32"
+>
+  {/* Background Glow */}
+  <div className="absolute -top-40 -left-40 h-[450px] w-[450px] rounded-full bg-cyan-400/15 blur-[170px] animate-pulse"></div>
+
+  <div className="absolute top-1/2 left-1/3 h-[350px] w-[350px] rounded-full bg-pink-400/10 blur-[170px] animate-pulse"></div>
+
+  <div className="absolute -bottom-40 -right-40 h-[450px] w-[450px] rounded-full bg-violet-400/15 blur-[170px] animate-pulse"></div>
+
+  <div className="relative mx-auto max-w-6xl">
+    {/* Badge */}
+    <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-6 py-3 text-sm font-bold tracking-wider text-white shadow-xl">
+      ✨ Frequently Asked Questions
+    </span>
+
+    {/* Heading */}
+    <h2 className="mt-8 text-5xl font-black leading-tight text-slate-900 md:text-6xl">
+      Answers before customers
+      <span className="block bg-gradient-to-r from-cyan-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
+        book home services.
+      </span>
+    </h2>
+
+    <p className="mt-6 max-w-3xl text-xl leading-9 text-slate-600">
+      Find answers to the most common questions about booking services,
+      payments, providers and support.
+    </p>
+
+    {/* FAQ List */}
+    <div className="mt-14 space-y-6">
+      {faqItems.map((item, index) => (
+        <details
+          key={item.question}
+          className="group overflow-hidden rounded-[30px] border border-slate-200 bg-white/90 backdrop-blur-xl shadow-lg transition-all duration-500 hover:-translate-y-2 hover:scale-[1.01] hover:border-cyan-400 hover:shadow-[0_25px_70px_rgba(59,130,246,0.18)]"
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-5 px-6 py-6 text-lg font-bold text-slate-900">
+            <div className="flex items-center gap-5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 font-bold text-white shadow-lg transition duration-500 group-hover:rotate-6">
+                {String(index + 1).padStart(2, "0")}
+              </div>
+
+              <span>{item.question}</span>
+            </div>
+
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-violet-600 shadow-lg transition-all duration-500 group-open:rotate-90 group-hover:scale-110">
+              <ChevronRight className="h-5 w-5 text-white" />
+            </div>
+          </summary>
+
+          <div className="px-6 pb-6">
+            <div className="mt-2 h-px w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500"></div>
+
+            <p className="mt-6 text-[17px] leading-8 text-slate-600">
+              {item.answer}
+            </p>
+          </div>
+        </details>
+      ))}
+    </div>
+
+    {/* Bottom CTA */}
+    <div className="mt-20 rounded-[32px] border border-slate-200 bg-white/90 p-10 text-center shadow-2xl backdrop-blur-xl">
+      <h3 className="text-3xl font-black text-slate-900">
+        Still Have Questions?
+      </h3>
+
+      <p className="mt-4 text-lg text-slate-600">
+        Our support team is always available to help you with bookings,
+        payments and service-related queries.
+      </p>
+
+      <button
+        type="button"
+        onClick={() =>
+          document.getElementById("contact")?.scrollIntoView({
+            behavior: "smooth",
+          })
+        }
+        className="group mt-8 inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-8 py-4 font-bold text-white shadow-xl transition-all duration-500 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_20px_60px_rgba(59,130,246,0.45)]"
+      >
+        <span>Contact Support</span>
+
+        <span className="transition-transform duration-500 group-hover:translate-x-2">
+          →
         </span>
-        <h2 className="home-section-title mt-4 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
-          Answers before customers book home services.
-        </h2>
-        <div className="mt-7 grid gap-0 border-y border-slate-200 dark:border-white/10">
-          {faqItems.map((item) => (
-            <details
-              key={item.question}
-              className="group border-b border-slate-200 px-1 py-4 last:border-b-0 dark:border-white/10"
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-5 text-base font-black text-slate-950 marker:hidden dark:text-white">
-                {item.question}
-                <ChevronRight className="h-4 w-4 flex-none transition group-open:rotate-90" />
-              </summary>
-              <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-500 dark:text-slate-300">
-                {item.answer}
-              </p>
-            </details>
-          ))}
-        </div>
-      </div>
-    </section>
+      </button>
+    </div>
+  </div>
+</section>
   );
 }
 
@@ -3199,9 +3362,11 @@ function ClientDashboard({
       bookings: bookings.filter((booking) => booking.status === "completed"),
     },
     {
-      title: "Cancelled services",
-      copy: "Cancelled bookings appear here.",
-      bookings: bookings.filter((booking) => booking.status === "cancelled"),
+      title: "Cancelled / Rejected services",
+      copy: "Cancelled and rejected bookings appear here.",
+      bookings: bookings.filter((booking) =>
+        ["cancelled", "rejected"].includes(booking.status),
+      ),
     },
   ];
   const statusBlocks = [
@@ -3210,28 +3375,24 @@ function ClientDashboard({
       value: bookingSections[0].bookings.length,
       copy: "Waiting for provider response.",
       tone: "from-amber-50 to-white text-amber-700",
-      icon: Clock,
     },
     {
       title: "Active",
       value: bookingSections[1].bookings.length,
       copy: "Provider accepted and live work.",
       tone: "from-blue-50 to-white text-blue-700",
-      icon: CheckCircle,
     },
     {
       title: "Completed",
       value: bookingSections[2].bookings.length,
       copy: "Finished service records.",
       tone: "from-emerald-50 to-white text-emerald-700",
-      icon: CheckCircle,
     },
     {
       title: "Cancelled",
       value: bookingSections[3].bookings.length,
       copy: "Cancelled request records.",
       tone: "from-rose-50 to-white text-rose-700",
-      icon: XCircle,
     },
   ];
   const clientSidebarItems = [
@@ -3756,7 +3917,7 @@ function ClientDashboard({
         <button
           type="button"
           onClick={onBrowseServices}
-          className="client-browse-button rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
+          className="rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5"
         >
           {t("browseServices")}
         </button>
@@ -3772,7 +3933,7 @@ function ClientDashboard({
           </>
         )}
       </div>
-      <div className="client-stats-grid grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         <StatCard
           icon={CalendarCheck}
           label="My bookings"
@@ -3826,13 +3987,13 @@ function ClientDashboard({
               {block.copy}
             </p>
             {block.title === "Cancelled" && (
-              <span className="dashboard-status-link mt-3 inline-flex rounded-full bg-rose-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15">
-                View Cancelled
+              <span className="mt-3 inline-flex rounded-full bg-rose-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-rose-600/15">
+                Cancelled services
               </span>
             )}
             {block.title === "Completed" && (
-              <span className="dashboard-status-link mt-3 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-600/15">
-                View Completed
+              <span className="mt-3 inline-flex rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-600/15">
+                Completed services
               </span>
             )}
           </button>
@@ -4275,6 +4436,7 @@ function ProviderDashboard({
   providerBookings,
   providerEarnings,
   acceptProviderRequest,
+  rejectProviderRequest,
   updateProviderBookingStatus,
   submitEstimate,
   refreshDashboard,
@@ -4285,15 +4447,16 @@ function ProviderDashboard({
   onLogout,
 }) {
   const [cancelTargetBooking, setCancelTargetBooking] = useState(null);
+  const [rejectTargetBooking, setRejectTargetBooking] = useState(null);
   const [estimateTargetBooking, setEstimateTargetBooking] = useState(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [historyPageOpen, setHistoryPageOpen] = useState(false);
   const [providerPage, setProviderPage] = useState("overview");
   const confirmedJobs = providerBookings.filter(
-    (booking) => !["completed", "cancelled"].includes(booking.status),
+    (booking) => !["completed", "cancelled", "rejected"].includes(booking.status),
   );
   const historyJobs = providerBookings.filter((booking) =>
-    ["completed", "cancelled"].includes(booking.status),
+    ["completed", "cancelled", "rejected"].includes(booking.status),
   );
   const earningsSummary = providerEarnings?.summary || {};
   const awaitingClientPayment = providerBookings.filter(
@@ -4429,6 +4592,7 @@ function ProviderDashboard({
           approvalCopy={approvalCopy}
           providerProfile={providerProfile}
           refreshDashboard={refreshDashboard}
+          setStatusMessage={setStatusMessage}
         />
       </DashboardShell>
     );
@@ -4561,6 +4725,8 @@ function ProviderDashboard({
                         booking={booking}
                         actionLabel="Accept request"
                         onAction={() => acceptProviderRequest(booking._id)}
+                        secondaryActionLabel="Reject request"
+                        secondaryAction={() => setRejectTargetBooking(booking)}
                         alertMode
                       />
                     ))
@@ -4720,6 +4886,19 @@ function ProviderDashboard({
             }}
           />
         )}
+        {!isDashboardLocked && rejectTargetBooking && (
+          <ProviderRejectModal
+            booking={rejectTargetBooking}
+            onClose={() => setRejectTargetBooking(null)}
+            onSubmit={async (reason) => {
+              const updated = await rejectProviderRequest(
+                rejectTargetBooking._id,
+                reason,
+              );
+              if (updated) setRejectTargetBooking(null);
+            }}
+          />
+        )}
         {!isDashboardLocked && estimateTargetBooking && (
           <ProviderEstimateModal
             booking={estimateTargetBooking}
@@ -4759,8 +4938,8 @@ function ProviderClientHistoryPage({
   const completedCount = historyJobs.filter(
     (booking) => booking.status === "completed",
   ).length;
-  const cancelledCount = historyJobs.filter(
-    (booking) => booking.status === "cancelled",
+  const cancelledCount = historyJobs.filter((booking) =>
+    ["cancelled", "rejected"].includes(booking.status),
   ).length;
 
   return (
@@ -4804,7 +4983,7 @@ function ProviderClientHistoryPage({
         />
         <StatCard
           icon={XCircle}
-          label="Cancelled jobs"
+          label="Cancelled / Rejected"
           value={cancelledCount}
         />
       </div>
@@ -4834,10 +5013,14 @@ function ProviderApprovalWaitCard({
   approvalCopy,
   providerProfile,
   refreshDashboard,
+  setStatusMessage,
 }) {
+  const [resubmitOpen, setResubmitOpen] = useState(false);
+  const isRejected = approvalStatus === "rejected";
+
   return (
     <section className="mx-auto mt-8 grid min-h-[52vh] max-w-3xl place-items-center rounded-[2rem] border border-amber-200 bg-white p-6 text-center text-slate-950 shadow-xl shadow-slate-950/10 dark:border-amber-300/30 dark:bg-white/5 dark:text-white sm:p-10">
-      <div>
+      <div className="w-full">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
           <Clock size={30} />
         </div>
@@ -4868,15 +5051,349 @@ function ProviderApprovalWaitCard({
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={refreshDashboard}
-          className="mt-7 rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
-        >
-          Check approval status
-        </button>
+
+        {isRejected && !resubmitOpen && (
+          <div className="mx-auto mt-4 flex max-w-xl flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={refreshDashboard}
+              className="rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+            >
+              Check approval status
+            </button>
+            <button
+              type="button"
+              onClick={() => setResubmitOpen(true)}
+              className="rounded-2xl border-2 border-amber-600 px-6 py-4 text-sm font-black text-amber-700 transition hover:-translate-y-0.5 dark:border-amber-300 dark:text-amber-200"
+            >
+              Fix details &amp; resubmit
+            </button>
+          </div>
+        )}
+
+        {isRejected && resubmitOpen && (
+          <ProviderResubmitVerification
+            providerProfile={providerProfile}
+            onCancel={() => setResubmitOpen(false)}
+            onSuccess={() => {
+              setResubmitOpen(false);
+              refreshDashboard?.();
+            }}
+            setStatusMessage={setStatusMessage}
+          />
+        )}
+
+        {!isRejected && (
+          <button
+            type="button"
+            onClick={refreshDashboard}
+            className="mt-7 rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 dark:bg-amber-300 dark:text-slate-950"
+          >
+            Check approval status
+          </button>
+        )}
       </div>
     </section>
+  );
+}
+
+function ProviderResubmitField({ label, hint, accept, value, fileName, onChange, onRemove, required = false, isDocument = false }) {
+  return (
+    <div className="text-left">
+      <span className="mb-1.5 flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+        {label}
+        {required && <em className="text-rose-600 dark:text-rose-300">Required</em>}
+      </span>
+      <label
+        className={`flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-dashed p-3 transition ${
+          value
+            ? "border-emerald-400 bg-emerald-50 dark:border-emerald-300/40 dark:bg-emerald-400/10"
+            : "border-slate-300 bg-white hover:border-amber-400 dark:border-white/15 dark:bg-white/5"
+        }`}
+      >
+        <input type="file" accept={accept} onChange={onChange} className="hidden" />
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+          <UploadCloud size={18} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <strong className="block truncate text-sm font-bold text-slate-900 dark:text-white">
+            {value ? fileName || "File selected" : "Choose file"}
+          </strong>
+          <small className="block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {value ? "Ready to upload" : hint}
+          </small>
+        </span>
+        {value && <CheckCircle className="flex-none text-emerald-600 dark:text-emerald-300" size={18} />}
+      </label>
+      {value && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="mt-1.5 flex items-center gap-1 text-xs font-bold text-rose-600 hover:underline dark:text-rose-300"
+        >
+          <Trash2 size={12} /> Remove
+        </button>
+      )}
+      {!isDocument && value && (
+        <img src={value} alt="" className="mt-2 h-16 w-16 rounded-lg border border-slate-200 object-cover dark:border-white/10" />
+      )}
+    </div>
+  );
+}
+
+function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, setStatusMessage }) {
+  const [form, setForm] = useState({
+    name: providerProfile?.name || "",
+    category: providerProfile?.category || "",
+    customCategory: providerProfile?.customCategory || "",
+    location: providerProfile?.location || "",
+    preferredWorkLocation: providerProfile?.preferredWorkLocation || "",
+    phone: providerProfile?.phone || "",
+    price: providerProfile?.price || "",
+    aadhaarNumber: "",
+    aadhaarFrontUrl: "",
+    aadhaarDocumentName: "",
+    aadhaarBackUrl: "",
+    aadhaarBackDocumentName: "",
+  });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const readDocument = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Selected file could not be read."));
+      reader.readAsDataURL(file);
+    });
+
+  const handleAadhaarChange = (field, nameField) => async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setForm((prev) => ({ ...prev, [field]: "", [nameField]: "" }));
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Upload Aadhaar as PNG, JPG, WEBP, or PDF.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Aadhaar document must be under 4MB.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const dataUrl = await readDocument(file);
+      setError("");
+      setForm((prev) => ({ ...prev, [field]: dataUrl, [nameField]: file.name }));
+    } catch (readError) {
+      setError(readError.message || "Aadhaar document could not be prepared.");
+      event.target.value = "";
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    const aadhaarDigits = form.aadhaarNumber.replace(/\D/g, "");
+    if (aadhaarDigits.length !== 12) {
+      setError("Enter a valid 12-digit Aadhaar number.");
+      return;
+    }
+    if (!form.aadhaarFrontUrl) {
+      setError("Upload Aadhaar front image or PDF before resubmitting.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("servicehub_token");
+      const response = await authenticatedFetch(`${API_URL}/providers/resubmit-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: form.name,
+          category: form.category,
+          customCategory: form.customCategory,
+          location: form.location,
+          preferredWorkLocation: form.preferredWorkLocation,
+          phone: form.phone,
+          price: form.price,
+          aadhaarNumber: aadhaarDigits,
+          aadhaarFrontUrl: form.aadhaarFrontUrl,
+          aadhaarDocumentName: form.aadhaarDocumentName,
+          aadhaarBackUrl: form.aadhaarBackUrl,
+          aadhaarBackDocumentName: form.aadhaarBackDocumentName,
+        }),
+      });
+      const data = await parseApiResponse(response, "Registration could not be resubmitted.");
+      if (!response.ok) {
+        throw new Error(data.message || "Registration could not be resubmitted.");
+      }
+      setStatusMessage?.(
+        data.message || "Your registration has been resubmitted and is now waiting for admin review.",
+      );
+      onSuccess?.();
+    } catch (submitError) {
+      setError(submitError.message || "Registration could not be resubmitted. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mx-auto mt-5 grid max-w-xl gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm dark:border-white/10 dark:bg-white/5"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-black text-slate-900 dark:text-white">Resubmit your registration</h3>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <p className="-mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+        Update what admin flagged (most often the Aadhaar upload) and send your profile back for review.
+        You don&apos;t need to create a new account.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Business / provider name
+          <input
+            type="text"
+            value={form.name}
+            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Phone
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Service category
+          <input
+            type="text"
+            value={form.category}
+            onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Location
+          <input
+            type="text"
+            value={form.location}
+            onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+            required
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Preferred work location
+          <input
+            type="text"
+            value={form.preferredWorkLocation}
+            onChange={(event) => setForm((prev) => ({ ...prev, preferredWorkLocation: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+          />
+        </label>
+        <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+          Price
+          <input
+            type="text"
+            value={form.price}
+            onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+          />
+        </label>
+      </div>
+
+      <label className="text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+        Aadhaar number
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength="14"
+          value={form.aadhaarNumber}
+          onChange={(event) => {
+            const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
+            const formatted = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+            setForm((prev) => ({ ...prev, aadhaarNumber: formatted }));
+          }}
+          placeholder="XXXX XXXX 1234"
+          className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
+          required
+        />
+      </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ProviderResubmitField
+          label="Aadhaar front or PDF"
+          hint="Image or PDF up to 4MB"
+          accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+          value={form.aadhaarFrontUrl}
+          fileName={form.aadhaarDocumentName}
+          onChange={handleAadhaarChange("aadhaarFrontUrl", "aadhaarDocumentName")}
+          onRemove={() => setForm((prev) => ({ ...prev, aadhaarFrontUrl: "", aadhaarDocumentName: "" }))}
+          required
+          isDocument={form.aadhaarDocumentName?.toLowerCase().endsWith(".pdf")}
+        />
+        <ProviderResubmitField
+          label="Aadhaar back"
+          hint="Optional with a complete Aadhaar PDF"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          value={form.aadhaarBackUrl}
+          fileName={form.aadhaarBackDocumentName}
+          onChange={handleAadhaarChange("aadhaarBackUrl", "aadhaarBackDocumentName")}
+          onRemove={() => setForm((prev) => ({ ...prev, aadhaarBackUrl: "", aadhaarBackDocumentName: "" }))}
+        />
+      </div>
+
+      {error && (
+        <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">
+          {error}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-xl px-5 py-3 text-sm font-black text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded-xl bg-amber-600 px-6 py-3 text-sm font-black text-white shadow-lg shadow-amber-600/20 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? "Resubmitting..." : "Resubmit for review"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -5803,6 +6320,7 @@ function JobCard({
   actionLabel,
   onAction,
   secondaryAction,
+  secondaryActionLabel = "Cancel",
   disabled,
   onEstimateClick,
   alertMode = false,
@@ -5877,6 +6395,12 @@ function JobCard({
               {booking.cancellationReason || "Reason not provided"}
             </span>
           )}
+        {booking.status === "rejected" && (
+          <span className="font-black text-rose-600">
+            Rejected by you:{" "}
+            {booking.rejectionReason || "Reason not provided"}
+          </span>
+        )}
       </div>
       {Boolean(onEstimateClick || booking.finalEstimateAmount) && (
         <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50 p-4 dark:border-teal-400/20 dark:bg-teal-400/10">
@@ -5929,7 +6453,7 @@ function JobCard({
       {!canSubmitFinalEstimate &&
         !canUpdateFinalEstimate &&
         !booking.finalEstimateAmount &&
-        !["completed", "cancelled"].includes(booking.status) && (
+        !["completed", "cancelled", "rejected"].includes(booking.status) && (
           <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-black text-amber-800 dark:bg-amber-300/10 dark:text-amber-100">
             Mark arrived before sending the final estimate.
           </p>
@@ -5948,9 +6472,13 @@ function JobCard({
             <button
               type="button"
               onClick={secondaryAction}
-              className="rounded-xl bg-slate-100 px-4 py-3 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
+              className={
+                secondaryActionLabel === "Reject request"
+                  ? "rounded-xl bg-rose-50 px-4 py-3 font-black text-rose-700 transition hover:bg-rose-100 dark:bg-rose-400/10 dark:text-rose-200 dark:hover:bg-rose-400/20"
+                  : "rounded-xl bg-slate-100 px-4 py-3 font-black transition hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15"
+              }
             >
-              Cancel
+              {secondaryActionLabel}
             </button>
           )}
         </div>
@@ -6040,6 +6568,91 @@ function ProviderCancelModal({ booking, onClose, onSubmit }) {
   );
 }
 
+function ProviderRejectModal({ booking, onClose, onSubmit }) {
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      await onSubmit(reason);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/70 p-4 backdrop-blur"
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.form
+        onSubmit={submit}
+        onClick={(event) => event.stopPropagation()}
+        initial={{ opacity: 0, y: 24, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.97 }}
+        className="w-full max-w-xl rounded-[2rem] bg-white p-6 shadow-2xl dark:bg-slate-900"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.16em] text-rose-600">
+              Reject request
+            </p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
+              {booking.service}
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-slate-500">
+              {booking.address || "Address not available"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:bg-amber-300/10 dark:text-amber-100">
+          This request will be removed from your dashboard. You will not be
+          able to accept it again later.
+        </p>
+        <label className="mt-5 grid gap-2 font-bold">
+          Reason (optional)
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            rows="4"
+            placeholder="Let the client know why you cannot take this request."
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-400 dark:border-white/10 dark:bg-slate-950"
+          />
+        </label>
+        <div className="mt-5 flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700 transition hover:bg-slate-200 dark:bg-white/10 dark:text-white"
+          >
+            Go back
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-xl bg-rose-600 px-5 py-3 font-black text-white shadow-lg shadow-rose-600/15 transition hover:-translate-y-0.5 disabled:opacity-60"
+          >
+            {submitting ? "Rejecting..." : "Reject request"}
+          </button>
+        </div>
+      </motion.form>
+    </motion.div>
+  );
+}
+
 function StatusBadge({ status = "pending" }) {
   const color =
     status === "completed"
@@ -6059,9 +6672,6 @@ function StatusBadge({ status = "pending" }) {
 function EmptyState({ title, copy }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-white/15">
-      <span className="dashboard-empty-icon" aria-hidden="true">
-        <ListChecks size={30} />
-      </span>
       <p className="font-black">{title}</p>
       <p className="mt-2 text-sm text-slate-500">{copy}</p>
     </div>
@@ -6158,197 +6768,419 @@ function ClientSupportSection({ user, setStatusMessage }) {
   };
 
   return (
-    <section
-      id="contact"
-      className="home-section bg-[#f6f1e8] px-4 py-16 dark:bg-slate-900 sm:px-6 lg:px-8 lg:py-24"
-    >
-      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-[1.7rem] border border-[#ded7ca] bg-[#fffefb] p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5 lg:p-10">
-          <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-black text-teal-700">
-            Contact page
-          </span>
-          <h2 className="home-section-title mt-7 max-w-2xl font-display text-3xl font-black leading-tight text-slate-950 dark:text-white md:text-4xl">
-            Talk to ServiceHub support
-          </h2>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-500 dark:text-slate-300">
-            For urgent services, provider onboarding, partnerships, or booking
-            support.
-          </p>
-          <div className="mt-7 grid gap-3 text-base font-medium text-slate-950 dark:text-white">
-            <span className="flex items-center gap-3">
-              <MessageCircle size={21} /> info.aparaitech@gmail.com
-            </span>
-            <span className="flex items-center gap-3">
-              <MapPin size={21} /> Baramati, Maharashtra, India
-            </span>
-            <span className="flex items-center gap-3">
-              <CalendarCheck size={21} /> 8:00 AM - 9:00 PM
-            </span>
+  <section
+    id="contact"
+    className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-teal-50 to-cyan-100 px-4 py-20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 sm:px-6 lg:px-8 lg:py-28"
+  >
+    {/* Background Blur Effects */}
+    <div className="absolute -top-40 -left-32 h-96 w-96 rounded-full bg-teal-400/20 blur-[120px] animate-pulse"></div>
+    <div className="absolute -bottom-40 -right-32 h-96 w-96 rounded-full bg-blue-400/20 blur-[120px] animate-pulse"></div>
+
+    <div className="relative z-10 mx-auto grid max-w-7xl gap-10 lg:grid-cols-2">
+
+      {/* Left Contact Card */}
+      <div className="group rounded-[32px] border border-white/40 bg-white/70 backdrop-blur-2xl p-10 shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:shadow-cyan-500/20 dark:border-white/10 dark:bg-white/10">
+
+        <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-500 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-lg">
+          Contact Support
+        </span>
+
+        <h2 className="mt-8 text-4xl font-black leading-tight text-slate-900 dark:text-white md:text-5xl">
+          Talk to ServiceHub Support
+        </h2>
+
+        <p className="mt-6 text-lg leading-8 text-slate-600 dark:text-slate-300">
+          Need urgent service, provider onboarding, partnerships or booking
+          assistance? Our support team is always ready to help you.
+        </p>
+
+        <div className="mt-10 space-y-5">
+
+          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-100 text-teal-600">
+              <MessageCircle size={22} />
+            </div>
+
+            <div>
+              <p className="text-sm text-slate-500">Email</p>
+              <p className="font-semibold text-slate-900 dark:text-white">
+                info.aparaitech@gmail.com
+              </p>
+            </div>
           </div>
+
+          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+              <MapPin size={22} />
+            </div>
+
+            <div>
+              <p className="text-sm text-slate-500">Location</p>
+              <p className="font-semibold text-slate-900 dark:text-white">
+                Baramati, Maharashtra, India
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+              <CalendarCheck size={22} />
+            </div>
+
+            <div>
+              <p className="text-sm text-slate-500">Working Hours</p>
+              <p className="font-semibold text-slate-900 dark:text-white">
+                8:00 AM - 9:00 PM
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Contact Form */}
+      <form
+        onSubmit={submitSupport}
+        className="rounded-[32px] border border-white/40 bg-white/70 p-10 backdrop-blur-2xl shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:shadow-blue-500/20 dark:border-white/10 dark:bg-white/10"
+      >
+        {!canSendSupportMessage && (
+          <div className="mb-6 inline-flex rounded-full bg-gradient-to-r from-teal-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-lg">
+            Contact Us
+          </div>
+        )}
+
+        <h3 className="mb-2 text-3xl font-black text-slate-900 dark:text-white">
+          Send a Message
+        </h3>
+
+        <p className="mb-8 text-slate-500 dark:text-slate-300">
+          Fill out the form below and we'll get back to you shortly.
+        </p>
+
+        <FormInput
+          label="Name"
+          name="name"
+          defaultValue={user?.name || ""}
+          placeholder="Your name"
+        />
+
+        <div className="mt-5">
+          <FormInput
+            label="Email"
+            name="email"
+            type="email"
+            defaultValue={user?.email || ""}
+            placeholder="you@example.com"
+          />
         </div>
 
-        <form
-          onSubmit={submitSupport}
-          className="rounded-[1.7rem] border border-[#ded7ca] bg-[#fffefb] p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5 lg:p-10"
-        >
-          {!canSendSupportMessage && (
-            <div className="mb-5 inline-flex rounded-full border border-teal-200 bg-teal-50 px-5 py-3 text-base font-black text-teal-700 dark:border-teal-300/25 dark:bg-teal-300/10 dark:text-teal-100">
-              Contact us
-            </div>
-          )}
-          <FormInput
-            label="Name"
-            name="name"
-            defaultValue={user?.name || ""}
-            placeholder="Your name"
-          />
-          <div className="mt-5">
-            <FormInput
-              label="Email"
-              name="email"
-              type="email"
-              defaultValue={user?.email || ""}
-              placeholder="you@example.com"
-            />
-          </div>
-          <label className="mt-5 grid gap-2 font-bold">
-            Message
-            <textarea
-              name="message"
-              placeholder="How can we help?"
-              rows="5"
-              required
-              className="rounded-2xl border border-[#ded7ca] bg-[#f0e7da] px-4 py-4 outline-none transition placeholder:text-slate-500 focus:border-teal-400 dark:border-white/10 dark:bg-white/10"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={supportSubmitting}
-            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-600 to-blue-600 px-6 py-4 font-black text-white shadow-xl shadow-teal-500/20 transition disabled:cursor-not-allowed disabled:opacity-65"
-          >
-            <Send size={18} />{" "}
-            {supportSubmitting
-              ? "Sending..."
-              : canSendSupportMessage
-                ? "Send message"
-                : "Contact us"}
-          </button>
-        </form>
-      </div>
-    </section>
-  );
-}
+        <label className="mt-5 grid gap-2 font-bold text-slate-700 dark:text-white">
+          Message
 
+          <textarea
+            name="message"
+            placeholder="How can we help?"
+            rows="5"
+            required
+            className="w-full rounded-2xl border border-slate-300 bg-white/70 px-5 py-4 backdrop-blur-xl outline-none transition-all duration-300 placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-300 dark:border-white/20 dark:bg-white/10"
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={supportSubmitting}
+          className="group mt-8 inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-600 px-8 py-4 text-lg font-bold text-white shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Send
+            size={20}
+            className="transition-transform duration-300 group-hover:translate-x-2"
+          />
+
+          {supportSubmitting
+            ? "Sending..."
+            : canSendSupportMessage
+            ? "Send Message"
+            : "Contact Us"}
+        </button>
+
+      </form>
+
+    </div>
+  </section>
+);
+}
 function ServiceHubFooter({ onServiceClick }) {
   return (
     <footer className="bg-[#151f28] px-4 py-12 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.05fr_1fr]">
-          <div>
-            <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg shadow-black/20">
-                <img
-                  src={SERVICEHUB_ICON}
-                  alt="ServiceHub symbol"
-                  className="h-full w-full rounded-xl object-contain"
-                />
-              </span>
-              <h2 className="font-display text-4xl font-black tracking-[-0.035em]">
-                ServiceHub
-              </h2>
-            </div>
-            <p className="mt-4 max-w-md text-lg leading-8 text-slate-200">
-              Trusted local professionals for home repairs, maintenance,
-              installation, and emergency support.
-            </p>
-            <div className="mt-5 flex items-start gap-3 font-black leading-7">
-              <ShieldCheck className="mt-1 h-5 w-5 flex-none text-amber-300" />
-              <span>Verified providers with reliable client support</span>
-            </div>
-          </div>
+<div className="space-y-2">
 
-          <div>
-            <h3 className="text-2xl font-black">Services</h3>
-            <div className="mt-4 grid gap-2 text-lg text-slate-200">
-              {[
-                "Plumber",
-                "Electrician",
-                "Carpenter",
-                "Painter",
-                "AC Repair",
-                "Refrigerator Repair",
-                "Washing Machine Repair",
-                "TV Repair",
-              ].map((service) => (
-                <button
-                  key={service}
-                  type="button"
-                  onClick={() => onServiceClick(service)}
-                  className="w-fit text-left transition hover:text-amber-300"
-                >
-                  {service}
-                </button>
-              ))}
-            </div>
-          </div>
+  {/* Logo & Brand */}
+  <div className="flex items-center gap-4">
+    <div className="group relative">
+      <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 blur-lg opacity-60 transition duration-500 group-hover:opacity-100 group-hover:scale-110"></div>
 
-          <div>
-            <h3 className="text-2xl font-black">Contact</h3>
-            <div className="mt-4 grid gap-4 text-lg text-slate-200">
-              <span className="flex items-center gap-3">
-                <Phone className="h-5 w-5 text-amber-300" /> +91 9158852129
-              </span>
-              <span className="flex items-center gap-3">
-                <Mail className="h-5 w-5 text-amber-300" />{" "}
-                info.aparaitech@gmail.com
-              </span>
-              <span className="flex items-center gap-3">
-                <MapPin className="h-5 w-5 text-amber-300" /> Baramati,
-                Maharashtra
-              </span>
-              <span className="flex items-center gap-3">
-                <CalendarCheck className="h-5 w-5 text-amber-300" /> Mon - Sun,
-                8:00 AM - 9:00 PM
-              </span>
-            </div>
-          </div>
+      <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-3xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl">
+        <img
+          src={SERVICEHUB_ICON}
+          alt="ServiceHub symbol"
+          className="h-11 w-11 object-contain transition duration-500 group-hover:rotate-12 group-hover:scale-110"
+        />
+      </span>
+    </div>
 
-          <div>
-            <h3 className="text-2xl font-black">For Clients</h3>
-            <p className="mt-4 text-lg leading-8 text-slate-200">
-              Book nearby service providers, compare ratings, and get help for
-              urgent repair needs.
-            </p>
-            <div className="mt-3 border-l-4 border-amber-300 pl-4 text-lg leading-8 text-slate-200">
-              <p className="font-black text-white">Need help?</p>
-              <p>Call us for booking assistance or service issues.</p>
-            </div>
-          </div>
-        </div>
+    <div>
+      <h2 className="bg-gradient-to-r from-cyan-300 via-white to-violet-300 bg-clip-text text-4xl font-black tracking-tight text-transparent">
+        ServiceHub
+      </h2>
 
-        <div className="mt-10 flex flex-wrap justify-between gap-4 border-t border-white/15 pt-6 text-base text-slate-200">
-          <span>© 2026 ServiceHub. All Rights Reserved.</span>
-          <div className="flex flex-wrap gap-4">
-            <a href="/contact" className="transition hover:text-amber-300">
-              Contact
-            </a>
-            <a
-              href="/privacy-policy"
-              className="transition hover:text-amber-300"
-            >
-              Privacy Policy
-            </a>
-            <a
-              href="/terms-and-conditions"
-              className="transition hover:text-amber-300"
-            >
-              Terms
-            </a>
-            <span>Serving homes across Pune and nearby cities.</span>
-          </div>
-        </div>
+      <p className="mt-1 text-sm tracking-[0.3em] uppercase text-cyan-300">
+        Trusted Home Services
+      </p>
+    </div>
+  </div>
+
+  {/* Description Card */}
+  <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition duration-500 hover:border-cyan-400/40 hover:bg-white/10 hover:shadow-2xl hover:shadow-cyan-500/10">
+    <p className="text-lg leading-8 text-slate-300">
+      Trusted local professionals for home repairs, maintenance,
+      installation and emergency support with quick response.
+    </p>
+  </div>
+
+  {/* Verified Badge */}
+  <div className="group flex items-center gap-4 rounded-2xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10 p-5 backdrop-blur-xl transition duration-500 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/20">
+
+    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-500 text-white shadow-lg">
+      <ShieldCheck className="h-6 w-6 transition duration-500 group-hover:rotate-12" />
+    </div>
+
+    <div>
+      <p className="font-bold text-white">
+        Verified Professionals
+      </p>
+
+      <p className="text-sm text-slate-300">
+        Trusted providers with reliable customer support
+      </p>
+    </div>
+
+  </div>
+
+</div>
+
+
+
+
+
+<div>
+
+  <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-5 py-2 text-lg font-bold text-white shadow-lg">
+    Popular Services
+  </h3>
+
+  <div className="grid gap-3">
+
+    {[
+      "Plumber",
+      "Electrician",
+      "Carpenter",
+      "Painter",
+      "AC Repair",
+      "Refrigerator Repair",
+      "Washing Machine Repair",
+      "TV Repair",
+    ].map((service) => (
+
+      <button
+        key={service}
+        type="button"
+        onClick={() => onServiceClick(service)}
+        className="
+          group
+          flex
+          items-center
+          justify-between
+          rounded-2xl
+          border
+          border-white/10
+          bg-white/5
+          px-5
+          py-3
+          text-left
+          text-slate-200
+          backdrop-blur-xl
+          transition-all
+          duration-300
+          hover:-translate-x-2
+          hover:border-cyan-400/40
+          hover:bg-gradient-to-r
+          hover:from-cyan-500/20
+          hover:via-blue-500/20
+          hover:to-violet-500/20
+          hover:text-white
+          hover:shadow-xl
+          hover:shadow-cyan-500/20
+        "
+      >
+        <span>{service}</span>
+
+        <span className="text-xl transition duration-300 group-hover:translate-x-2">
+          →
+        </span>
+
+      </button>
+
+    ))}
+
+  </div>
+
+</div>
+
+
+<div>
+  <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-5 py-2 text-lg font-bold text-white shadow-lg">
+    Contact
+  </h3>
+
+  <div className="space-y-4">
+
+    {/* Phone */}
+    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:shadow-xl hover:shadow-cyan-500/20">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+        <Phone className="h-5 w-5 text-white" />
       </div>
-    </footer>
+
+      <div>
+        <p className="text-xs uppercase tracking-widest text-slate-400">
+          Phone
+        </p>
+        <p className="font-semibold text-white">
+          +91 9158852129
+        </p>
+      </div>
+    </div>
+
+    {/* Email */}
+    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-pink-400/40 hover:bg-pink-500/10 hover:shadow-xl hover:shadow-pink-500/20">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+        <Mail className="h-5 w-5 text-white" />
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-widest text-slate-400">
+          Email
+        </p>
+        <p className="font-semibold text-white break-all">
+          info.aparaitech@gmail.com
+        </p>
+      </div>
+    </div>
+
+    {/* Address */}
+    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-orange-400/40 hover:bg-orange-500/10 hover:shadow-xl hover:shadow-orange-500/20">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-orange-400 to-red-500 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+        <MapPin className="h-5 w-5 text-white" />
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-widest text-slate-400">
+          Address
+        </p>
+        <p className="font-semibold text-white">
+          Baramati, Maharashtra
+        </p>
+      </div>
+    </div>
+
+    {/* Working Hours */}
+    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-violet-400/40 hover:bg-violet-500/10 hover:shadow-xl hover:shadow-violet-500/20">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+        <CalendarCheck className="h-5 w-5 text-white" />
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-widest text-slate-400">
+          Working Hours
+        </p>
+        <p className="font-semibold text-white">
+          Mon - Sun • 8:00 AM - 9:00 PM
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div>
+  <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 px-5 py-2 text-lg font-bold text-white shadow-lg">
+    For Clients
+  </h3>
+
+  <div className="group rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:border-violet-400/40 hover:bg-white/10 hover:shadow-2xl hover:shadow-violet-500/20">
+
+    <p className="text-lg leading-8 text-slate-300">
+      Book nearby service providers, compare ratings, and get help for
+      urgent repair needs.
+    </p>
+
+    <div className="mt-6 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-violet-500/10 p-5 ring-1 ring-cyan-400/20 transition-all duration-500 group-hover:scale-[1.02]">
+      <p className="flex items-center gap-2 font-bold text-white">
+        💬 Need help?
+      </p>
+
+      <p className="mt-2 leading-7 text-slate-300">
+        Call us for booking assistance or service issues.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+</div>
+
+<div className="mt-12 border-t border-white/10 pt-8">
+
+  <div className="flex flex-col items-center justify-between gap-5 lg:flex-row">
+
+    <span className="text-center text-slate-400">
+      © <span className="font-bold text-white">2026 ServiceHub</span>. All Rights Reserved.
+    </span>
+
+    <div className="flex flex-wrap items-center justify-center gap-3">
+
+      <a
+        href="/contact"
+        className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-300 transition-all duration-300 hover:-translate-y-1 hover:bg-cyan-500/20"
+      >
+        Contact
+      </a>
+
+      <a
+        href="/privacy-policy"
+        className="rounded-full border border-pink-400/20 bg-pink-500/10 px-4 py-2 text-sm text-pink-300 transition-all duration-300 hover:-translate-y-1 hover:bg-pink-500/20"
+      >
+        Privacy Policy
+      </a>
+
+      <a
+        href="/terms-and-conditions"
+        className="rounded-full border border-violet-400/20 bg-violet-500/10 px-4 py-2 text-sm text-violet-300 transition-all duration-300 hover:-translate-y-1 hover:bg-violet-500/20"
+      >
+        Terms
+      </a>
+
+      <span className="rounded-full bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-violet-500/10 px-4 py-2 text-sm text-slate-300 ring-1 ring-white/10">
+        📍 Serving homes across Pune and nearby cities.
+      </span>
+
+    </div>
+
+  </div>
+
+</div>
+</div>
+</footer>
   );
 }
 

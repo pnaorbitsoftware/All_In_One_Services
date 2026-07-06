@@ -148,6 +148,15 @@ export const sendCustomerCancellationEmail = ({ to, booking, reason }) =>
 export const sendProviderCancellationEmail = ({ to, booking, reason }) =>
   sendCancellationEmail({ to, audience: "customer", booking, reason, cancelledBy: "provider" });
 
+export const sendProviderRequestRejectedEmail = ({ to, booking, reason }) =>
+  sendCancellationEmail({
+    to,
+    audience: "customer",
+    booking,
+    reason: reason || "The provider was unable to accept this request.",
+    cancelledBy: "provider",
+  });
+
 export const sendServiceRejectedEmail = ({ to, name, booking, reason }) =>
   sendTemplate(
     to,

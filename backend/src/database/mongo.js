@@ -1,7 +1,21 @@
+import dns from "node:dns";
 import mongoose from "mongoose";
 
 const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/";
 const mongoDbName = process.env.MONGO_DB_NAME || "all_in_one_services";
+const mongoDnsServers = process.env.MONGO_DNS_SERVERS
+  ?.split(",")
+  .map((server) => server.trim())
+  .filter(Boolean);
+
+if (mongoDnsServers?.length) {
+  try {
+    dns.setServers(mongoDnsServers);
+    console.log("Using custom DNS servers for MongoDB SRV resolution:", mongoDnsServers);
+  } catch (error) {
+    console.warn("Unable to set custom MongoDB DNS servers:", error.message);
+  }
+}
 
 const mongoOptions = {
   dbName: mongoDbName,
