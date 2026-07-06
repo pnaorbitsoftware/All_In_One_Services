@@ -1066,14 +1066,13 @@ export default function Home() {
       if (document.visibilityState === "visible") refreshClientBookings();
     };
 
-    loadClientBookings();
-    const intervalId = window.setInterval(
-      loadClientBookings,
-      activeView === "client" ? 5000 : 15000,
-    );
+    const initialTimer = window.setTimeout(refreshClientBookings, 0);
+    const intervalId = window.setInterval(refreshWhenVisible, 15_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
-      stopped = true;
+      window.clearTimeout(initialTimer);
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [
     activeView,
@@ -1135,6 +1134,8 @@ export default function Home() {
   });
 
   const providerProfile = providerData?.provider;
+  const isWaitingForApproval =
+    Boolean(providerProfile) && providerProfile.approvalStatus !== "approved";
   const providerRequests = providerData?.availableRequests || [];
   const providerBookings = providerData?.bookings || [];
   const providerDashboardNavLabel =
@@ -1310,6 +1311,7 @@ export default function Home() {
     return () => window.clearInterval(intervalId);
   }, [
     activeView,
+    isWaitingForApproval,
     loadProviderDashboard,
     providerProfile?.approvalStatus,
     user?.role,
@@ -2347,7 +2349,10 @@ export default function Home() {
         )}
 
         {activeView === "client" && !user && (
-          <WorkspaceRecovery message="Your session could not be restored. Please log in again." onRecover={() => clearSessionState()} />
+          <WorkspaceRecovery
+            message="Your session could not be restored. Please log in again."
+            onRecover={() => clearSessionState()}
+          />
         )}
 
         {activeView === "client" &&
@@ -2377,7 +2382,10 @@ export default function Home() {
           )}
 
         {activeView === "provider" && user?.role !== "provider" && (
-          <WorkspaceRecovery message="Provider session could not be restored." onRecover={() => clearSessionState()} />
+          <WorkspaceRecovery
+            message="Provider session could not be restored."
+            onRecover={() => clearSessionState()}
+          />
         )}
 
         {activeView === "provider" && user?.role === "provider" && (
@@ -2411,7 +2419,10 @@ export default function Home() {
         )}
 
         {activeView === "admin" && user?.role !== "admin" && (
-          <WorkspaceRecovery message="Admin session could not be restored." onRecover={() => clearSessionState()} />
+          <WorkspaceRecovery
+            message="Admin session could not be restored."
+            onRecover={() => clearSessionState()}
+          />
         )}
 
         {activeView === "admin" && user?.role === "admin" && (
@@ -3042,8 +3053,8 @@ function Providers({
             {visibleServices.map((service, index) => {
               const isOwnProviderCard = Boolean(
                 service.providerId &&
-                  ownProviderId &&
-                  String(service.providerId) === String(ownProviderId),
+                ownProviderId &&
+                String(service.providerId) === String(ownProviderId),
               );
 
               return (
@@ -3201,97 +3212,97 @@ function Providers({
 
 function FAQ() {
   return (
- <section
-  id="faq"
-  className="relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-blue-50 px-4 py-24 sm:px-6 lg:px-8 lg:py-32"
->
-  {/* Background Glow */}
-  <div className="absolute -top-40 -left-40 h-[450px] w-[450px] rounded-full bg-cyan-400/15 blur-[170px] animate-pulse"></div>
+    <section
+      id="faq"
+      className="relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-blue-50 px-4 py-24 sm:px-6 lg:px-8 lg:py-32"
+    >
+      {/* Background Glow */}
+      <div className="absolute -top-40 -left-40 h-[450px] w-[450px] rounded-full bg-cyan-400/15 blur-[170px] animate-pulse"></div>
 
-  <div className="absolute top-1/2 left-1/3 h-[350px] w-[350px] rounded-full bg-pink-400/10 blur-[170px] animate-pulse"></div>
+      <div className="absolute top-1/2 left-1/3 h-[350px] w-[350px] rounded-full bg-pink-400/10 blur-[170px] animate-pulse"></div>
 
-  <div className="absolute -bottom-40 -right-40 h-[450px] w-[450px] rounded-full bg-violet-400/15 blur-[170px] animate-pulse"></div>
+      <div className="absolute -bottom-40 -right-40 h-[450px] w-[450px] rounded-full bg-violet-400/15 blur-[170px] animate-pulse"></div>
 
-  <div className="relative mx-auto max-w-6xl">
-    {/* Badge */}
-    <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-6 py-3 text-sm font-bold tracking-wider text-white shadow-xl">
-      ✨ Frequently Asked Questions
-    </span>
-
-    {/* Heading */}
-    <h2 className="mt-8 text-5xl font-black leading-tight text-slate-900 md:text-6xl">
-      Answers before customers
-      <span className="block bg-gradient-to-r from-cyan-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
-        book home services.
-      </span>
-    </h2>
-
-    <p className="mt-6 max-w-3xl text-xl leading-9 text-slate-600">
-      Find answers to the most common questions about booking services,
-      payments, providers and support.
-    </p>
-
-    {/* FAQ List */}
-    <div className="mt-14 space-y-6">
-      {faqItems.map((item, index) => (
-        <details
-          key={item.question}
-          className="group overflow-hidden rounded-[30px] border border-slate-200 bg-white/90 backdrop-blur-xl shadow-lg transition-all duration-500 hover:-translate-y-2 hover:scale-[1.01] hover:border-cyan-400 hover:shadow-[0_25px_70px_rgba(59,130,246,0.18)]"
-        >
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-5 px-6 py-6 text-lg font-bold text-slate-900">
-            <div className="flex items-center gap-5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 font-bold text-white shadow-lg transition duration-500 group-hover:rotate-6">
-                {String(index + 1).padStart(2, "0")}
-              </div>
-
-              <span>{item.question}</span>
-            </div>
-
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-violet-600 shadow-lg transition-all duration-500 group-open:rotate-90 group-hover:scale-110">
-              <ChevronRight className="h-5 w-5 text-white" />
-            </div>
-          </summary>
-
-          <div className="px-6 pb-6">
-            <div className="mt-2 h-px w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500"></div>
-
-            <p className="mt-6 text-[17px] leading-8 text-slate-600">
-              {item.answer}
-            </p>
-          </div>
-        </details>
-      ))}
-    </div>
-
-    {/* Bottom CTA */}
-    <div className="mt-20 rounded-[32px] border border-slate-200 bg-white/90 p-10 text-center shadow-2xl backdrop-blur-xl">
-      <h3 className="text-3xl font-black text-slate-900">
-        Still Have Questions?
-      </h3>
-
-      <p className="mt-4 text-lg text-slate-600">
-        Our support team is always available to help you with bookings,
-        payments and service-related queries.
-      </p>
-
-      <button
-        type="button"
-        onClick={() =>
-          document.getElementById("contact")?.scrollIntoView({
-            behavior: "smooth",
-          })
-        }
-        className="group mt-8 inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-8 py-4 font-bold text-white shadow-xl transition-all duration-500 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_20px_60px_rgba(59,130,246,0.45)]"
-      >
-        <span>Contact Support</span>
-
-        <span className="transition-transform duration-500 group-hover:translate-x-2">
-          →
+      <div className="relative mx-auto max-w-6xl">
+        {/* Badge */}
+        <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-6 py-3 text-sm font-bold tracking-wider text-white shadow-xl">
+          ✨ Frequently Asked Questions
         </span>
-      </button>
-    </div>
-  </div>
-</section>
+
+        {/* Heading */}
+        <h2 className="mt-8 text-5xl font-black leading-tight text-slate-900 md:text-6xl">
+          Answers before customers
+          <span className="block bg-gradient-to-r from-cyan-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
+            book home services.
+          </span>
+        </h2>
+
+        <p className="mt-6 max-w-3xl text-xl leading-9 text-slate-600">
+          Find answers to the most common questions about booking services,
+          payments, providers and support.
+        </p>
+
+        {/* FAQ List */}
+        <div className="mt-14 space-y-6">
+          {faqItems.map((item, index) => (
+            <details
+              key={item.question}
+              className="group overflow-hidden rounded-[30px] border border-slate-200 bg-white/90 backdrop-blur-xl shadow-lg transition-all duration-500 hover:-translate-y-2 hover:scale-[1.01] hover:border-cyan-400 hover:shadow-[0_25px_70px_rgba(59,130,246,0.18)]"
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-5 px-6 py-6 text-lg font-bold text-slate-900">
+                <div className="flex items-center gap-5">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 font-bold text-white shadow-lg transition duration-500 group-hover:rotate-6">
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
+
+                  <span>{item.question}</span>
+                </div>
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-violet-600 shadow-lg transition-all duration-500 group-open:rotate-90 group-hover:scale-110">
+                  <ChevronRight className="h-5 w-5 text-white" />
+                </div>
+              </summary>
+
+              <div className="px-6 pb-6">
+                <div className="mt-2 h-px w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500"></div>
+
+                <p className="mt-6 text-[17px] leading-8 text-slate-600">
+                  {item.answer}
+                </p>
+              </div>
+            </details>
+          ))}
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="mt-20 rounded-[32px] border border-slate-200 bg-white/90 p-10 text-center shadow-2xl backdrop-blur-xl">
+          <h3 className="text-3xl font-black text-slate-900">
+            Still Have Questions?
+          </h3>
+
+          <p className="mt-4 text-lg text-slate-600">
+            Our support team is always available to help you with bookings,
+            payments and service-related queries.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              document.getElementById("contact")?.scrollIntoView({
+                behavior: "smooth",
+              })
+            }
+            className="group mt-8 inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-8 py-4 font-bold text-white shadow-xl transition-all duration-500 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_20px_60px_rgba(59,130,246,0.45)]"
+          >
+            <span>Contact Support</span>
+
+            <span className="transition-transform duration-500 group-hover:translate-x-2">
+              →
+            </span>
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -4483,7 +4494,8 @@ function ProviderDashboard({
   const [historyPageOpen, setHistoryPageOpen] = useState(false);
   const [providerPage, setProviderPage] = useState("overview");
   const confirmedJobs = providerBookings.filter(
-    (booking) => !["completed", "cancelled", "rejected"].includes(booking.status),
+    (booking) =>
+      !["completed", "cancelled", "rejected"].includes(booking.status),
   );
   const historyJobs = providerBookings.filter((booking) =>
     ["completed", "cancelled", "rejected"].includes(booking.status),
@@ -5127,12 +5139,24 @@ function ProviderApprovalWaitCard({
   );
 }
 
-function ProviderResubmitField({ label, hint, accept, value, fileName, onChange, onRemove, required = false, isDocument = false }) {
+function ProviderResubmitField({
+  label,
+  hint,
+  accept,
+  value,
+  fileName,
+  onChange,
+  onRemove,
+  required = false,
+  isDocument = false,
+}) {
   return (
     <div className="text-left">
       <span className="mb-1.5 flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
         {label}
-        {required && <em className="text-rose-600 dark:text-rose-300">Required</em>}
+        {required && (
+          <em className="text-rose-600 dark:text-rose-300">Required</em>
+        )}
       </span>
       <label
         className={`flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-dashed p-3 transition ${
@@ -5141,7 +5165,12 @@ function ProviderResubmitField({ label, hint, accept, value, fileName, onChange,
             : "border-slate-300 bg-white hover:border-amber-400 dark:border-white/15 dark:bg-white/5"
         }`}
       >
-        <input type="file" accept={accept} onChange={onChange} className="hidden" />
+        <input
+          type="file"
+          accept={accept}
+          onChange={onChange}
+          className="hidden"
+        />
         <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
           <UploadCloud size={18} />
         </span>
@@ -5153,7 +5182,12 @@ function ProviderResubmitField({ label, hint, accept, value, fileName, onChange,
             {value ? "Ready to upload" : hint}
           </small>
         </span>
-        {value && <CheckCircle className="flex-none text-emerald-600 dark:text-emerald-300" size={18} />}
+        {value && (
+          <CheckCircle
+            className="flex-none text-emerald-600 dark:text-emerald-300"
+            size={18}
+          />
+        )}
       </label>
       {value && (
         <button
@@ -5165,13 +5199,22 @@ function ProviderResubmitField({ label, hint, accept, value, fileName, onChange,
         </button>
       )}
       {!isDocument && value && (
-        <img src={value} alt="" className="mt-2 h-16 w-16 rounded-lg border border-slate-200 object-cover dark:border-white/10" />
+        <img
+          src={value}
+          alt=""
+          className="mt-2 h-16 w-16 rounded-lg border border-slate-200 object-cover dark:border-white/10"
+        />
       )}
     </div>
   );
 }
 
-function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, setStatusMessage }) {
+function ProviderResubmitVerification({
+  providerProfile,
+  onCancel,
+  onSuccess,
+  setStatusMessage,
+}) {
   const [form, setForm] = useState({
     name: providerProfile?.name || "",
     category: providerProfile?.category || "",
@@ -5193,7 +5236,8 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error("Selected file could not be read."));
+      reader.onerror = () =>
+        reject(new Error("Selected file could not be read."));
       reader.readAsDataURL(file);
     });
 
@@ -5204,7 +5248,13 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
       return;
     }
 
-    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"];
+    const allowedTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/webp",
+      "application/pdf",
+    ];
     if (!allowedTypes.includes(file.type)) {
       setError("Upload Aadhaar as PNG, JPG, WEBP, or PDF.");
       event.target.value = "";
@@ -5219,7 +5269,11 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
     try {
       const dataUrl = await readDocument(file);
       setError("");
-      setForm((prev) => ({ ...prev, [field]: dataUrl, [nameField]: file.name }));
+      setForm((prev) => ({
+        ...prev,
+        [field]: dataUrl,
+        [nameField]: file.name,
+      }));
     } catch (readError) {
       setError(readError.message || "Aadhaar document could not be prepared.");
       event.target.value = "";
@@ -5243,37 +5297,49 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
     setSubmitting(true);
     try {
       const token = localStorage.getItem("servicehub_token");
-      const response = await authenticatedFetch(`${API_URL}/providers/resubmit-verification`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        `${API_URL}/providers/resubmit-verification`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: form.name,
+            category: form.category,
+            customCategory: form.customCategory,
+            location: form.location,
+            preferredWorkLocation: form.preferredWorkLocation,
+            phone: form.phone,
+            price: form.price,
+            aadhaarNumber: aadhaarDigits,
+            aadhaarFrontUrl: form.aadhaarFrontUrl,
+            aadhaarDocumentName: form.aadhaarDocumentName,
+            aadhaarBackUrl: form.aadhaarBackUrl,
+            aadhaarBackDocumentName: form.aadhaarBackDocumentName,
+          }),
         },
-        body: JSON.stringify({
-          name: form.name,
-          category: form.category,
-          customCategory: form.customCategory,
-          location: form.location,
-          preferredWorkLocation: form.preferredWorkLocation,
-          phone: form.phone,
-          price: form.price,
-          aadhaarNumber: aadhaarDigits,
-          aadhaarFrontUrl: form.aadhaarFrontUrl,
-          aadhaarDocumentName: form.aadhaarDocumentName,
-          aadhaarBackUrl: form.aadhaarBackUrl,
-          aadhaarBackDocumentName: form.aadhaarBackDocumentName,
-        }),
-      });
-      const data = await parseApiResponse(response, "Registration could not be resubmitted.");
+      );
+      const data = await parseApiResponse(
+        response,
+        "Registration could not be resubmitted.",
+      );
       if (!response.ok) {
-        throw new Error(data.message || "Registration could not be resubmitted.");
+        throw new Error(
+          data.message || "Registration could not be resubmitted.",
+        );
       }
       setStatusMessage?.(
-        data.message || "Your registration has been resubmitted and is now waiting for admin review.",
+        data.message ||
+          "Your registration has been resubmitted and is now waiting for admin review.",
       );
       onSuccess?.();
     } catch (submitError) {
-      setError(submitError.message || "Registration could not be resubmitted. Please try again.");
+      setError(
+        submitError.message ||
+          "Registration could not be resubmitted. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -5285,7 +5351,9 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
       className="mx-auto mt-5 grid max-w-xl gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm dark:border-white/10 dark:bg-white/5"
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-black text-slate-900 dark:text-white">Resubmit your registration</h3>
+        <h3 className="text-base font-black text-slate-900 dark:text-white">
+          Resubmit your registration
+        </h3>
         <button
           type="button"
           onClick={onCancel}
@@ -5295,8 +5363,8 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
         </button>
       </div>
       <p className="-mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-        Update what admin flagged (most often the Aadhaar upload) and send your profile back for review.
-        You don&apos;t need to create a new account.
+        Update what admin flagged (most often the Aadhaar upload) and send your
+        profile back for review. You don&apos;t need to create a new account.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -5305,7 +5373,9 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           <input
             type="text"
             value={form.name}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, name: event.target.value }))
+            }
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
             required
           />
@@ -5315,7 +5385,9 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           <input
             type="tel"
             value={form.phone}
-            onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, phone: event.target.value }))
+            }
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
             required
           />
@@ -5325,7 +5397,9 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           <input
             type="text"
             value={form.category}
-            onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, category: event.target.value }))
+            }
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
             required
           />
@@ -5335,7 +5409,9 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           <input
             type="text"
             value={form.location}
-            onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, location: event.target.value }))
+            }
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
             required
           />
@@ -5345,7 +5421,12 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           <input
             type="text"
             value={form.preferredWorkLocation}
-            onChange={(event) => setForm((prev) => ({ ...prev, preferredWorkLocation: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                preferredWorkLocation: event.target.value,
+              }))
+            }
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
           />
         </label>
@@ -5354,7 +5435,9 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           <input
             type="text"
             value={form.price}
-            onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, price: event.target.value }))
+            }
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/10 dark:text-white"
           />
         </label>
@@ -5385,8 +5468,17 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
           value={form.aadhaarFrontUrl}
           fileName={form.aadhaarDocumentName}
-          onChange={handleAadhaarChange("aadhaarFrontUrl", "aadhaarDocumentName")}
-          onRemove={() => setForm((prev) => ({ ...prev, aadhaarFrontUrl: "", aadhaarDocumentName: "" }))}
+          onChange={handleAadhaarChange(
+            "aadhaarFrontUrl",
+            "aadhaarDocumentName",
+          )}
+          onRemove={() =>
+            setForm((prev) => ({
+              ...prev,
+              aadhaarFrontUrl: "",
+              aadhaarDocumentName: "",
+            }))
+          }
           required
           isDocument={form.aadhaarDocumentName?.toLowerCase().endsWith(".pdf")}
         />
@@ -5396,8 +5488,17 @@ function ProviderResubmitVerification({ providerProfile, onCancel, onSuccess, se
           accept="image/png,image/jpeg,image/jpg,image/webp"
           value={form.aadhaarBackUrl}
           fileName={form.aadhaarBackDocumentName}
-          onChange={handleAadhaarChange("aadhaarBackUrl", "aadhaarBackDocumentName")}
-          onRemove={() => setForm((prev) => ({ ...prev, aadhaarBackUrl: "", aadhaarBackDocumentName: "" }))}
+          onChange={handleAadhaarChange(
+            "aadhaarBackUrl",
+            "aadhaarBackDocumentName",
+          )}
+          onRemove={() =>
+            setForm((prev) => ({
+              ...prev,
+              aadhaarBackUrl: "",
+              aadhaarBackDocumentName: "",
+            }))
+          }
         />
       </div>
 
@@ -6427,8 +6528,7 @@ function JobCard({
           )}
         {booking.status === "rejected" && (
           <span className="font-black text-rose-600">
-            Rejected by you:{" "}
-            {booking.rejectionReason || "Reason not provided"}
+            Rejected by you: {booking.rejectionReason || "Reason not provided"}
           </span>
         )}
       </div>
@@ -6649,8 +6749,8 @@ function ProviderRejectModal({ booking, onClose, onSubmit }) {
           </button>
         </div>
         <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:bg-amber-300/10 dark:text-amber-100">
-          This request will be removed from your dashboard. You will not be
-          able to accept it again later.
+          This request will be removed from your dashboard. You will not be able
+          to accept it again later.
         </p>
         <label className="mt-5 grid gap-2 font-bold">
           Reason (optional)
@@ -6798,236 +6898,216 @@ function ClientSupportSection({ user, setStatusMessage }) {
   };
 
   return (
-  <section
-    id="contact"
-    className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-teal-50 to-cyan-100 px-4 py-20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 sm:px-6 lg:px-8 lg:py-28"
-  >
-    {/* Background Blur Effects */}
-    <div className="absolute -top-40 -left-32 h-96 w-96 rounded-full bg-teal-400/20 blur-[120px] animate-pulse"></div>
-    <div className="absolute -bottom-40 -right-32 h-96 w-96 rounded-full bg-blue-400/20 blur-[120px] animate-pulse"></div>
+    <section
+      id="contact"
+      className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-teal-50 to-cyan-100 px-4 py-20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 sm:px-6 lg:px-8 lg:py-28"
+    >
+      {/* Background Blur Effects */}
+      <div className="absolute -top-40 -left-32 h-96 w-96 rounded-full bg-teal-400/20 blur-[120px] animate-pulse"></div>
+      <div className="absolute -bottom-40 -right-32 h-96 w-96 rounded-full bg-blue-400/20 blur-[120px] animate-pulse"></div>
 
-    <div className="relative z-10 mx-auto grid max-w-7xl gap-10 lg:grid-cols-2">
+      <div className="relative z-10 mx-auto grid max-w-7xl gap-10 lg:grid-cols-2">
+        {/* Left Contact Card */}
+        <div className="group rounded-[32px] border border-white/40 bg-white/70 backdrop-blur-2xl p-10 shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:shadow-cyan-500/20 dark:border-white/10 dark:bg-white/10">
+          <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-500 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-lg">
+            Contact Support
+          </span>
 
-      {/* Left Contact Card */}
-      <div className="group rounded-[32px] border border-white/40 bg-white/70 backdrop-blur-2xl p-10 shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:shadow-cyan-500/20 dark:border-white/10 dark:bg-white/10">
+          <h2 className="mt-8 text-4xl font-black leading-tight text-slate-900 dark:text-white md:text-5xl">
+            Talk to ServiceHub Support
+          </h2>
 
-        <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-500 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-lg">
-          Contact Support
-        </span>
+          <p className="mt-6 text-lg leading-8 text-slate-600 dark:text-slate-300">
+            Need urgent service, provider onboarding, partnerships or booking
+            assistance? Our support team is always ready to help you.
+          </p>
 
-        <h2 className="mt-8 text-4xl font-black leading-tight text-slate-900 dark:text-white md:text-5xl">
-          Talk to ServiceHub Support
-        </h2>
+          <div className="mt-10 space-y-5">
+            <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-100 text-teal-600">
+                <MessageCircle size={22} />
+              </div>
 
-        <p className="mt-6 text-lg leading-8 text-slate-600 dark:text-slate-300">
-          Need urgent service, provider onboarding, partnerships or booking
-          assistance? Our support team is always ready to help you.
-        </p>
-
-        <div className="mt-10 space-y-5">
-
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-100 text-teal-600">
-              <MessageCircle size={22} />
+              <div>
+                <p className="text-sm text-slate-500">Email</p>
+                <p className="font-semibold text-slate-900 dark:text-white">
+                  info.aparaitech@gmail.com
+                </p>
+              </div>
             </div>
 
-            <div>
-              <p className="text-sm text-slate-500">Email</p>
-              <p className="font-semibold text-slate-900 dark:text-white">
-                info.aparaitech@gmail.com
-              </p>
-            </div>
-          </div>
+            <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                <MapPin size={22} />
+              </div>
 
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
-              <MapPin size={22} />
-            </div>
-
-            <div>
-              <p className="text-sm text-slate-500">Location</p>
-              <p className="font-semibold text-slate-900 dark:text-white">
-                Baramati, Maharashtra, India
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-              <CalendarCheck size={22} />
+              <div>
+                <p className="text-sm text-slate-500">Location</p>
+                <p className="font-semibold text-slate-900 dark:text-white">
+                  Baramati, Maharashtra, India
+                </p>
+              </div>
             </div>
 
-            <div>
-              <p className="text-sm text-slate-500">Working Hours</p>
-              <p className="font-semibold text-slate-900 dark:text-white">
-                8:00 AM - 9:00 PM
-              </p>
+            <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-xl transition-all duration-300 hover:translate-x-2 hover:shadow-lg dark:border-white/10 dark:bg-white/10">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                <CalendarCheck size={22} />
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-500">Working Hours</p>
+                <p className="font-semibold text-slate-900 dark:text-white">
+                  8:00 AM - 9:00 PM
+                </p>
+              </div>
             </div>
           </div>
-
-        </div>
-      </div>
-
-      {/* Contact Form */}
-      <form
-        onSubmit={submitSupport}
-        className="rounded-[32px] border border-white/40 bg-white/70 p-10 backdrop-blur-2xl shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:shadow-blue-500/20 dark:border-white/10 dark:bg-white/10"
-      >
-        {!canSendSupportMessage && (
-          <div className="mb-6 inline-flex rounded-full bg-gradient-to-r from-teal-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-lg">
-            Contact Us
-          </div>
-        )}
-
-        <h3 className="mb-2 text-3xl font-black text-slate-900 dark:text-white">
-          Send a Message
-        </h3>
-
-        <p className="mb-8 text-slate-500 dark:text-slate-300">
-          Fill out the form below and we'll get back to you shortly.
-        </p>
-
-        <FormInput
-          label="Name"
-          name="name"
-          defaultValue={user?.name || ""}
-          placeholder="Your name"
-        />
-
-        <div className="mt-5">
-          <FormInput
-            label="Email"
-            name="email"
-            type="email"
-            defaultValue={user?.email || ""}
-            placeholder="you@example.com"
-          />
         </div>
 
-        <label className="mt-5 grid gap-2 font-bold text-slate-700 dark:text-white">
-          Message
-
-          <textarea
-            name="message"
-            placeholder="How can we help?"
-            rows="5"
-            required
-            className="w-full rounded-2xl border border-slate-300 bg-white/70 px-5 py-4 backdrop-blur-xl outline-none transition-all duration-300 placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-300 dark:border-white/20 dark:bg-white/10"
-          />
-        </label>
-
-        <button
-          type="submit"
-          disabled={supportSubmitting}
-          className="group mt-8 inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-600 px-8 py-4 text-lg font-bold text-white shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        {/* Contact Form */}
+        <form
+          onSubmit={submitSupport}
+          className="rounded-[32px] border border-white/40 bg-white/70 p-10 backdrop-blur-2xl shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:shadow-blue-500/20 dark:border-white/10 dark:bg-white/10"
         >
-          <Send
-            size={20}
-            className="transition-transform duration-300 group-hover:translate-x-2"
+          {!canSendSupportMessage && (
+            <div className="mb-6 inline-flex rounded-full bg-gradient-to-r from-teal-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-lg">
+              Contact Us
+            </div>
+          )}
+
+          <h3 className="mb-2 text-3xl font-black text-slate-900 dark:text-white">
+            Send a Message
+          </h3>
+
+          <p className="mb-8 text-slate-500 dark:text-slate-300">
+            Fill out the form below and we'll get back to you shortly.
+          </p>
+
+          <FormInput
+            label="Name"
+            name="name"
+            defaultValue={user?.name || ""}
+            placeholder="Your name"
           />
 
-          {supportSubmitting
-            ? "Sending..."
-            : canSendSupportMessage
-            ? "Send Message"
-            : "Contact Us"}
-        </button>
+          <div className="mt-5">
+            <FormInput
+              label="Email"
+              name="email"
+              type="email"
+              defaultValue={user?.email || ""}
+              placeholder="you@example.com"
+            />
+          </div>
 
-      </form>
+          <label className="mt-5 grid gap-2 font-bold text-slate-700 dark:text-white">
+            Message
+            <textarea
+              name="message"
+              placeholder="How can we help?"
+              rows="5"
+              required
+              className="w-full rounded-2xl border border-slate-300 bg-white/70 px-5 py-4 backdrop-blur-xl outline-none transition-all duration-300 placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-300 dark:border-white/20 dark:bg-white/10"
+            />
+          </label>
 
-    </div>
-  </section>
-);
+          <button
+            type="submit"
+            disabled={supportSubmitting}
+            className="group mt-8 inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-600 px-8 py-4 text-lg font-bold text-white shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Send
+              size={20}
+              className="transition-transform duration-300 group-hover:translate-x-2"
+            />
+
+            {supportSubmitting
+              ? "Sending..."
+              : canSendSupportMessage
+                ? "Send Message"
+                : "Contact Us"}
+          </button>
+        </form>
+      </div>
+    </section>
+  );
 }
 function ServiceHubFooter({ onServiceClick }) {
   return (
     <footer className="bg-[#151f28] px-4 py-12 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.05fr_1fr]">
-<div className="space-y-2">
+          <div className="space-y-2">
+            {/* Logo & Brand */}
+            <div className="flex items-center gap-4">
+              <div className="group relative">
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 blur-lg opacity-60 transition duration-500 group-hover:opacity-100 group-hover:scale-110"></div>
 
-  {/* Logo & Brand */}
-  <div className="flex items-center gap-4">
-    <div className="group relative">
-      <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 blur-lg opacity-60 transition duration-500 group-hover:opacity-100 group-hover:scale-110"></div>
+                <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-3xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl">
+                  <img
+                    src={SERVICEHUB_ICON}
+                    alt="ServiceHub symbol"
+                    className="h-11 w-11 object-contain transition duration-500 group-hover:rotate-12 group-hover:scale-110"
+                  />
+                </span>
+              </div>
 
-      <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-3xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl">
-        <img
-          src={SERVICEHUB_ICON}
-          alt="ServiceHub symbol"
-          className="h-11 w-11 object-contain transition duration-500 group-hover:rotate-12 group-hover:scale-110"
-        />
-      </span>
-    </div>
+              <div>
+                <h2 className="bg-gradient-to-r from-cyan-300 via-white to-violet-300 bg-clip-text text-4xl font-black tracking-tight text-transparent">
+                  ServiceHub
+                </h2>
 
-    <div>
-      <h2 className="bg-gradient-to-r from-cyan-300 via-white to-violet-300 bg-clip-text text-4xl font-black tracking-tight text-transparent">
-        ServiceHub
-      </h2>
+                <p className="mt-1 text-sm tracking-[0.3em] uppercase text-cyan-300">
+                  Trusted Home Services
+                </p>
+              </div>
+            </div>
 
-      <p className="mt-1 text-sm tracking-[0.3em] uppercase text-cyan-300">
-        Trusted Home Services
-      </p>
-    </div>
-  </div>
+            {/* Description Card */}
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition duration-500 hover:border-cyan-400/40 hover:bg-white/10 hover:shadow-2xl hover:shadow-cyan-500/10">
+              <p className="text-lg leading-8 text-slate-300">
+                Trusted local professionals for home repairs, maintenance,
+                installation and emergency support with quick response.
+              </p>
+            </div>
 
-  {/* Description Card */}
-  <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition duration-500 hover:border-cyan-400/40 hover:bg-white/10 hover:shadow-2xl hover:shadow-cyan-500/10">
-    <p className="text-lg leading-8 text-slate-300">
-      Trusted local professionals for home repairs, maintenance,
-      installation and emergency support with quick response.
-    </p>
-  </div>
+            {/* Verified Badge */}
+            <div className="group flex items-center gap-4 rounded-2xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10 p-5 backdrop-blur-xl transition duration-500 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-500 text-white shadow-lg">
+                <ShieldCheck className="h-6 w-6 transition duration-500 group-hover:rotate-12" />
+              </div>
 
-  {/* Verified Badge */}
-  <div className="group flex items-center gap-4 rounded-2xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10 p-5 backdrop-blur-xl transition duration-500 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/20">
+              <div>
+                <p className="font-bold text-white">Verified Professionals</p>
 
-    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-500 text-white shadow-lg">
-      <ShieldCheck className="h-6 w-6 transition duration-500 group-hover:rotate-12" />
-    </div>
+                <p className="text-sm text-slate-300">
+                  Trusted providers with reliable customer support
+                </p>
+              </div>
+            </div>
+          </div>
 
-    <div>
-      <p className="font-bold text-white">
-        Verified Professionals
-      </p>
+          <div>
+            <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-5 py-2 text-lg font-bold text-white shadow-lg">
+              Popular Services
+            </h3>
 
-      <p className="text-sm text-slate-300">
-        Trusted providers with reliable customer support
-      </p>
-    </div>
-
-  </div>
-
-</div>
-
-
-
-
-
-<div>
-
-  <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-5 py-2 text-lg font-bold text-white shadow-lg">
-    Popular Services
-  </h3>
-
-  <div className="grid gap-3">
-
-    {[
-      "Plumber",
-      "Electrician",
-      "Carpenter",
-      "Painter",
-      "AC Repair",
-      "Refrigerator Repair",
-      "Washing Machine Repair",
-      "TV Repair",
-    ].map((service) => (
-
-      <button
-        key={service}
-        type="button"
-        onClick={() => onServiceClick(service)}
-        className="
+            <div className="grid gap-3">
+              {[
+                "Plumber",
+                "Electrician",
+                "Carpenter",
+                "Painter",
+                "AC Repair",
+                "Refrigerator Repair",
+                "Washing Machine Repair",
+                "TV Repair",
+              ].map((service) => (
+                <button
+                  key={service}
+                  type="button"
+                  onClick={() => onServiceClick(service)}
+                  className="
           group
           flex
           items-center
@@ -7053,164 +7133,147 @@ function ServiceHubFooter({ onServiceClick }) {
           hover:shadow-xl
           hover:shadow-cyan-500/20
         "
-      >
-        <span>{service}</span>
+                >
+                  <span>{service}</span>
 
-        <span className="text-xl transition duration-300 group-hover:translate-x-2">
-          →
-        </span>
+                  <span className="text-xl transition duration-300 group-hover:translate-x-2">
+                    →
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
 
-      </button>
+          <div>
+            <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-5 py-2 text-lg font-bold text-white shadow-lg">
+              Contact
+            </h3>
 
-    ))}
+            <div className="space-y-4">
+              {/* Phone */}
+              <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:shadow-xl hover:shadow-cyan-500/20">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+                  <Phone className="h-5 w-5 text-white" />
+                </div>
 
-  </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">
+                    Phone
+                  </p>
+                  <p className="font-semibold text-white">+91 9158852129</p>
+                </div>
+              </div>
 
-</div>
+              {/* Email */}
+              <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-pink-400/40 hover:bg-pink-500/10 hover:shadow-xl hover:shadow-pink-500/20">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+                  <Mail className="h-5 w-5 text-white" />
+                </div>
 
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">
+                    Email
+                  </p>
+                  <p className="font-semibold text-white break-all">
+                    info.aparaitech@gmail.com
+                  </p>
+                </div>
+              </div>
 
-<div>
-  <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 px-5 py-2 text-lg font-bold text-white shadow-lg">
-    Contact
-  </h3>
+              {/* Address */}
+              <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-orange-400/40 hover:bg-orange-500/10 hover:shadow-xl hover:shadow-orange-500/20">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-orange-400 to-red-500 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+                  <MapPin className="h-5 w-5 text-white" />
+                </div>
 
-  <div className="space-y-4">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">
+                    Address
+                  </p>
+                  <p className="font-semibold text-white">
+                    Baramati, Maharashtra
+                  </p>
+                </div>
+              </div>
 
-    {/* Phone */}
-    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:shadow-xl hover:shadow-cyan-500/20">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
-        <Phone className="h-5 w-5 text-white" />
+              {/* Working Hours */}
+              <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-violet-400/40 hover:bg-violet-500/10 hover:shadow-xl hover:shadow-violet-500/20">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
+                  <CalendarCheck className="h-5 w-5 text-white" />
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">
+                    Working Hours
+                  </p>
+                  <p className="font-semibold text-white">
+                    Mon - Sun • 8:00 AM - 9:00 PM
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 px-5 py-2 text-lg font-bold text-white shadow-lg">
+              For Clients
+            </h3>
+
+            <div className="group rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:border-violet-400/40 hover:bg-white/10 hover:shadow-2xl hover:shadow-violet-500/20">
+              <p className="text-lg leading-8 text-slate-300">
+                Book nearby service providers, compare ratings, and get help for
+                urgent repair needs.
+              </p>
+
+              <div className="mt-6 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-violet-500/10 p-5 ring-1 ring-cyan-400/20 transition-all duration-500 group-hover:scale-[1.02]">
+                <p className="flex items-center gap-2 font-bold text-white">
+                  💬 Need help?
+                </p>
+
+                <p className="mt-2 leading-7 text-slate-300">
+                  Call us for booking assistance or service issues.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-12 border-t border-white/10 pt-8">
+          <div className="flex flex-col items-center justify-between gap-5 lg:flex-row">
+            <span className="text-center text-slate-400">
+              © <span className="font-bold text-white">2026 ServiceHub</span>.
+              All Rights Reserved.
+            </span>
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="/contact"
+                className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-300 transition-all duration-300 hover:-translate-y-1 hover:bg-cyan-500/20"
+              >
+                Contact
+              </a>
+
+              <a
+                href="/privacy-policy"
+                className="rounded-full border border-pink-400/20 bg-pink-500/10 px-4 py-2 text-sm text-pink-300 transition-all duration-300 hover:-translate-y-1 hover:bg-pink-500/20"
+              >
+                Privacy Policy
+              </a>
+
+              <a
+                href="/terms-and-conditions"
+                className="rounded-full border border-violet-400/20 bg-violet-500/10 px-4 py-2 text-sm text-violet-300 transition-all duration-300 hover:-translate-y-1 hover:bg-violet-500/20"
+              >
+                Terms
+              </a>
+
+              <span className="rounded-full bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-violet-500/10 px-4 py-2 text-sm text-slate-300 ring-1 ring-white/10">
+                📍 Serving homes across Pune and nearby cities.
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-widest text-slate-400">
-          Phone
-        </p>
-        <p className="font-semibold text-white">
-          +91 9158852129
-        </p>
-      </div>
-    </div>
-
-    {/* Email */}
-    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-pink-400/40 hover:bg-pink-500/10 hover:shadow-xl hover:shadow-pink-500/20">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
-        <Mail className="h-5 w-5 text-white" />
-      </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-widest text-slate-400">
-          Email
-        </p>
-        <p className="font-semibold text-white break-all">
-          info.aparaitech@gmail.com
-        </p>
-      </div>
-    </div>
-
-    {/* Address */}
-    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-orange-400/40 hover:bg-orange-500/10 hover:shadow-xl hover:shadow-orange-500/20">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-orange-400 to-red-500 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
-        <MapPin className="h-5 w-5 text-white" />
-      </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-widest text-slate-400">
-          Address
-        </p>
-        <p className="font-semibold text-white">
-          Baramati, Maharashtra
-        </p>
-      </div>
-    </div>
-
-    {/* Working Hours */}
-    <div className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:border-violet-400/40 hover:bg-violet-500/10 hover:shadow-xl hover:shadow-violet-500/20">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 shadow-lg transition-all duration-500 group-hover:rotate-12 group-hover:scale-110">
-        <CalendarCheck className="h-5 w-5 text-white" />
-      </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-widest text-slate-400">
-          Working Hours
-        </p>
-        <p className="font-semibold text-white">
-          Mon - Sun • 8:00 AM - 9:00 PM
-        </p>
-      </div>
-    </div>
-
-  </div>
-</div>
-<div>
-  <h3 className="mb-6 inline-flex rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 px-5 py-2 text-lg font-bold text-white shadow-lg">
-    For Clients
-  </h3>
-
-  <div className="group rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:border-violet-400/40 hover:bg-white/10 hover:shadow-2xl hover:shadow-violet-500/20">
-
-    <p className="text-lg leading-8 text-slate-300">
-      Book nearby service providers, compare ratings, and get help for
-      urgent repair needs.
-    </p>
-
-    <div className="mt-6 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-violet-500/10 p-5 ring-1 ring-cyan-400/20 transition-all duration-500 group-hover:scale-[1.02]">
-      <p className="flex items-center gap-2 font-bold text-white">
-        💬 Need help?
-      </p>
-
-      <p className="mt-2 leading-7 text-slate-300">
-        Call us for booking assistance or service issues.
-      </p>
-    </div>
-
-  </div>
-</div>
-
-</div>
-
-<div className="mt-12 border-t border-white/10 pt-8">
-
-  <div className="flex flex-col items-center justify-between gap-5 lg:flex-row">
-
-    <span className="text-center text-slate-400">
-      © <span className="font-bold text-white">2026 ServiceHub</span>. All Rights Reserved.
-    </span>
-
-    <div className="flex flex-wrap items-center justify-center gap-3">
-
-      <a
-        href="/contact"
-        className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-300 transition-all duration-300 hover:-translate-y-1 hover:bg-cyan-500/20"
-      >
-        Contact
-      </a>
-
-      <a
-        href="/privacy-policy"
-        className="rounded-full border border-pink-400/20 bg-pink-500/10 px-4 py-2 text-sm text-pink-300 transition-all duration-300 hover:-translate-y-1 hover:bg-pink-500/20"
-      >
-        Privacy Policy
-      </a>
-
-      <a
-        href="/terms-and-conditions"
-        className="rounded-full border border-violet-400/20 bg-violet-500/10 px-4 py-2 text-sm text-violet-300 transition-all duration-300 hover:-translate-y-1 hover:bg-violet-500/20"
-      >
-        Terms
-      </a>
-
-      <span className="rounded-full bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-violet-500/10 px-4 py-2 text-sm text-slate-300 ring-1 ring-white/10">
-        📍 Serving homes across Pune and nearby cities.
-      </span>
-
-    </div>
-
-  </div>
-
-</div>
-</div>
-</footer>
+    </footer>
   );
 }
 
