@@ -27,6 +27,7 @@ import {
   User,
   RefreshCw,
   Inbox,
+  Download,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -58,9 +59,6 @@ const matchesSearch = (query, ...values) => {
     values.some((value) => normalizeText(value).includes(cleanQuery))
   );
 };
-
-const isImageDocument = (url = "") =>
-  /^data:image\//i.test(url) || /\.(png|jpe?g|webp)(\?|#|$)/i.test(url);
 
 const documentLabel = (fallback, url, empty = "Not uploaded") => {
   if (fallback) return fallback;
@@ -98,6 +96,29 @@ const openDocumentInNewTab = async ({ providerId, side, onError }) => {
   } catch (error) {
     previewWindow.close();
     onError?.(error.message || "Aadhaar document could not be loaded.");
+  }
+};
+
+const downloadDocument = async ({ providerId, side, fileName, onError }) => {
+  try {
+    const token = localStorage.getItem("servicehub_token");
+    const response = await fetch(`${API_URL}/admin/providers/${providerId}/aadhaar/${side}?download=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Aadhaar document could not be downloaded.");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || `aadhaar-${side}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  } catch (error) {
+    onError?.(error.message || "Aadhaar document could not be downloaded.");
   }
 };
 
@@ -2785,16 +2806,16 @@ export default function NewAdminPanel({
                   {[
                     {
                       label: "Front / PDF",
-                      url: activeDrawerProvider.aadhaarFrontUrl,
-                      available: activeDrawerProvider.aadhaarFrontAvailable || Boolean(activeDrawerProvider.aadhaarFrontUrl),
+                      metadata: activeDrawerProvider.documents?.aadhaarFront,
+                      available: activeDrawerProvider.documents?.aadhaarFront?.available || activeDrawerProvider.aadhaarFrontAvailable,
                       side: "front",
                       name: activeDrawerProvider.aadhaarDocumentName,
                       required: true,
                     },
                     {
                       label: "Back image",
-                      url: activeDrawerProvider.aadhaarBackUrl,
-                      available: activeDrawerProvider.aadhaarBackAvailable || Boolean(activeDrawerProvider.aadhaarBackUrl),
+                      metadata: activeDrawerProvider.documents?.aadhaarBack,
+                      available: activeDrawerProvider.documents?.aadhaarBack?.available || activeDrawerProvider.aadhaarBackAvailable,
                       side: "back",
                       name: activeDrawerProvider.aadhaarBackDocumentName,
                       required: false,
@@ -2814,45 +2835,30 @@ export default function NewAdminPanel({
                             {document.label}
                           </p>
                           <p className="mt-1 truncate text-xs font-bold text-slate-800 dark:text-slate-100">
-                            {documentLabel(document.name, document.url || (document.available ? "uploaded" : ""))}
+                            {documentLabel(document.metadata?.fileName || document.name, document.available ? "uploaded" : "")}
                           </p>
+                          {document.available && (
+                            <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                              Uploaded: {formatDateTime(document.metadata?.uploadedAt)}
+                              {document.metadata?.mimeType ? ` · ${document.metadata.mimeType}` : ""}
+                            </p>
+                          )}
                         </div>
                         {document.available ? (
-                          <button
-                            type="button"
-                            onClick={() => openDocumentInNewTab({
-                              providerId: activeDrawerProvider._id,
-                              side: document.side,
-                              onError: setStatusMessage,
-                            })}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-950 px-3 py-2 text-[11px] font-black uppercase text-white hover:bg-slate-800"
-                          >
-                            <Eye size={13} />
-                            Open
-                          </button>
+                          <div className="flex shrink-0 gap-2">
+                            <button type="button" onClick={() => openDocumentInNewTab({ providerId: activeDrawerProvider._id, side: document.side, onError: setStatusMessage })} className="inline-flex items-center gap-1 rounded-lg bg-slate-950 px-3 py-2 text-[11px] font-black uppercase text-white hover:bg-slate-800">
+                              <Eye size={13} /> View
+                            </button>
+                            <button type="button" onClick={() => downloadDocument({ providerId: activeDrawerProvider._id, side: document.side, fileName: document.metadata?.fileName || document.name, onError: setStatusMessage })} className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-black uppercase text-white hover:bg-indigo-700">
+                              <Download size={13} /> Download
+                            </button>
+                          </div>
                         ) : (
                           <span className="shrink-0 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 text-[11px] font-black uppercase text-slate-400 dark:text-slate-500">
                             {document.required ? "Required" : "Optional"}
                           </span>
                         )}
                       </div>
-                      {document.url && isImageDocument(document.url) && (
-                        <button
-                          type="button"
-                          onClick={() => openDocumentInNewTab({
-                            providerId: activeDrawerProvider._id,
-                            side: document.side,
-                            onError: setStatusMessage,
-                          })}
-                          className="mt-3 block overflow-hidden rounded-lg border border-white bg-white dark:bg-slate-900 shadow-sm"
-                        >
-                          <img
-                            src={document.url}
-                            alt={`${activeDrawerProvider.name || "Provider"} ${document.label}`}
-                            className="h-40 w-full object-cover"
-                          />
-                        </button>
-                      )}
                       {!document.available && document.required && (
                         <p className="mt-2 flex items-center gap-1 text-[11px] font-bold text-rose-600">
                           <AlertCircle size={12} />

@@ -101,6 +101,33 @@ export default async function setupDatabase() {
       },
     }
   );
+  // One-time, idempotent normalization for provider records created by older app builds.
+  await Provider.collection.updateMany(
+    { $or: [{ aadhaarFrontUrl: { $exists: false } }, { aadhaarFrontUrl: "" }, { aadhaarFrontUrl: null }] },
+    [{
+      $set: {
+        aadhaarFrontUrl: {
+          $reduce: {
+            input: ["$aadhaarFrontUrl", "$aadhaarCardImage", "$aadhaarImage", "$aadhaarUrl", "$aadhaar", "$aadhar"],
+            initialValue: "",
+            in: { $cond: [{ $gt: [{ $strLenCP: { $ifNull: ["$$value", ""] } }, 0] }, "$$value", { $ifNull: ["$$this", ""] }] },
+          },
+        },
+      },
+    }],
+  );
+  await Provider.collection.updateMany(
+    { aadhaarFrontUrl: { $nin: ["", null] }, $or: [{ aadhaarFrontUploadedAt: null }, { aadhaarFrontUploadedAt: { $exists: false } }] },
+    [{ $set: { aadhaarFrontUploadedAt: { $ifNull: ["$updatedAt", "$createdAt"] } } }],
+  );
+  await Provider.collection.updateMany(
+    { $or: [{ aadhaarBackUrl: { $exists: false } }, { aadhaarBackUrl: "" }, { aadhaarBackUrl: null }] },
+    [{ $set: { aadhaarBackUrl: { $reduce: { input: ["$aadhaarBackUrl", "$aadhaarBackImage", "$aadharBack"], initialValue: "", in: { $cond: [{ $gt: [{ $strLenCP: { $ifNull: ["$$value", ""] } }, 0] }, "$$value", { $ifNull: ["$$this", ""] }] } } } } }],
+  );
+  await Provider.collection.updateMany(
+    { aadhaarBackUrl: { $nin: ["", null] }, $or: [{ aadhaarBackUploadedAt: null }, { aadhaarBackUploadedAt: { $exists: false } }] },
+    [{ $set: { aadhaarBackUploadedAt: { $ifNull: ["$updatedAt", "$createdAt"] } } }],
+  );
 
   const adminEmail = process.env.ADMIN_EMAIL || "admin@servicehub.com";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
@@ -167,15 +194,17 @@ export default async function setupDatabase() {
     }))
   );
 
-  await Provider.bulkWrite(
-    defaultProviders.map((provider) => ({
-      updateOne: {
-        filter: { providerCode: provider.providerCode },
-        update: { $set: provider },
-        upsert: true,
-      },
-    }))
-  );
+  if (process.env.SEED_DEFAULT_PROVIDERS === "true") {
+    await Provider.bulkWrite(
+      defaultProviders.map((provider) => ({
+        updateOne: {
+          filter: { providerCode: provider.providerCode },
+          update: { $set: provider },
+          upsert: true,
+        },
+      }))
+    );
+  }
 
   await SiteContent.bulkWrite(
     defaultSiteContents.map((content) => ({

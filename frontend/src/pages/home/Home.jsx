@@ -67,7 +67,6 @@ import {
   trackingSteps,
 } from "../../components/tracking/trackingShared";
 import useProviderAlerts from "../../components/tracking/useProviderAlerts";
-import { services } from "../../data/Services";
 import SEO from "../../seo/SEO";
 import {
   buildBreadcrumbSchema,
@@ -1063,20 +1062,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!user || !token || !["user", "provider"].includes(user.role))
-      return undefined;
+    const shouldRefreshClient =
+      Boolean(token) &&
+      activeView === "client" &&
+      (user?.role === "user" ||
+        (user?.role === "provider" && providerClientMode));
+    if (!shouldRefreshClient) return undefined;
 
-    let stopped = false;
-    const loadClientBookings = async () => {
-      try {
-        const response = await authenticatedFetch(`${API_URL}/bookings/my`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = response.ok ? await response.json() : { bookings: [] };
-        if (!stopped) setBookings(data.bookings || []);
-      } catch {
-        if (!stopped) setBookings([]);
-      }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshClientBookings();
     };
 
     loadClientBookings();
@@ -1088,20 +1082,16 @@ export default function Home() {
       stopped = true;
       window.clearInterval(intervalId);
     };
-  }, [activeView, user, token]);
+  }, [
+    activeView,
+    providerClientMode,
+    refreshClientBookings,
+    user?.role,
+    token,
+  ]);
 
   const marketplaceServices = useMemo(() => {
-    const fallback = services.map((service) => ({
-      ...service,
-      providerId: "",
-      image: categoryImages[service.category] || categoryImages.Cleaning,
-    }));
-    const map = new Map(
-      fallback.map((service) => [
-        `${service.name}-${service.category}`,
-        service,
-      ]),
-    );
+    const map = new Map();
     catalogProviders.forEach((provider) =>
       map.set(`${provider.name}-${provider.category}`, provider),
     );
@@ -1318,11 +1308,8 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const isWaitingForApproval =
-      activeView === "provider" &&
-      user?.role === "provider" &&
-      providerProfile?.approvalStatus &&
-      providerProfile.approvalStatus !== "approved";
+    if (activeView !== "provider" || user?.role !== "provider")
+      return undefined;
 
     if (!isWaitingForApproval) return undefined;
 
@@ -2105,7 +2092,7 @@ export default function Home() {
       setAdminData((current) => ({
         ...current,
         providers: current.providers.map((provider) =>
-          provider._id === providerId ? data.provider : provider,
+          provider._id === providerId ? { ...provider, ...data.provider, documents: provider.documents } : provider,
         ),
       }));
       setStatusMessage(`Provider ${approvalStatus}.`);
@@ -3512,10 +3499,7 @@ function ClientDashboard({
       provider?.name ||
       "Provider not accepted yet";
     return (
-      <article
-        key={booking._id}
-        className="client-order-card"
-      >
+      <article key={booking._id} className="client-order-card">
         <div className="client-order-main">
           <div className="client-order-icon" aria-hidden="true">
             <BriefcaseBusiness size={19} />
@@ -3524,23 +3508,34 @@ function ClientDashboard({
             <div className="client-order-title-row">
               <div>
                 <p className="client-order-kicker">
-                  Booking #{String(booking.bookingId || booking._id || "").slice(-8)}
+                  Booking #
+                  {String(booking.bookingId || booking._id || "").slice(-8)}
                 </p>
                 <h3>{booking.service}</h3>
               </div>
               <StatusBadge status={booking.status} />
             </div>
             <div className="client-order-meta">
-              <span><CalendarCheck size={15} /> {formatBookingDate(booking.preferredDate)}, {formatBookingTime(booking.preferredTime)}</span>
-              <span><UserRound size={15} /> {providerName}</span>
-              <span><MapPin size={15} /> {booking.address || "Address not added"}</span>
+              <span>
+                <CalendarCheck size={15} />{" "}
+                {formatBookingDate(booking.preferredDate)},{" "}
+                {formatBookingTime(booking.preferredTime)}
+              </span>
+              <span>
+                <UserRound size={15} /> {providerName}
+              </span>
+              <span>
+                <MapPin size={15} /> {booking.address || "Address not added"}
+              </span>
             </div>
           </div>
         </div>
         <div className="client-order-footer">
           <div>
             <span>Estimate</span>
-            <strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong>
+            <strong>
+              {formatPrice(booking.finalEstimateAmount || booking.costEstimate)}
+            </strong>
           </div>
           <button type="button" onClick={() => setSelectedBooking(booking)}>
             View details <ChevronRight size={16} />
@@ -3550,38 +3545,179 @@ function ClientDashboard({
     );
   };
 
-  const bookingDetailDrawer = selectedBooking ? (() => {
-    const booking = selectedBooking;
-    const provider = booking.assignedProvider || booking.requestedProvider || null;
-    const providerName = booking.assignedProviderName || booking.requestedProviderName || provider?.name || "Provider not assigned";
-    const providerPrice = provider?.price || formatPrice(booking.costEstimate);
-    const cancelState = getClientCancelState(booking, now);
-    return (
-      <motion.div className="client-booking-drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setSelectedBooking(null)}>
-        <motion.aside className="client-booking-drawer" initial={{ x: 36, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 36, opacity: 0 }} role="dialog" aria-modal="true" aria-label="Booking details">
-          <header>
-            <div><span>Booking details</span><h2>{booking.service}</h2><p>#{booking.bookingId || booking._id}</p></div>
-            <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details"><X size={20} /></button>
-          </header>
-          <div className="client-booking-drawer-body">
-            <div className="client-booking-summary">
-              <div><span>Status</span><StatusBadge status={booking.status} /></div>
-              <div><span>Provider</span><strong>{providerName}</strong><small>{provider?.phone || "Contact available after acceptance"}</small></div>
-              <div><span>Scheduled</span><strong>{formatBookingDate(booking.preferredDate)}</strong><small>{formatBookingTime(booking.preferredTime)}</small></div>
-              <div><span>Estimate</span><strong>{formatPrice(booking.finalEstimateAmount || booking.costEstimate)}</strong><small>{booking.paymentStatus || "unpaid"}</small></div>
-            </div>
-            {!["cancelled", "rejected"].includes(booking.status) && <section className="client-booking-section"><h3>Service progress</h3><ClientJobProgress booking={booking} /></section>}
-            <section className="client-booking-section client-booking-address"><h3>Service information</h3><p><MapPin size={16} /> {booking.address}</p><p><MessageCircle size={16} /> {booking.problemDescription || "No problem description"}</p></section>
-            <ClientPaymentSection booking={booking} providerStartingPrice={providerPrice} onAcceptEstimate={onAcceptEstimate} onRejectClick={() => setRejectTargetBooking(booking)} onPayNow={onPayNow} isPaying={payingBookingId === booking._id} />
-            {booking.status === "cancelled" && <section className="client-booking-section client-booking-cancelled"><h3>Cancellation details</h3><p>Cancelled by: <strong>{booking.cancelledBy || "Not recorded"}</strong></p><p>Cancelled: {booking.cancelledAt ? formatBookingDate(booking.cancelledAt) : "Not recorded"}</p><p>Reason: {booking.cancellationReason || booking.adminRejectionReason || "Reason not provided"}</p></section>}
-            {booking.status === "rejected" && <section className="client-booking-section client-booking-cancelled"><h3>Request rejected</h3><p>The provider was unable to accept this request.</p><p>Rejected: {booking.rejectedAt ? formatBookingDate(booking.rejectedAt) : "Not recorded"}</p><p>Reason: {booking.rejectionReason || "Reason not provided"}</p></section>}
-            {booking.status === "completed" && <ClientReviewPanel booking={booking} form={reviewForms[booking._id]} submitting={reviewSubmittingId === booking._id} onChange={(updates) => updateReviewForm(booking._id, updates)} onSubmit={() => submitReview(booking)} />}
-          </div>
-          {!['completed', 'cancelled', 'rejected'].includes(booking.status) && <footer><p>{booking.acceptedAt ? "Cancellation closes 10 minutes after acceptance." : "You can cancel until a provider accepts."}</p><button type="button" disabled={!cancelState.canCancel} onClick={async () => { const cancelled = await cancelClientBooking(booking._id); if (cancelled) { setSelectedBooking(null); setCancelledPageOpen(true); } }}>{cancelState.label}</button></footer>}
-        </motion.aside>
-      </motion.div>
-    );
-  })() : null;
+  const bookingDetailDrawer = selectedBooking
+    ? (() => {
+        const booking = selectedBooking;
+        const provider =
+          booking.assignedProvider || booking.requestedProvider || null;
+        const providerName =
+          booking.assignedProviderName ||
+          booking.requestedProviderName ||
+          provider?.name ||
+          "Provider not assigned";
+        const providerPrice =
+          provider?.price || formatPrice(booking.costEstimate);
+        const cancelState = getClientCancelState(booking, now);
+        return (
+          <motion.div
+            className="client-booking-drawer-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={(event) =>
+              event.target === event.currentTarget && setSelectedBooking(null)
+            }
+          >
+            <motion.aside
+              className="client-booking-drawer"
+              initial={{ x: 36, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 36, opacity: 0 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Booking details"
+            >
+              <header>
+                <div>
+                  <span>ServiceHub booking</span>
+                  <h2>Booking Details</h2>
+                  <p>#{booking.bookingId || booking._id}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBooking(null)}
+                  aria-label="Close booking details"
+                >
+                  <X size={20} />
+                </button>
+              </header>
+              <div className="client-booking-drawer-body">
+                <section className="client-booking-provider">
+                  <div
+                    className="client-booking-provider-avatar"
+                    aria-hidden="true"
+                  >
+                    <UserRound size={24} />
+                  </div>
+                  <div>
+                    <span>Assigned professional</span>
+                    <strong>{providerName}</strong>
+                    <small>
+                      {provider?.phone || "Contact available after acceptance"}
+                    </small>
+                  </div>
+                  <StatusBadge status={booking.status} />
+                </section>
+                <div className="client-booking-summary">
+                  <div>
+                    <span>Service</span>
+                    <strong>{booking.service}</strong>
+                  </div>
+                  <div>
+                    <span>Scheduled</span>
+                    <strong>{formatBookingDate(booking.preferredDate)}</strong>
+                    <small>{formatBookingTime(booking.preferredTime)}</small>
+                  </div>
+                  <div>
+                    <span>Estimate</span>
+                    <strong>
+                      {formatPrice(
+                        booking.finalEstimateAmount || booking.costEstimate,
+                      )}
+                    </strong>
+                    <small>{booking.paymentStatus || "unpaid"}</small>
+                  </div>
+                  <div>
+                    <span>Payment status</span>
+                    <PaymentStatusBadge
+                      status={booking.paymentStatus || "unpaid"}
+                    />
+                  </div>
+                </div>
+                {booking.status !== "cancelled" && (
+                  <section className="client-booking-section">
+                    <h3>Service progress</h3>
+                    <ClientJobProgress booking={booking} />
+                  </section>
+                )}
+                <section className="client-booking-section client-booking-address">
+                  <h3>Service information</h3>
+                  <p>
+                    <MapPin size={16} /> {booking.address}
+                  </p>
+                  <p>
+                    <MessageCircle size={16} />{" "}
+                    {booking.problemDescription || "No problem description"}
+                  </p>
+                </section>
+                <ClientPaymentSection
+                  booking={booking}
+                  providerStartingPrice={providerPrice}
+                  onAcceptEstimate={onAcceptEstimate}
+                  onRejectClick={() => setRejectTargetBooking(booking)}
+                  onPayNow={onPayNow}
+                  isPaying={payingBookingId === booking._id}
+                />
+                {booking.status === "cancelled" && (
+                  <section className="client-booking-section client-booking-cancelled">
+                    <h3>Cancellation details</h3>
+                    <p>
+                      Cancelled by:{" "}
+                      <strong>{booking.cancelledBy || "Not recorded"}</strong>
+                    </p>
+                    <p>
+                      Cancelled:{" "}
+                      {booking.cancelledAt
+                        ? formatBookingDate(booking.cancelledAt)
+                        : "Not recorded"}
+                    </p>
+                    <p>
+                      Reason:{" "}
+                      {booking.cancellationReason ||
+                        booking.adminRejectionReason ||
+                        "Reason not provided"}
+                    </p>
+                  </section>
+                )}
+                {booking.status === "completed" && (
+                  <ClientReviewPanel
+                    booking={booking}
+                    form={reviewForms[booking._id]}
+                    submitting={reviewSubmittingId === booking._id}
+                    onChange={(updates) =>
+                      updateReviewForm(booking._id, updates)
+                    }
+                    onSubmit={() => submitReview(booking)}
+                  />
+                )}
+              </div>
+              {!["completed", "cancelled"].includes(booking.status) && (
+                <footer>
+                  <p>
+                    {booking.acceptedAt
+                      ? "Cancellation closes 10 minutes after acceptance."
+                      : "You can cancel until a provider accepts."}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!cancelState.canCancel}
+                    onClick={async () => {
+                      const cancelled = await cancelClientBooking(booking._id);
+                      if (cancelled) {
+                        setSelectedBooking(null);
+                        setCancelledPageOpen(true);
+                      }
+                    }}
+                  >
+                    {cancelState.label}
+                  </button>
+                </footer>
+              )}
+            </motion.aside>
+          </motion.div>
+        );
+      })()
+    : null;
 
   if (bookingsPageOpen) {
     const currentBookings = [
@@ -3837,6 +3973,12 @@ function ClientDashboard({
             }}
             className={`dashboard-status-card rounded-2xl border border-slate-200 bg-gradient-to-br ${block.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:from-white/10 dark:to-white/5`}
           >
+            <span
+              className={`dashboard-status-icon dashboard-status-icon-${block.title.toLowerCase()}`}
+              aria-hidden="true"
+            >
+              <block.icon size={20} />
+            </span>
             <p className="text-3xl font-black text-slate-950 dark:text-white">
               {block.value}
             </p>
