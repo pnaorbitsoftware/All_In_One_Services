@@ -363,7 +363,7 @@ export default function HelpSupportCenter({ user, onLogin }) {
                   </div>
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="rounded-full bg-white/5 p-2 text-slate-400 hover:bg-white/10 hover:text-white transition"
+                    className="rounded-full bg-black/5 p-2 text-slate-400 hover:bg-white/10 hover:text-white transition"
                   >
                     <X className="h-5 w-5" />
                   </button>

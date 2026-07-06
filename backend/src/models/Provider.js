@@ -165,6 +165,14 @@ const providerSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    aadhaarFrontUploadedAt: {
+      type: Date,
+      default: null,
+    },
+    aadhaarBackUploadedAt: {
+      type: Date,
+      default: null,
+    },
     verificationRejectedReason: {
       type: String,
       trim: true,

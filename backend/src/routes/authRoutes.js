@@ -350,6 +350,8 @@ router.post("/register", async (req, res) => {
         aadhaarBackUrl,
         aadhaarDocumentName: req.body.aadhaarDocumentName || "",
         aadhaarBackDocumentName: req.body.aadhaarBackDocumentName || "",
+        aadhaarFrontUploadedAt: new Date(),
+        aadhaarBackUploadedAt: aadhaarBackUrl ? new Date() : null,
         verificationStatus: "pending",
         requestedAt: new Date(),
         rating: 0,

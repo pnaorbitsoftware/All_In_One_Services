@@ -22,6 +22,10 @@ const router = express.Router();
 const providerIdentityCache = new Map();
 const providerDashboardProfileCache = new Map();
 const providerIdentityCacheTtlMs = Number(process.env.PROVIDER_IDENTITY_CACHE_TTL_MS || 60_000);
+const identityDocumentPattern = /^data:(?:image\/(?:png|jpe?g|webp)|application\/pdf);base64,[a-z0-9+/=\s]+$/i;
+const maxIdentityDocumentLength = 3_000_000;
+const isValidIdentityDocument = (value) =>
+  identityDocumentPattern.test(value) && value.length <= maxIdentityDocumentLength;
 
 const rememberProviderIdentity = (provider) => {
   if (!provider?.owner || !provider?._id) return;
@@ -277,6 +281,12 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       about,
       features = "",
       bankDetails = {},
+      aadhaarNumber,
+      aadhaarFrontUrl,
+      aadhaarBackUrl,
+      aadhaarDocumentUrl,
+      aadhaarDocumentName,
+      aadhaarBackDocumentName,
     } = req.body;
 
     const normalizedCategory = String(category || "").trim();
@@ -291,6 +301,22 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
 
     if (!provider) {
       return res.status(404).json({ message: "Provider profile not found." });
+    }
+
+    const submittedFront = aadhaarFrontUrl || aadhaarDocumentUrl || "";
+    const submittedBack = aadhaarBackUrl || "";
+    const aadhaarDigits = String(aadhaarNumber || "").replace(/\D/g, "");
+    if (submittedFront && !isValidIdentityDocument(submittedFront)) {
+      return res.status(400).json({ message: "Aadhaar front document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
+    }
+    if (submittedBack && !isValidIdentityDocument(submittedBack)) {
+      return res.status(400).json({ message: "Aadhaar back document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
+    }
+    if (aadhaarNumber !== undefined && aadhaarDigits.length !== 12) {
+      return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required." });
+    }
+    if ((submittedFront || submittedBack) && (!(submittedFront || provider.aadhaarFrontUrl) || !(submittedBack || provider.aadhaarBackUrl))) {
+      return res.status(400).json({ message: "Both Aadhaar front and back documents are required for verification." });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -310,6 +336,24 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.responseTime = responseTime?.trim() || provider.responseTime || "";
     provider.description = description.trim();
     provider.about = about?.trim() || description.trim();
+    if (submittedFront) {
+      provider.aadhaarFrontUrl = submittedFront;
+      provider.aadhaarFrontUploadedAt = new Date();
+    }
+    if (submittedBack) {
+      provider.aadhaarBackUrl = submittedBack;
+      provider.aadhaarBackUploadedAt = new Date();
+    }
+    if (aadhaarDigits.length === 12) provider.aadhaarNumberMasked = `XXXX XXXX ${aadhaarDigits.slice(-4)}`;
+    if (aadhaarDocumentName) provider.aadhaarDocumentName = String(aadhaarDocumentName).trim();
+    if (aadhaarBackDocumentName) provider.aadhaarBackDocumentName = String(aadhaarBackDocumentName).trim();
+    if (submittedFront || submittedBack) {
+      provider.verificationStatus = "pending";
+      provider.approvalStatus = "pending";
+      provider.isActive = false;
+      provider.verificationRejectedReason = "";
+      provider.requestedAt = new Date();
+    }
     provider.features = Array.isArray(features)
       ? features.map((feature) => String(feature).trim()).filter(Boolean)
       : String(features).split(",").map((feature) => feature.trim()).filter(Boolean);
