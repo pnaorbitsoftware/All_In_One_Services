@@ -71,12 +71,12 @@ const corsOptions = {
     }
 
     // ✅ Allow any Vercel preview deployment for your project
+        // ✅ Allow any Vercel deployment for this project
     try {
-      const url = new URL(origin);
-      const hostname = url.hostname;
+      const { hostname } = new URL(origin);
       
-      // Match: anything ending with -pnaorbitsoftwares-projects.vercel.app
-      if (hostname.endsWith('-pnaorbitsoftwares-projects.vercel.app')) {
+      // Match: any vercel.app URL containing "all-in-one-services"
+      if (hostname.includes('all-in-one-services') && hostname.endsWith('.vercel.app')) {
         return callback(null, true);
       }
       
