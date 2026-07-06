@@ -1,4 +1,4 @@
-﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -41,7 +41,14 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
             {booking.name} | {booking.phone}
           </Text>
         </View>
-        <StatusPill status={booking.status} />
+        <StatusPill
+          status={
+            String(booking.status).toLowerCase() === "cancelled" &&
+            String(booking.cancelledBy).toLowerCase() === "provider"
+              ? "Provider Rejected"
+              : booking.status
+          }
+        />
       </View>
       <View style={styles.info}>
         <InfoLine icon="map-marker-outline">{booking.address}</InfoLine>
@@ -53,7 +60,7 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
         </InfoLine>
         {provider ? (
           <InfoLine icon="account-hard-hat-outline">
-            {provider.name} | {provider.location} | {provider.phone}
+            {provider.name} | {provider.location}
           </InfoLine>
         ) : null}
         {booking.problemDescription ? (
@@ -62,6 +69,11 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
         {booking.finalEstimateAmount ? (
           <InfoLine icon="cash-check">
             Final estimate: {formatPrice(booking.finalEstimateAmount)} | {booking.estimateStatus || "not_submitted"} | {booking.paymentStatus || "unpaid"}
+          </InfoLine>
+        ) : null}
+        {booking.status && ["cancelled", "Cancelled"].includes(booking.status) && booking.cancellationReason ? (
+          <InfoLine icon="alert-circle-outline">
+            {booking.cancelledBy === "provider" ? "Rejection reason" : "Cancellation reason"}: {booking.cancellationReason}
           </InfoLine>
         ) : null}
       </View>

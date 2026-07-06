@@ -33,16 +33,16 @@ function NotificationCard({ notification, onPress }) {
       </View>
       <View style={styles.body}>
         <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+          <Text style={[styles.title, { color: theme.text }]}>
             {notification?.title || "Service update"}
           </Text>
           {unread ? <View style={[styles.dot, { backgroundColor: theme.teal }]} /> : null}
         </View>
-        <Text style={[styles.message, { color: theme.textMuted }]} numberOfLines={2}>
+        <Text style={[styles.message, { color: theme.textMuted }]}>
           {notification?.message || "Your ServiceHub updates will appear here."}
         </Text>
         {notification?.time ? (
-          <Text style={[styles.time, { color: theme.textMuted }]} numberOfLines={1}>
+          <Text style={[styles.time, { color: theme.textMuted }]}>
             {notification.time}
           </Text>
         ) : null}

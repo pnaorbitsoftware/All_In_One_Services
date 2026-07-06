@@ -60,6 +60,17 @@ async function getClientNotifications(userId) {
     if (booking.estimateStatus === "accepted" || booking.paymentStatus === "paid" || booking.clientPaymentStatus === "paid") {
       items.push(notificationFromBooking(booking, "payment"));
     }
+    if (booking.locationRequested) {
+      items.push({
+        id: `loc-req-${booking._id}`,
+        type: "location_request",
+        title: "Location Request",
+        message: "The service provider has requested your current GPS location for navigation.",
+        time: formatNotificationTime(booking.updatedAt),
+        read: false,
+        bookingId: booking._id,
+      });
+    }
     return items;
   });
 }

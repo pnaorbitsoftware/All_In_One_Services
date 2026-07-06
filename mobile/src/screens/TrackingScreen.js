@@ -1,21 +1,24 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useState } from "react";
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, AppState } from "react-native";
 
 import TrackingTimeline from "../components/TrackingTimeline";
 import TrackingMap from "../components/TrackingMap";
+import ActionButton from "../components/ActionButton";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateView";
 import { bookingApi } from "../lib/api";
 import { formatBookingDate, formatBookingTime } from "../lib/formatters";
 import { colors, radius, responsiveMetrics, useThemeColors } from "../theme";
 
-export default function TrackingScreen({ token, bookingId, onBack }) {
+export default function TrackingScreen({ token, user, bookingId, onBack }) {
   const theme = useThemeColors();
   const metrics = responsiveMetrics(390);
   const [tracking, setTracking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [metricsState, setMetricsState] = useState({ distance: "", duration: "" });
+  const [appState, setAppState] = useState(AppState.currentState);
 
   const loadTracking = useCallback(
     async (refresh = false) => {
@@ -47,10 +50,27 @@ export default function TrackingScreen({ token, bookingId, onBack }) {
   }, [loadTracking]);
 
   useEffect(() => {
-    if (!token || !bookingId) return undefined;
-    const timer = setInterval(() => loadTracking(true), 10000);
+    const handleAppStateChange = (nextAppState) => {
+      setAppState(nextAppState);
+      if (nextAppState === "active") {
+        loadTracking(true).catch(() => {});
+      }
+    };
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return () => subscription.remove();
+  }, [loadTracking]);
+
+  useEffect(() => {
+    if (!token || !bookingId || appState !== "active") return undefined;
+    const lowerStatus = String(tracking?.currentStatus || "").toLowerCase();
+    if (lowerStatus === "completed" || lowerStatus === "cancelled") {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      loadTracking(true);
+    }, 5000);
     return () => clearInterval(timer);
-  }, [bookingId, loadTracking, token]);
+  }, [bookingId, loadTracking, token, tracking?.currentStatus, appState]);
 
   if (loading && !tracking) {
     return <LoadingState label="Loading service tracking..." />;
@@ -86,7 +106,14 @@ export default function TrackingScreen({ token, bookingId, onBack }) {
         </View>
       ) : null}
 
-      {tracking ? <LocationPanel tracking={tracking} /> : null}
+      {tracking ? (
+        <LocationPanel
+          tracking={tracking}
+          showNavigate={user?.role === "provider"}
+          metrics={metricsState}
+          onMetricsUpdate={setMetricsState}
+        />
+      ) : null}
 
       {tracking?.trackingHistory?.length ? (
         <TrackingTimeline history={tracking.trackingHistory} currentStatus={tracking.currentStatus} />
@@ -100,7 +127,9 @@ export default function TrackingScreen({ token, bookingId, onBack }) {
 }
 
 function hasCoordinates(location = {}) {
-  return Number.isFinite(Number(location?.latitude)) && Number.isFinite(Number(location?.longitude));
+  const lat = Number(location?.latitude);
+  const lng = Number(location?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
 }
 
 function mapsUrl(location = {}, label = "Service location") {
@@ -108,10 +137,44 @@ function mapsUrl(location = {}, label = "Service location") {
   return `https://www.google.com/maps/search/?api=1&query=${Number(location.latitude)},${Number(location.longitude)}&query_place_id=${encodeURIComponent(label)}`;
 }
 
-function LocationPanel({ tracking }) {
+function LocationPanel({ tracking, showNavigate, metrics, onMetricsUpdate }) {
   const theme = useThemeColors();
   const providerLocation = tracking.providerLocation || {};
   const clientLocation = tracking.clientLocation || {};
+  const hasClientCoords = hasCoordinates(clientLocation);
+  const hasProviderCoords = hasCoordinates(providerLocation);
+
+  const handleNavigation = () => {
+    if (!hasClientCoords) return;
+    const lat = clientLocation.latitude;
+    const lng = clientLocation.longitude;
+    const url = `google.navigation:q=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+    });
+  };
+
+  const handleOpenProviderLocation = () => {
+    if (!hasProviderCoords) return;
+    const lat = providerLocation.latitude;
+    const lng = providerLocation.longitude;
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
+  const handleClientNavigate = () => {
+    if (!hasProviderCoords) return;
+    const lat = providerLocation.latitude;
+    const lng = providerLocation.longitude;
+    const url = `google.navigation:q=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+    });
+  };
+
+  const lastUpdated = providerLocation.timestamp
+    ? new Date(providerLocation.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "Just now";
 
   return (
     <View style={[styles.locationPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -122,19 +185,70 @@ function LocationPanel({ tracking }) {
           <Text style={[styles.locationCopy, { color: theme.textMuted }]}>Open coordinates in maps when available.</Text>
         </View>
       </View>
-      <TrackingMap providerLocation={providerLocation} clientLocation={clientLocation} />
-      <LocationRow
-        title="Provider"
-        icon="account-hard-hat-outline"
-        address={providerLocation.address || tracking.providerAddress || "Provider location will appear after tracking starts."}
-        location={providerLocation}
+      <TrackingMap
+        providerLocation={providerLocation}
+        clientLocation={clientLocation}
+        onMetricsUpdate={onMetricsUpdate}
       />
+      {hasProviderCoords ? (
+        <View style={{ borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 12, marginTop: 4, gap: 6 }}>
+          <Text style={{ fontSize: 14, fontWeight: "900", color: theme.text }}>Provider Location</Text>
+          <Text style={{ fontSize: 13, color: theme.textMuted }}>
+            Current Address: <Text style={{ color: theme.text, fontWeight: "700" }}>{providerLocation.address || tracking.providerAddress || "N/A"}</Text>
+          </Text>
+          {metrics?.distance ? (
+            <Text style={{ fontSize: 13, color: theme.textMuted }}>
+              Distance Remaining: <Text style={{ color: theme.teal, fontWeight: "800" }}>{metrics.distance}</Text>
+            </Text>
+          ) : null}
+          {metrics?.duration ? (
+            <Text style={{ fontSize: 13, color: theme.textMuted }}>
+              Estimated Arrival Time: <Text style={{ color: theme.teal, fontWeight: "800" }}>{metrics.duration}</Text>
+            </Text>
+          ) : null}
+          <Text style={{ fontSize: 12, color: theme.textMuted }}>
+            Last Updated: <Text style={{ color: theme.text, fontWeight: "600" }}>{lastUpdated}</Text>
+          </Text>
+        </View>
+      ) : (
+        <LocationRow
+          title="Provider"
+          icon="account-hard-hat-outline"
+          address={providerLocation.address || tracking.providerAddress || "Provider location will appear after tracking starts."}
+          location={providerLocation}
+        />
+      )}
       <LocationRow
         title="Client"
         icon="home-map-marker"
         address={clientLocation.address || tracking.clientAddress || "Client destination is saved with booking address."}
         location={clientLocation}
       />
+      {showNavigate && hasClientCoords ? (
+        <ActionButton
+          title="Navigate"
+          icon="navigation"
+          onPress={handleNavigation}
+          style={{ marginTop: 10 }}
+        />
+      ) : null}
+      {!showNavigate && hasProviderCoords ? (
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+          <ActionButton
+            title="Provider Location"
+            icon="map-marker-radius-outline"
+            variant="secondary"
+            onPress={handleOpenProviderLocation}
+            style={{ flex: 1 }}
+          />
+          <ActionButton
+            title="Navigate"
+            icon="navigation"
+            onPress={handleClientNavigate}
+            style={{ flex: 1 }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }

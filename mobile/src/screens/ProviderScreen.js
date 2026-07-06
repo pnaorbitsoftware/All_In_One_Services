@@ -1,4 +1,4 @@
-﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Platform,
@@ -26,6 +26,7 @@ export default function ProviderScreen({
   onRefresh,
   onOpenAuth,
   onAccept,
+  onReject,
   onComplete,
   onCancel,
   onEstimate,
@@ -34,6 +35,7 @@ export default function ProviderScreen({
   onStartTracking,
   onStopTracking,
   onEditProfile,
+  onRequestLocation,
 }) {
   const { width } = useWindowDimensions();
   const theme = useThemeColors();
@@ -93,13 +95,15 @@ export default function ProviderScreen({
         booking={item}
         type={section.type}
         onAccept={onAccept}
+        onReject={onReject}
         onComplete={onComplete}
         onCancel={onCancel}
         onEstimate={onEstimate}
         onUpdateTrackingStatus={onUpdateTrackingStatus}
+        onRequestLocation={onRequestLocation}
       />
     ),
-    [onAccept, onCancel, onComplete, onEstimate, onUpdateTrackingStatus]
+    [onAccept, onReject, onCancel, onComplete, onEstimate, onUpdateTrackingStatus, onRequestLocation]
   );
 
   const renderSectionHeader = useCallback(

@@ -1,4 +1,4 @@
-﻿import { Platform } from "react-native";
+import { Platform } from "react-native";
 
 export const PRODUCTION_BACKEND_API_URL = "https://all-in-one-services-eegn.onrender.com/api";
 export const SHARED_BACKEND_API_URL = PRODUCTION_BACKEND_API_URL;

@@ -738,7 +738,9 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       }
       update.cancelledBy = "provider";
       update.cancelledAt = new Date();
+      update.rejectedAt = new Date();
       update.cancellationReason = cancellationReason.trim();
+      update.adminPayoutStatus = "not_ready";
     }
 
     const existingBooking = await Booking.findOne({
@@ -809,6 +811,24 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
         reason: booking.cancellationReason,
         cancelledBy: "provider",
       }).catch(() => {});
+    }
+
+    if (status === "cancelled") {
+      try {
+        const client = await User.findById(booking.user);
+        sendPushNotification({
+          tokens: client?.expoPushTokens || [],
+          title: "Booking Request Rejected",
+          body: `Your booking was rejected by the provider. Reason: ${booking.cancellationReason || "No reason provided"}`,
+          data: {
+            type: "booking",
+            bookingId: String(booking._id),
+            status: "Cancelled",
+          },
+        }).catch(() => {});
+      } catch (err) {
+        console.error("Rejection push notification failed", err);
+      }
     }
 
     emitStatusChange(req.app.get("io"), booking);

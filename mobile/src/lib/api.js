@@ -1,4 +1,4 @@
-﻿import NetInfo from "@react-native-community/netinfo";
+import NetInfo from "@react-native-community/netinfo";
 import { API_URL, API_URL_CANDIDATES } from "../config/api";
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -26,7 +26,8 @@ export function normalizeProvider(provider = null) {
 
   const image = provider.image || provider.profileImage || "";
   const approvalStatus = provider.approvalStatus || "approved";
-  const availabilityStatus = provider.availabilityStatus || (provider.isActive === false ? "inactive" : "available");
+  const rawAvailabilityStatus = provider.availabilityStatus || (provider.isActive === false ? "inactive" : "available");
+  const availabilityStatus = String(rawAvailabilityStatus).trim().toLowerCase();
   const isBookable =
     approvalStatus !== "pending" &&
     approvalStatus !== "rejected" &&
@@ -92,6 +93,8 @@ function isMissingApiRoute(status, message = "") {
     (
       normalizedMessage === "not found" ||
       normalizedMessage === "api route not found." ||
+      normalizedMessage.includes("<!doctype html>") ||
+      normalizedMessage.includes("<html>") ||
       /^cannot (get|post|put|patch|delete) /i.test(message)
     )
   );
@@ -282,8 +285,8 @@ export const providerApi = {
   updateProfile: (token, body) => apiRequest("/providers/profile", { method: "PATCH", token, body }),
   updateAvailability: (token, availabilityStatus) =>
     apiRequest("/providers/availability", { method: "PATCH", token, body: { availabilityStatus } }),
-  startTracking: (token, location) => apiRequest("/providers/tracking/start", { token, body: location }),
-  stopTracking: (token) => apiRequest("/providers/tracking/stop", { token, body: {} }),
+  startTracking: (token, location) => apiRequest("/providers/tracking/start", { method: "POST", token, body: location }),
+  stopTracking: (token) => apiRequest("/providers/tracking/stop", { method: "POST", token, body: {} }),
   updateTrackingLocation: (token, location) =>
     apiRequest("/providers/tracking/location", { method: "PATCH", token, body: location }),
   acceptBooking: (token, bookingId) => apiRequest(`/providers/bookings/${bookingId}/accept`, { method: "PATCH", token }),
@@ -292,6 +295,8 @@ export const providerApi = {
   updateLocation: (token, bookingId, body) =>
     apiRequest(`/providers/bookings/${bookingId}/location`, { method: "PATCH", token, body }),
   tracking: (token, bookingId) => apiRequest(`/providers/bookings/${bookingId}/tracking`, { token }),
+  requestClientLocation: (token, bookingId) =>
+    apiRequest(`/bookings/${bookingId}/request-location`, { method: "POST", token }),
 };
 
 export const paymentApi = {

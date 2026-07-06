@@ -1,8 +1,10 @@
-﻿
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Appearance, BackHandler, Dimensions, Keyboard, Linking, Platform, Pressable, Share, StatusBar, StyleSheet, Text, useColorScheme, View } from "react-native";
+import { Alert, Appearance, BackHandler, Dimensions, Keyboard, Linking, Platform, Pressable, Share, StatusBar, StyleSheet, Text, useColorScheme, View, AppState } from "react-native";
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
+import { showLocalNotification, requestNotificationPermissions } from "./src/lib/pushNotifications";
+import * as Notifications from "expo-notifications";
 
 import BottomNav from "./src/components/BottomNav";
 import { LoadingState } from "./src/components/StateView";
@@ -20,6 +22,7 @@ import {
   paymentApi,
   providerApi,
 } from "./src/lib/api";
+import { normalizeTrackingStatus } from "./src/lib/formatters";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
 import { getCurrentReadableLocation, watchProviderLocation } from "./src/lib/location";
 import { useNetworkStatus } from "./src/lib/network";
@@ -38,6 +41,8 @@ import {
   saveSelectedLocation,
   saveSession,
   saveSettings,
+  loadReadNotificationIds,
+  saveReadNotificationIds,
 } from "./src/lib/storage";
 import AccountScreen from "./src/screens/AccountScreen";
 import BookingsScreen from "./src/screens/BookingsScreen";
@@ -48,11 +53,13 @@ import ProviderScreen from "./src/screens/ProviderScreen";
 import ProvidersScreen from "./src/screens/ProvidersScreen";
 import ServicesScreen from "./src/screens/ServicesScreen";
 import TrackingScreen from "./src/screens/TrackingScreen";
+import TrackService from "./src/pages/track-service/TrackService";
 import AccountProfileSheet from "./src/sheets/AccountProfileSheet";
 import AddressBookSheet from "./src/sheets/AddressBookSheet";
 import AuthSheet from "./src/sheets/AuthSheet";
 import BookingSheet from "./src/sheets/BookingSheet";
 import CancelReasonSheet from "./src/sheets/CancelReasonSheet";
+import RejectReasonSheet from "./src/sheets/RejectReasonSheet";
 import ContactUsSheet from "./src/sheets/ContactUsSheet";
 import LocationSearchSheet from "./src/sheets/LocationSearchSheet";
 import EstimateSheet from "./src/sheets/EstimateSheet";
@@ -189,6 +196,18 @@ function validateAuthForm({ mode, role, form, otpSent }) {
   return "";
 }
 
+const formatNotificationTime = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (isNaN(date.getTime())) return "ServiceHub";
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 function ServiceHubApp() {
   const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
@@ -231,6 +250,7 @@ function ServiceHubApp() {
   const [trackingBackTab, setTrackingBackTab] = useState("bookings");
   const [providerProfileOpen, setProviderProfileOpen] = useState(false);
   const [providerCancelBooking, setProviderCancelBooking] = useState(null);
+  const [providerRejectBooking, setProviderRejectBooking] = useState(null);
   const [providerEstimateBooking, setProviderEstimateBooking] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsMode, setSettingsMode] = useState("settings");
@@ -264,6 +284,10 @@ function ServiceHubApp() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsRefreshing, setNotificationsRefreshing] = useState(false);
   const [notificationsError, setNotificationsError] = useState("");
+  const seenNotificationsRef = useRef(new Set());
+  const isFirstNotificationLoadRef = useRef(true);
+  const readNotificationIdsRef = useRef(new Set());
+  const [appState, setAppState] = useState(AppState.currentState);
 
   const [toast, setToast] = useState("");
 
@@ -440,7 +464,7 @@ function ServiceHubApp() {
       else setNotificationsLoading(true);
       setNotificationsError("");
 
-      if (!token) {
+      if (!token || !user) {
         setNotifications([]);
         setNotificationsLoading(false);
         setNotificationsRefreshing(false);
@@ -448,9 +472,219 @@ function ServiceHubApp() {
       }
 
       try {
-        const data = await notificationApi.list(token);
-        const nextNotifications = Array.isArray(data.notifications) ? data.notifications : [];
-        setNotifications(nextNotifications);
+        const savedReadIds = await loadReadNotificationIds();
+        const readIdsSet = new Set(savedReadIds);
+        readNotificationIdsRef.current = readIdsSet;
+
+        let generatedNotifications = [];
+
+        if (user.role === "provider") {
+          const dashboard = await providerApi.dashboard(token);
+          const normalized = normalizeProviderDashboard(dashboard);
+          
+          const providerBookings = normalized.bookings || [];
+          const providerRequests = normalized.availableRequests || [];
+          const isDashboardLocked = Boolean(normalized.dashboardLocked);
+
+          const approvalStatus = normalized.provider?.approvalStatus || "approved";
+          const approvalTitle = approvalStatus === "rejected" ? "Registration rejected" : "Waiting for admin approval";
+          const approvalCopy = approvalStatus === "rejected"
+            ? "Your provider request was rejected by admin. Please update your profile or contact support before taking jobs."
+            : "Your provider registration is under admin review. The dashboard will unlock automatically after admin approval.";
+
+          generatedNotifications = [
+            ...(isDashboardLocked
+              ? [{
+                  id: "approval",
+                  type: "system",
+                  title: approvalTitle,
+                  message: approvalCopy,
+                  time: formatNotificationTime(normalized.provider?.updatedAt || new Date()),
+                  read: readIdsSet.has("approval"),
+                }]
+              : []),
+            ...providerRequests.map((booking) => {
+              const id = `provider-request-${booking._id || booking.id}`;
+              return {
+                id,
+                type: "provider",
+                title: "New client request",
+                message: `${booking.name || "Client"} requested ${booking.service} in ${booking.address || "your area"}.`,
+                time: formatNotificationTime(booking.createdAt),
+                read: readIdsSet.has(id),
+                bookingId: booking._id || booking.id,
+              };
+            }),
+            ...providerBookings
+              .filter(
+                (booking) =>
+                  booking.paymentStatus === "paid" && booking.status !== "completed"
+              )
+              .map((booking) => {
+                const id = `provider-paid-${booking._id || booking.id}`;
+                return {
+                  id,
+                  type: "booking",
+                  title: "Payment received",
+                  message: `${booking.service} is paid. You can now mark it completed.`,
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              }),
+            ...providerBookings
+              .filter(
+                (booking) =>
+                  booking.estimateStatus === "accepted" &&
+                  booking.paymentStatus !== "paid"
+              )
+              .map((booking) => {
+                const id = `provider-estimate-accepted-${booking._id || booking.id}`;
+                return {
+                  id,
+                  type: "booking",
+                  title: "Waiting for client payment",
+                  message: `${booking.service} estimate accepted, payment is still pending.`,
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              }),
+          ];
+        } else {
+          const data = await bookingApi.my(token);
+          const clientBookings = data.bookings || [];
+          generatedNotifications = [
+            ...clientBookings
+              .filter((booking) => booking.estimateStatus === "submitted")
+              .map((booking) => {
+                const id = `estimate-${booking._id || booking.id}`;
+                return {
+                  id,
+                  type: "booking",
+                  title: "Estimate ready",
+                  message: `${booking.service} has a final estimate. Accept or reject it from booking history.`,
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              }),
+            ...clientBookings
+              .filter(
+                (booking) =>
+                  booking.estimateStatus === "accepted" &&
+                  booking.paymentStatus !== "paid"
+              )
+              .map((booking) => {
+                const id = `payment-pending-${booking._id || booking.id}`;
+                return {
+                  id,
+                  type: "payment",
+                  title: "Payment pending",
+                  message: `Complete payment for ${booking.service} so the provider can finish the job.`,
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              }),
+            ...clientBookings
+              .filter(
+                (booking) =>
+                  booking.status === "confirmed" && booking.paymentStatus === "paid"
+              )
+              .map((booking) => {
+                const id = `confirmed-${booking._id || booking.id}`;
+                return {
+                  id,
+                  type: "booking",
+                  title: "Service confirmed",
+                  message: `${booking.service} payment is successful and the provider can complete the work.`,
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              }),
+            ...clientBookings
+              .filter((booking) => booking.locationRequested === true)
+              .map((booking) => {
+                const id = `location-request-${booking._id || booking.id}`;
+                return {
+                  id,
+                  type: "location_request",
+                  title: "Location Request",
+                  message: "The service provider has requested your current GPS location for navigation.",
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              }),
+            ...clientBookings
+              .map((booking) => {
+                const status = normalizeTrackingStatus(booking.status);
+                const providerName = booking.assignedProviderName || booking.requestedProviderName || "Provider";
+                const id = `client-status-${status.toLowerCase().replace(/\s+/g, "-")}-${booking._id || booking.id}`;
+                
+                let title = "";
+                let message = "";
+                
+                if (status === "Provider Assigned") {
+                  title = "Provider assigned";
+                  message = `${providerName} accepted your booking.`;
+                } else if (status === "On The Way") {
+                  title = "Provider on the way";
+                  message = `${providerName} is on the way to your location.`;
+                } else if (status === "Arrived") {
+                  title = "Provider arrived";
+                  message = `${providerName} has arrived at your location.`;
+                } else if (status === "Service Started") {
+                  title = "Service started";
+                  message = `Your ${booking.service} service has started.`;
+                } else if (status === "Completed") {
+                  title = "Service completed";
+                  message = `Your ${booking.service} service has been completed.`;
+                } else if (status === "Cancelled" || status === "Provider Rejected") {
+                  if (booking.cancelledBy === "provider" || status === "Provider Rejected") {
+                    title = "Booking rejected";
+                    message = `${providerName} rejected your booking request. Reason: ${booking.cancellationReason || "No reason specified"}.`;
+                  } else {
+                    return null;
+                  }
+                } else {
+                  return null;
+                }
+
+                return {
+                  id,
+                  type: "booking",
+                  title,
+                  message,
+                  time: formatNotificationTime(booking.updatedAt || booking.createdAt),
+                  read: readIdsSet.has(id),
+                  bookingId: booking._id || booking.id,
+                };
+              })
+              .filter(Boolean),
+          ];
+        }
+
+        const newUnreadList = generatedNotifications.filter((n) => !n.read);
+
+        if (isFirstNotificationLoadRef.current) {
+          newUnreadList.forEach((n) => seenNotificationsRef.current.add(n.id));
+          isFirstNotificationLoadRef.current = false;
+        } else {
+          newUnreadList.forEach((n) => {
+            if (!seenNotificationsRef.current.has(n.id)) {
+              seenNotificationsRef.current.add(n.id);
+              showLocalNotification({
+                title: n.title,
+                body: n.message,
+              }).catch(() => {});
+            }
+          });
+        }
+
+        setNotifications(generatedNotifications);
       } catch (error) {
         setNotifications([]);
         setNotificationsError(error.message || "Notifications could not be loaded.");
@@ -459,7 +693,7 @@ function ServiceHubApp() {
         setNotificationsRefreshing(false);
       }
     },
-    [token]
+    [token, user]
   );
 
   const openNotificationsScreen = useCallback(() => {
@@ -471,28 +705,86 @@ function ServiceHubApp() {
     async (notification) => {
       if (!notification) return;
       const notificationId = notification.id || notification._id;
-      setNotifications((current) => current.map((item) => ((item.id || item._id) === notificationId ? { ...item, read: true } : item)));
+      
+      readNotificationIdsRef.current.add(notificationId);
+      setNotifications((current) =>
+        current.map((item) =>
+          (item.id || item._id) === notificationId ? { ...item, read: true } : item
+        )
+      );
+
+      if (notification.type === "location_request") {
+        Alert.alert(
+          "Share Location",
+          "Share your current GPS location with the provider?",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Share Location",
+              onPress: async () => {
+                try {
+                  setToast("Getting current location...");
+                  const location = await getCurrentReadableLocation();
+                  if (!location) {
+                    Alert.alert("Error", "Could not capture your current location.");
+                    return;
+                  }
+                  setToast("Sharing location with provider...");
+                  await bookingApi.updateClientLocation(token, notification.bookingId, location);
+                  setToast("Location shared successfully.");
+                  loadNotifications(true);
+                } catch (error) {
+                  Alert.alert("Error", error.message || "Failed to share location.");
+                }
+              }
+            }
+          ]
+        );
+      }
+
+      try {
+        await saveReadNotificationIds(Array.from(readNotificationIdsRef.current));
+      } catch (error) {
+        console.error("Could not persist read notification IDs", error);
+      }
+
       if (!token || !notificationId) return;
 
       try {
         await notificationApi.markRead(token, notificationId);
       } catch (error) {
-        setNotificationsError(error.message || "Notification could not be marked as read.");
+        if (error?.status !== 404) {
+          setNotificationsError(error.message || "Notification could not be marked as read.");
+        }
       }
     },
     [token]
   );
 
   const markAllNotificationsRead = useCallback(async () => {
+    notifications.forEach((item) => {
+      const id = item.id || item._id;
+      if (id) readNotificationIdsRef.current.add(id);
+    });
+
     setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+
+    try {
+      await saveReadNotificationIds(Array.from(readNotificationIdsRef.current));
+    } catch (error) {
+      console.error("Could not persist read notification IDs", error);
+    }
+
     if (!token) return;
 
     try {
       await notificationApi.markAllRead(token);
     } catch (error) {
-      setNotificationsError(error.message || "Notifications could not be marked as read.");
+      if (error?.status !== 404) {
+        setNotificationsError(error.message || "Notifications could not be marked as read.");
+      }
     }
-  }, [token]);
+  }, [token, notifications]);
 
   const saveLocationChoice = useCallback(
     async (location) => {
@@ -559,6 +851,10 @@ function ServiceHubApp() {
   }, [loadCatalog]);
 
   useEffect(() => {
+    requestNotificationPermissions().catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (token && user) {
       loadBookings();
     }
@@ -567,6 +863,44 @@ function ServiceHubApp() {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data && data.type === "location_request" && data.bookingId) {
+        Alert.alert(
+          "Share Location",
+          "Share your current GPS location with the provider?",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Share Location",
+              onPress: async () => {
+                try {
+                  setToast("Getting current location...");
+                  const location = await getCurrentReadableLocation();
+                  if (!location) {
+                    Alert.alert("Error", "Could not capture your current location.");
+                    return;
+                  }
+                  setToast("Sharing location with provider...");
+                  await bookingApi.updateClientLocation(token, data.bookingId, location);
+                  setToast("Location shared successfully.");
+                  loadNotifications(true);
+                } catch (error) {
+                  Alert.alert("Error", error.message || "Failed to share location.");
+                }
+              }
+            }
+          ]
+        );
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [token, loadNotifications]);
 
   useEffect(() => {
     if (token && user?.role === "provider") {
@@ -974,8 +1308,8 @@ function ServiceHubApp() {
       try {
         const data = await providerApi.updateAvailability(token, availabilityStatus);
         mergeProviderData(data.provider);
-        await loadCatalog(true);
         setToast(UNAVAILABLE_STATUSES.includes(availabilityStatus) ? "Provider is currently unavailable." : "Provider availability updated.");
+        loadCatalog(true).catch(() => {});
       } catch (error) {
         setToast(error.message);
       } finally {
@@ -1051,6 +1385,44 @@ function ServiceHubApp() {
       trackingSubscriptionRef.current = null;
     };
   }, [mergeProviderData, providerData?.provider?.trackingActive, token, user?.role]);
+
+  // Automatic refresh interval for active screens (polls active tab data every 10s)
+  useEffect(() => {
+    if (!token || appState !== "active") return undefined;
+
+    const interval = setInterval(() => {
+      if (activeTab === "bookings") {
+        loadBookings(true).catch(() => {});
+      } else if (activeTab === "provider") {
+        loadProviderDashboard(true).catch(() => {});
+      } else if (activeTab === "notifications") {
+        loadNotifications(true).catch(() => {});
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [activeTab, loadBookings, loadProviderDashboard, loadNotifications, token, appState]);
+
+  // Refresh active tab when App returns from background
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState) => {
+      setAppState(nextAppState);
+      if (nextAppState === "active" && token) {
+        if (activeTab === "bookings") {
+          loadBookings(true).catch(() => {});
+        } else if (activeTab === "provider") {
+          loadProviderDashboard(true).catch(() => {});
+        } else if (activeTab === "notifications") {
+          loadNotifications(true).catch(() => {});
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [activeTab, loadBookings, loadProviderDashboard, loadNotifications, token]);
 
   const submitBooking = useCallback(
     async (form) => {
@@ -1128,6 +1500,72 @@ function ServiceHubApp() {
       }
     },
     [token]
+  );
+
+  const requestClientLocation = useCallback(
+    async (bookingId) => {
+      if (!token) return;
+      try {
+        await providerApi.requestClientLocation(token, bookingId);
+        setToast("Location request sent to client.");
+      } catch (error) {
+        setToast(error.message || "Could not request client location.");
+      }
+    },
+    [token]
+  );
+
+  const rejectProviderRequest = useCallback(
+    (booking) => {
+      Alert.alert(
+        "Reject Booking",
+        "Are you sure you want to reject this booking request?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Reject",
+            style: "destructive",
+            onPress: () => {
+              setProviderRejectBooking(booking);
+            },
+          },
+        ]
+      );
+    },
+    []
+  );
+
+  const submitProviderReject = useCallback(
+    async (reason) => {
+      if (!providerRejectBooking) return;
+      if (!reason.trim()) {
+        setToast("Please describe why this booking is being rejected.");
+        return;
+      }
+
+      setProviderSubmitting(true);
+      try {
+        const data = await providerApi.updateBookingStatus(token, providerRejectBooking._id, {
+          status: "cancelled",
+          cancellationReason: reason.trim(),
+        });
+        setProviderData((current) => {
+          const normalized = normalizeProviderDashboard(current || {});
+          return {
+            ...normalized,
+            availableRequests: normalized.availableRequests.filter((item) => item._id !== providerRejectBooking._id),
+            bookings: [data.booking, ...normalized.bookings],
+          };
+        });
+        setProviderRejectBooking(null);
+        setToast("Booking request rejected.");
+      } catch (error) {
+        setToast(error.message);
+      } finally {
+        setProviderSubmitting(false);
+      }
+    },
+    [providerRejectBooking, token]
   );
 
   const updateProviderTrackingStatus = useCallback(
@@ -1702,14 +2140,15 @@ function ServiceHubApp() {
     }
 
     if (activeTab === "tracking") {
-  return (
-    <TrackingScreen
-      token={token}
-      bookingId={trackingBookingId}
-      onBack={closeTrackingScreen}
-    />
-  );
-}
+      return (
+        <TrackingScreen
+          token={token}
+          user={user}
+          bookingId={trackingBookingId}
+          onBack={closeTrackingScreen}
+        />
+      );
+    }
 
     if (activeTab === "provider") {
       return (
@@ -1722,6 +2161,7 @@ function ServiceHubApp() {
           onRefresh={() => loadProviderDashboard(true)}
           onOpenAuth={openAuth}
           onAccept={acceptProviderRequest}
+          onReject={rejectProviderRequest}
           onComplete={completeProviderJob}
           onUpdateTrackingStatus={updateProviderTrackingStatus}
           onCancel={setProviderCancelBooking}
@@ -1730,6 +2170,7 @@ function ServiceHubApp() {
           onStartTracking={startProviderTracking}
           onStopTracking={stopProviderTracking}
           onEditProfile={openProviderProfileEditor}
+          onRequestLocation={requestClientLocation}
         />
       );
     }
@@ -1983,6 +2424,13 @@ function ServiceHubApp() {
             submitting={providerSubmitting}
             onClose={() => setProviderCancelBooking(null)}
             onSubmit={submitProviderCancel}
+          />
+          <RejectReasonSheet
+            visible={Boolean(providerRejectBooking)}
+            booking={providerRejectBooking}
+            submitting={providerSubmitting}
+            onClose={() => setProviderRejectBooking(null)}
+            onSubmit={submitProviderReject}
           />
           <EstimateSheet
             visible={Boolean(providerEstimateBooking)}

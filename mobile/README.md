@@ -11,7 +11,7 @@ npm run doctor
 npm run android
 ```
 
-The app now uses the shared website backend API. Production default: `https://all-in-one-services-eegn.onrender.com/api`.
+The app now uses the shared website backend API. Production default: `https://all-in-one-services.onrender.com/api`.
 
 For a physical Android phone, set `EXPO_PUBLIC_API_URL` to the website backend URL that the phone can reach, then rebuild the APK. Examples: `http://YOUR_COMPUTER_WIFI_IP:5000/api` for local Wi-Fi testing, or `https://YOUR-WEBSITE-BACKEND.onrender.com/api` for production.
 

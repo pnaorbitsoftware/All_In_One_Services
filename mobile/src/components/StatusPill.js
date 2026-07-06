@@ -7,7 +7,7 @@ function StatusPill({ status = "pending" }) {
   const theme = useThemeColors();
   const normalized = String(status).toLowerCase();
   const isDone = normalized === "completed";
-  const isBad = ["cancelled", "rejected"].includes(normalized);
+  const isBad = ["cancelled", "rejected", "provider rejected", "provider_rejected"].includes(normalized);
 
   return (
     <Text

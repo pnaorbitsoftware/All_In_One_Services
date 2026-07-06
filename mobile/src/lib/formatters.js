@@ -41,3 +41,23 @@ export function getClientCancelState(booking, now = Date.now()) {
 
   return { canCancel: true, label: `Cancel booking (${Math.ceil(remainingMs / 60000)}m left)` };
 }
+
+export function normalizeTrackingStatus(status = "") {
+  const rawStatus = String(status || "").trim();
+  if (!rawStatus) return "Confirmed";
+
+  const LEGACY_STATUS_ALIASES = {
+    pending: "Pending",
+    accepted: "Provider Assigned",
+    assigned: "Provider Assigned",
+    confirmed: "Confirmed",
+    completed: "Completed",
+    cancelled: "Cancelled",
+  };
+
+  const lowerStatus = rawStatus.toLowerCase();
+  if (LEGACY_STATUS_ALIASES[lowerStatus]) return LEGACY_STATUS_ALIASES[lowerStatus];
+
+  const allowedStatuses = ["Pending", "Confirmed", "Provider Assigned", "On The Way", "Arrived", "Service Started", "Completed", "Cancelled"];
+  return allowedStatuses.find((item) => item.toLowerCase() === lowerStatus) || rawStatus;
+}

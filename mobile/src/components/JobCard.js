@@ -1,13 +1,14 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, Alert, Linking } from "react-native";
 
-import { formatBookingDate, formatBookingTime, formatPrice } from "../lib/formatters";
+import { formatBookingDate, formatBookingTime, formatPrice, normalizeTrackingStatus } from "../lib/formatters";
+import { getCurrentReadableLocation } from "../lib/location";
 import { colors, radius, shadow, useThemeColors } from "../theme";
 import ActionButton from "./ActionButton";
 import StatusPill from "./StatusPill";
 
-function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, onUpdateTrackingStatus }) {
+function JobCard({ booking, type, onAccept, onReject, onComplete, onCancel, onEstimate, onUpdateTrackingStatus, onRequestLocation }) {
   const theme = useThemeColors();
   const isAvailable = type === "available";
   const normalizedStatus = normalizeTrackingStatus(booking.status);
@@ -15,6 +16,61 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, on
   const nextTrackingAction = getNextTrackingAction(normalizedStatus);
   const estimateAccepted = booking.estimateStatus === "accepted";
   const paymentPaid = booking.paymentStatus === "paid" || booking.clientPaymentStatus === "paid";
+
+  const handleOpenClientLocation = async () => {
+    const lat = Number(booking.addressLocation?.latitude || booking.clientLocation?.latitude || booking.clientLatitude || 0);
+    const lng = Number(booking.addressLocation?.longitude || booking.clientLocation?.longitude || booking.clientLongitude || 0);
+
+    const hasCoords = Boolean(lat && lng && Number.isFinite(lat) && Number.isFinite(lng));
+
+    if (hasCoords) {
+      let providerLat = null;
+      let providerLng = null;
+      try {
+        const providerLoc = await getCurrentReadableLocation();
+        if (providerLoc) {
+          providerLat = providerLoc.latitude;
+          providerLng = providerLoc.longitude;
+        }
+      } catch (err) {
+        // Ignored
+      }
+
+      const intentUrl = `google.navigation:q=${lat},${lng}&mode=d`;
+      const fallbackUrl = providerLat && providerLng
+        ? `https://www.google.com/maps/dir/?api=1&origin=${providerLat},${providerLng}&destination=${lat},${lng}&travelmode=driving`
+        : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+
+      try {
+        const canOpenIntent = await Linking.canOpenURL(intentUrl);
+        if (canOpenIntent) {
+          await Linking.openURL(intentUrl);
+          return;
+        }
+      } catch (err) {
+        // Ignored
+      }
+
+      try {
+        await Linking.openURL(fallbackUrl);
+      } catch (err) {
+        Alert.alert("Maps Launch Error", `Failed to open maps: ${err.message || err}`);
+      }
+    } else {
+      const address = String(booking.address || "").trim();
+      if (address) {
+        const searchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+        try {
+          await Linking.openURL(searchUrl);
+        } catch (err) {
+          Alert.alert("Maps Launch Error", `Failed to open maps: ${err.message || err}`);
+        }
+      } else {
+        Alert.alert("Location Unavailable", "Client location is unavailable.");
+      }
+    }
+  };
+
   const startWorkLocked = nextTrackingAction?.status === "Service Started" && (!estimateAccepted || !paymentPaid);
   const canEstimate =
     !isAvailable &&
@@ -32,7 +88,14 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, on
             {booking.name} | {booking.phone}
           </Text>
         </View>
-        <StatusPill status={booking.status} />
+        <StatusPill
+          status={
+            String(booking.status).toLowerCase() === "cancelled" &&
+            String(booking.cancelledBy).toLowerCase() === "provider"
+              ? "Provider Rejected"
+              : booking.status
+          }
+        />
       </View>
       <View style={styles.lines}>
         <View style={styles.line}>
@@ -51,40 +114,78 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, on
             {booking.serviceDuration} | {formatPrice(booking.costEstimate)}
           </Text>
         </View>
+        {booking.status && ["cancelled", "Cancelled"].includes(booking.status) && booking.cancellationReason ? (
+          <View style={styles.line}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={theme.rose} />
+            <Text style={[styles.lineText, { color: theme.rose }]} numberOfLines={2}>
+              {booking.cancelledBy === "provider" ? "Rejection reason" : "Cancellation reason"}: {booking.cancellationReason}
+            </Text>
+          </View>
+        ) : null}
       </View>
       {isAvailable ? (
-        <ActionButton title="Accept request" icon="check-circle-outline" onPress={() => onAccept(booking)} />
-      ) : canComplete ? (
-        <View style={styles.actions}>
-          {canEstimate ? (
+        <View style={{ gap: 10 }}>
+          <View style={styles.actions}>
             <ActionButton
-              title="Estimate"
-              icon="cash-check"
-              variant="secondary"
-              onPress={() => onEstimate(booking)}
+              title="Accept request"
+              icon="check-circle-outline"
+              onPress={() => onAccept?.(booking)}
               style={styles.action}
             />
-          ) : null}
+            <ActionButton
+              title="Reject Request"
+              icon="close-circle-outline"
+              variant="danger"
+              onPress={() => onReject?.(booking)}
+              style={styles.action}
+            />
+          </View>
+          <ActionButton
+            title="📍 Client Location"
+            icon="navigation"
+            variant="secondary"
+            onPress={handleOpenClientLocation}
+          />
+        </View>
+      ) : canComplete ? (
+        <View style={{ gap: 10 }}>
           {startWorkLocked ? (
             <Text style={[styles.workflowMessage, { color: theme.rose, backgroundColor: theme.roseSoft }]}>
               Submit estimate and wait for client payment before starting work.
             </Text>
           ) : null}
-          {nextTrackingAction ? (
+          <View style={styles.actions}>
+            {canEstimate ? (
+              <ActionButton
+                title="Estimate"
+                icon="cash-check"
+                variant="secondary"
+                onPress={() => onEstimate(booking)}
+                style={styles.action}
+              />
+            ) : null}
+            {nextTrackingAction ? (
+              <ActionButton
+                title={nextTrackingAction.label}
+                icon={nextTrackingAction.icon}
+                disabled={startWorkLocked}
+                onPress={() => onUpdateTrackingStatus?.(booking, nextTrackingAction.status)}
+                style={styles.action}
+              />
+            ) : null}
             <ActionButton
-              title={nextTrackingAction.label}
-              icon={nextTrackingAction.icon}
-              disabled={startWorkLocked}
-              onPress={() => onUpdateTrackingStatus?.(booking, nextTrackingAction.status)}
+              title="Cancel"
+              icon="close-circle-outline"
+              variant="danger"
+              onPress={() => onCancel(booking)}
               style={styles.action}
             />
-          ) : null}
+          </View>
           <ActionButton
-            title="Cancel"
-            icon="close-circle-outline"
-            variant="danger"
-            onPress={() => onCancel(booking)}
-            style={styles.action}
+            title="📍 Client Location"
+            icon="navigation"
+            variant="secondary"
+            onPress={handleOpenClientLocation}
           />
         </View>
       ) : null}
@@ -93,17 +194,7 @@ function JobCard({ booking, type, onAccept, onComplete, onCancel, onEstimate, on
 }
 
 
-function normalizeTrackingStatus(status = "") {
-  const lower = String(status || "").toLowerCase();
-  if (lower === "confirmed") return "Confirmed";
-  if (["accepted", "assigned", "provider assigned"].includes(lower)) return "Provider Assigned";
-  if (lower === "on the way") return "On The Way";
-  if (lower === "arrived") return "Arrived";
-  if (lower === "service started") return "Service Started";
-  if (lower === "completed") return "Completed";
-  if (lower === "cancelled") return "Cancelled";
-  return "Confirmed";
-}
+
 
 function getNextTrackingAction(status) {
   switch (status) {
@@ -160,12 +251,12 @@ const styles = StyleSheet.create({
   },
   workflowMessage: {
     borderRadius: radius.md,
-    flexBasis: "100%",
     fontSize: 12,
     fontWeight: "900",
     lineHeight: 17,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    width: "100%",
   },
   lines: {
     gap: 8,

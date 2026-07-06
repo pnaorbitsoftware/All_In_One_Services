@@ -1,7 +1,7 @@
-﻿import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, Alert } from "react-native";
 
 import ActionButton from "../components/ActionButton";
 import ModalSheet from "../components/ModalSheet";
@@ -168,6 +168,12 @@ export default function BookingSheet({ visible, service, user, initialForm = nul
     }));
   };
   const submit = () => {
+    const lat = Number(form.addressLocation?.latitude || 0);
+    const lng = Number(form.addressLocation?.longitude || 0);
+    if (!lat || !lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      Alert.alert("Location Required", "Please click 'Use Current Location' to detect your location coordinates before booking.");
+      return;
+    }
     onSubmit({
       ...form,
       date: toApiDate(form.date),

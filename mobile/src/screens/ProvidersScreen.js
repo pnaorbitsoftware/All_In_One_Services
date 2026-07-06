@@ -48,8 +48,11 @@ export default function ProvidersScreen({
     const normalized = query.trim().toLowerCase();
 
     return providers.filter((provider) => {
-      const status = provider.availabilityStatus || provider.profileStatus || "available";
-      if (statusFilter !== "all" && status !== statusFilter) return false;
+      const status = String(provider.availabilityStatus || provider.profileStatus || "available").trim().toLowerCase();
+      const cleanFilter = String(statusFilter || "all").trim().toLowerCase();
+      if (cleanFilter !== "all") {
+        if (status !== cleanFilter) return false;
+      }
       if (!providerMatchesService(provider, selectedServiceFilter)) return false;
       if (!normalized) return true;
 
@@ -86,7 +89,7 @@ export default function ProvidersScreen({
               </Pressable>
             ) : null}
           </View>
-          <View style={[styles.searchWrap, { backgroundColor: theme.surface }]}> 
+          <View style={[styles.searchWrap, { backgroundColor: theme.surface }]}>
             <MaterialCommunityIcons name="magnify" size={22} color={theme.textMuted} />
             <TextInput
               value={query}

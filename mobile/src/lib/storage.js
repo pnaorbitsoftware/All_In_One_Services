@@ -35,18 +35,40 @@ export const defaultSettings = {
   dataSaver: false,
 };
 
+let isSecureStoreAvailable = null;
 async function isSecureStoreReady() {
+  if (isSecureStoreAvailable !== null) return isSecureStoreAvailable;
   try {
-    return await SecureStore.isAvailableAsync();
+    isSecureStoreAvailable = await SecureStore.isAvailableAsync();
   } catch {
-    return false;
+    isSecureStoreAvailable = false;
   }
+  return isSecureStoreAvailable;
+}
+
+const SECURE_STORE_TIMEOUT_MS = 2000;
+
+async function withTimeout(promise, fallbackValue = null) {
+  let timeoutId;
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve(fallbackValue);
+    }, SECURE_STORE_TIMEOUT_MS);
+  });
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timeoutId);
+      return res;
+    }),
+    timeoutPromise
+  ]);
 }
 
 async function getItem(key) {
-  if (await isSecureStoreReady()) {
+  if (key === TOKEN_KEY && (await isSecureStoreReady())) {
     try {
-      return await SecureStore.getItemAsync(key);
+      const secureValue = await withTimeout(SecureStore.getItemAsync(key), null);
+      if (secureValue !== null) return secureValue;
     } catch {
       // Fall through to the platform-safe persistent store.
     }
@@ -64,9 +86,9 @@ async function getItem(key) {
 }
 
 async function setItem(key, value) {
-  if (await isSecureStoreReady()) {
+  if (key === TOKEN_KEY && (await isSecureStoreReady())) {
     try {
-      await SecureStore.setItemAsync(key, value);
+      await withTimeout(SecureStore.setItemAsync(key, value), null);
       return;
     } catch {
       // Fall through to the platform-safe persistent store.
@@ -89,9 +111,9 @@ async function setItem(key, value) {
 }
 
 async function deleteItem(key) {
-  if (await isSecureStoreReady()) {
+  if (key === TOKEN_KEY && (await isSecureStoreReady())) {
     try {
-      await SecureStore.deleteItemAsync(key);
+      await withTimeout(SecureStore.deleteItemAsync(key), null);
     } catch {
       // Continue clearing every fallback to guarantee logout.
     }
@@ -224,5 +246,15 @@ export async function saveRecentLocations(locations) {
   const nextLocations = Array.isArray(locations) ? locations : [];
   await AsyncStorage.setItem(RECENT_LOCATIONS_KEY, JSON.stringify(nextLocations));
   return nextLocations;
+}
+
+const READ_NOTIFICATIONS_KEY = "servicehub_read_notifications";
+
+export async function loadReadNotificationIds() {
+  return loadJsonList(READ_NOTIFICATIONS_KEY);
+}
+
+export async function saveReadNotificationIds(ids) {
+  return saveJsonList(READ_NOTIFICATIONS_KEY, ids);
 }
 

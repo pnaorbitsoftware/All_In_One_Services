@@ -13,7 +13,7 @@ Notifications.setNotificationHandler({
 export async function setupNotificationSoundChannel() {
   if (Platform.OS !== "android") return;
 
-  await Notifications.setNotificationChannelAsync("servicehub-alerts", {
+  await Notifications.setNotificationChannelAsync("servicehub-alerts-v2", {
     name: "ServiceHub Alerts",
     importance: Notifications.AndroidImportance.MAX,
     sound: "default",
@@ -25,13 +25,7 @@ export async function setupNotificationSoundChannel() {
   });
 }
 
-export async function getExpoPushTokenSafely() {
-  await setupNotificationSoundChannel();
-
-  if (!Device.isDevice) {
-    return null;
-  }
-
+export async function requestNotificationPermissions() {
   const existing = await Notifications.getPermissionsAsync();
   let finalStatus = existing.status;
 
@@ -39,8 +33,18 @@ export async function getExpoPushTokenSafely() {
     const requested = await Notifications.requestPermissionsAsync();
     finalStatus = requested.status;
   }
+  return finalStatus === "granted";
+}
 
-  if (finalStatus !== "granted") {
+export async function getExpoPushTokenSafely() {
+  await setupNotificationSoundChannel();
+
+  if (!Device.isDevice) {
+    return null;
+  }
+
+  const granted = await requestNotificationPermissions();
+  if (!granted) {
     return null;
   }
 
@@ -49,6 +53,7 @@ export async function getExpoPushTokenSafely() {
 }
 
 export async function showLocalNotification({ title, body, data = {} }) {
+  await requestNotificationPermissions();
   await setupNotificationSoundChannel();
 
   await Notifications.scheduleNotificationAsync({
@@ -57,6 +62,7 @@ export async function showLocalNotification({ title, body, data = {} }) {
       body,
       data,
       sound: "default",
+      channelId: "servicehub-alerts-v2",
     },
     trigger: null,
   });

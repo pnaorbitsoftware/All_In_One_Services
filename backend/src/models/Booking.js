@@ -1,4 +1,13 @@
 import mongoose from "mongoose";
+const locationSchema = new mongoose.Schema(
+  {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    address: { type: String, default: "", trim: true },
+    timestamp: { type: Date, default: null },
+  },
+  { _id: false }
+);
 
 const bookingSchema = new mongoose.Schema(
   {
@@ -72,6 +81,14 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    addressLocation: {
+      type: locationSchema,
+      default: () => ({}),
+    },
+    clientLocationUpdatedAt: {
+      type: Date,
+      default: null,
     },
     clientLocation: {
       type: {
@@ -389,6 +406,38 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    locationRequested: {
+      type: Boolean,
+      default: false,
+    },
+    trackingHistory: [
+      {
+        status: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        title: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        description: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+        updatedBy: {
+          type: String,
+          enum: ["system", "client", "provider", "admin"],
+          default: "system",
+        },
+        updatedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { collection: "bookings", timestamps: true },
 );

@@ -1,4 +1,4 @@
-﻿import * as Location from "expo-location";
+import * as Location from "expo-location";
 
 function formatAddress(address = {}) {
   return [
@@ -21,9 +21,21 @@ export async function getCurrentReadableLocation() {
     throw new Error("Location permission denied. Enable location permission and try again.");
   }
 
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.Balanced,
-  });
+  let position = null;
+  try {
+    position = await Location.getLastKnownPositionAsync({
+      maxAge: 60000,
+    });
+  } catch (err) {
+    // Ignore and fallback
+  }
+
+  if (!position) {
+    position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+      timeout: 10000,
+    });
+  }
 
   const { latitude, longitude } = position.coords;
   let readableAddress = "";
@@ -52,9 +64,8 @@ export async function watchProviderLocation(onLocation, onError) {
 
   return Location.watchPositionAsync(
     {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 60000,
-      distanceInterval: 100,
+      accuracy: Location.Accuracy.High,
+      timeInterval: 5000,
     },
     async (position) => {
       try {
