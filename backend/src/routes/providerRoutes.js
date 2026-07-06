@@ -134,6 +134,8 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       about,
       image = "",
       aadhaarCardImage,
+      aadhaarFrontUrl,
+      aadhaarDocumentUrl,
       aadhaarNumber,
       features = "",
       availabilityStatus,
@@ -154,8 +156,9 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       return res.status(404).json({ message: "Provider profile not found." });
     }
 
-    const nextAadhaarImage = typeof aadhaarCardImage === "string" && aadhaarCardImage.trim()
-      ? aadhaarCardImage.trim()
+    const submittedAadhaarImage = aadhaarCardImage || aadhaarFrontUrl || aadhaarDocumentUrl;
+    const nextAadhaarImage = typeof submittedAadhaarImage === "string" && submittedAadhaarImage.trim()
+      ? submittedAadhaarImage.trim()
       : provider.aadhaarCardImage;
     const nextAadhaarNumber = aadhaarNumber === undefined
       ? provider.aadhaarNumber

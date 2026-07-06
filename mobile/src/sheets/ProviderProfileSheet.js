@@ -21,7 +21,8 @@ const emptyProfile = {
   features: "",
   image: "",
   aadhaarNumber: "",
-  aadhaarCardImage: "",
+  aadhaarFrontImage: "",
+  aadhaarBackImage: "",
 };
 
 function toProfileForm(provider = {}) {
@@ -38,7 +39,8 @@ function toProfileForm(provider = {}) {
     features: Array.isArray(provider.features) ? provider.features.join(", ") : provider.features || "",
     image: provider.image || provider.profileImage || "",
     aadhaarNumber: provider.aadhaarNumber || "",
-    aadhaarCardImage: provider.aadhaarCardImage || "",
+    aadhaarFrontImage: provider.aadhaarFrontUrl || provider.aadhaarCardImage || "",
+    aadhaarBackImage: provider.aadhaarBackUrl || "",
   };
 }
 
@@ -83,7 +85,7 @@ export default function ProviderProfileSheet({ visible, provider, submitting, on
 
   const removeProviderImage = () => setForm((current) => ({ ...current, image: "" }));
 
-  const pickAadhaarCard = async () => {
+  const pickAadhaarCard = async (side) => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
@@ -107,7 +109,8 @@ export default function ProviderProfileSheet({ visible, provider, submitting, on
       }
 
       const mimeType = asset.mimeType || "image/jpeg";
-      setForm((current) => ({ ...current, aadhaarCardImage: `data:${mimeType};base64,${asset.base64}` }));
+      const key = side === "back" ? "aadhaarBackImage" : "aadhaarFrontImage";
+      setForm((current) => ({ ...current, [key]: `data:${mimeType};base64,${asset.base64}` }));
     } catch {
       Alert.alert("Aadhaar upload", "Could not select this image. Please try another photo.");
     }
@@ -177,14 +180,16 @@ export default function ProviderProfileSheet({ visible, provider, submitting, on
       <TextField label="About provider" value={form.about} onChangeText={update("about")} placeholder="Experience and service style" multiline />
       <TextField label="Included work" value={form.features} onChangeText={update("features")} placeholder="Repair, installation, inspection" multiline />
       <TextField label="Aadhaar number" value={form.aadhaarNumber} onChangeText={(value) => update("aadhaarNumber")(value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digit Aadhaar number" keyboardType="number-pad" />
-      <View style={styles.documentCard}>
-        {form.aadhaarCardImage ? <Image source={{ uri: form.aadhaarCardImage }} style={styles.documentImage} /> : null}
+      {[{ side: "front", label: "Aadhaar front", value: form.aadhaarFrontImage }, { side: "back", label: "Aadhaar back", value: form.aadhaarBackImage }].map((document) => (
+      <View key={document.side} style={styles.documentCard}>
+        {document.value ? <Image source={{ uri: document.value }} style={styles.documentImage} /> : null}
         <View style={styles.photoText}>
-          <Text style={styles.photoTitle}>Aadhaar card</Text>
+          <Text style={styles.photoTitle}>{document.label}</Text>
           <Text style={styles.photoCopy}>Required for admin review and resubmission.</Text>
-          <ActionButton title={form.aadhaarCardImage ? "Change Aadhaar" : "Upload Aadhaar"} icon="card-account-details-outline" variant="secondary" onPress={pickAadhaarCard} />
+          <ActionButton title={document.value ? "Change image" : "Upload image"} icon="card-account-details-outline" variant="secondary" onPress={() => pickAadhaarCard(document.side)} />
         </View>
       </View>
+      ))}
     </ModalSheet>
   );
 }

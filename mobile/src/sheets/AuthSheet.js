@@ -22,7 +22,8 @@ const initialForm = {
   price: "",
   responseTime: "",
   aadhaarNumber: "",
-  aadhaarCardImage: "",
+  aadhaarFrontImage: "",
+  aadhaarBackImage: "",
   otp: "",
   resetIdentifier: "",
   resetOtp: "",
@@ -99,7 +100,7 @@ export default function AuthSheet({
     update("category")(value);
   };
 
-  const pickAadhaarCard = async () => {
+  const pickAadhaarCard = async (side) => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -126,14 +127,18 @@ export default function AuthSheet({
         Alert.alert("Aadhaar upload", "This image could not be prepared for upload. Please choose another image.");
         return;
       }
-      const aadhaarCardImage = `data:${mimeType};base64,${asset.base64}`;
-      setForm((current) => ({ ...current, aadhaarCardImage }));
+      const image = `data:${mimeType};base64,${asset.base64}`;
+      const key = side === "back" ? "aadhaarBackImage" : "aadhaarFrontImage";
+      setForm((current) => ({ ...current, [key]: image }));
     } catch {
       Alert.alert("Aadhaar upload", "Could not select this image. Please try another photo.");
     }
   };
 
-  const removeAadhaarCard = () => setForm((current) => ({ ...current, aadhaarCardImage: "" }));
+  const removeAadhaarCard = (side) => {
+    const key = side === "back" ? "aadhaarBackImage" : "aadhaarFrontImage";
+    setForm((current) => ({ ...current, [key]: "" }));
+  };
 
   const startPasswordReset = () => {
     if (submitting) return;
@@ -477,24 +482,25 @@ export default function AuthSheet({
                 placeholder="12 digit Aadhaar number"
                 keyboardType="number-pad"
               />
-              <View style={styles.documentCard}>
+              {[{ side: "front", label: "Aadhaar front", value: form.aadhaarFrontImage }, { side: "back", label: "Aadhaar back", value: form.aadhaarBackImage }].map((document) => (
+              <View key={document.side} style={styles.documentCard}>
                 <View style={styles.documentPreview}>
-                  {form.aadhaarCardImage ? (
-                    <Image source={{ uri: form.aadhaarCardImage }} style={styles.documentImage} />
+                  {document.value ? (
+                    <Image source={{ uri: document.value }} style={styles.documentImage} />
                   ) : (
                     <MaterialCommunityIcons name="card-account-details-outline" size={32} color={colors.teal} />
                   )}
                 </View>
                 <View style={styles.documentText}>
-                  <Text style={styles.documentTitle}>Aadhaar card</Text>
+                  <Text style={styles.documentTitle}>{document.label}</Text>
                   <Text style={styles.documentCopy}>Required for website admin approval.</Text>
                   <View style={styles.documentActions}>
-                    <Pressable accessibilityRole="button" onPress={pickAadhaarCard} style={({ pressed }) => [styles.documentButton, pressed && styles.pressed]}>
-                      <MaterialCommunityIcons name={form.aadhaarCardImage ? "image-edit-outline" : "image-plus"} size={17} color={colors.teal} />
-                      <Text style={styles.documentButtonText}>{form.aadhaarCardImage ? "Change" : "Upload"}</Text>
+                    <Pressable accessibilityRole="button" onPress={() => pickAadhaarCard(document.side)} style={({ pressed }) => [styles.documentButton, pressed && styles.pressed]}>
+                      <MaterialCommunityIcons name={document.value ? "image-edit-outline" : "image-plus"} size={17} color={colors.teal} />
+                      <Text style={styles.documentButtonText}>{document.value ? "Change" : "Upload"}</Text>
                     </Pressable>
-                    {form.aadhaarCardImage ? (
-                      <Pressable accessibilityRole="button" onPress={removeAadhaarCard} style={({ pressed }) => [styles.documentButton, pressed && styles.pressed]}>
+                    {document.value ? (
+                      <Pressable accessibilityRole="button" onPress={() => removeAadhaarCard(document.side)} style={({ pressed }) => [styles.documentButton, pressed && styles.pressed]}>
                         <MaterialCommunityIcons name="trash-can-outline" size={17} color={colors.rose} />
                         <Text style={[styles.documentButtonText, { color: colors.rose }]}>Remove</Text>
                       </Pressable>
@@ -502,6 +508,7 @@ export default function AuthSheet({
                   </View>
                 </View>
               </View>
+              ))}
             </>
           ) : null}
         </>
