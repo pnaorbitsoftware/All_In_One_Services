@@ -217,13 +217,12 @@ router.post("/register", async (req, res) => {
       aadhaarNumber = "",
       otp,
     } = req.body;
-    const providerAadhaarImage = aadhaarCardImage || aadhaarFrontUrl || aadhaarDocumentUrl;
-    const normalizedAadhaarNumber = String(aadhaarNumber || "").replace(/\D/g, "");
-    const normalizedEmail = email?.trim().toLowerCase();
 
+    const normalizedEmail = email?.trim().toLowerCase();
     const normalizedCategory = String(category || "").trim();
     const normalizedCustomCategory = String(customCategory || "").trim();
     const providerCategory = normalizedCategory === "Other" ? normalizedCustomCategory : normalizedCategory;
+    const normalizedAadhaarNumber = String(aadhaarNumber || "").replace(/\D/g, "");
 
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ message: "Name, email, phone, and password are required." });
@@ -245,7 +244,7 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Password and confirm password must match." });
     }
 
-    if (role === "provider" && (!providerName || !category || !location || !phone || !price || !responseTime || !providerAadhaarImage || normalizedAadhaarNumber.length !== 12)) {
+    if (role === "provider" && (!providerName || !category || !location || !phone || !price || !responseTime || !aadhaarCardImage || normalizedAadhaarNumber.length !== 12)) {
       return res.status(400).json({
         message: "Provider name, phone, category, location, price, response time, 12-digit Aadhaar number, and Aadhaar card are required.",
       });
@@ -270,7 +269,6 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Work photo must be smaller than 1.5 MB." });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await User.findOne({ email: normalizedEmail }).select("_id").lean();
     if (existingUser) {
       return res.status(409).json({ message: "An account with this email already exists." });
@@ -294,7 +292,7 @@ router.post("/register", async (req, res) => {
         otp: otpChannel === "sms" ? "__twilio_verify__" : registrationOtp,
         phone,
         expiresAt: Date.now() + 5 * 60 * 1000,
-          registrationBody: { ...req.body },
+        registrationBody: { ...req.body },
       });
 
       return res.status(202).json({
@@ -318,32 +316,34 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Invalid registration OTP." });
     }
 
-      const registrationBody = {
-        ...(registrationRecord.registrationBody || {}),
-        ...req.body,
-      };
+    // Merge stored body with current request to allow updates during OTP flow
+    const registrationBody = {
+      ...(registrationRecord.registrationBody || {}),
+      ...req.body,
+    };
 
-      let aadhaarDigits = "";
-      let aadhaarFrontUrl = "";
-      let aadhaarBackUrl = "";
-      if (role === "provider") {
-        aadhaarDigits = String(registrationBody.aadhaarNumber || "").replace(/\D/g, "");
-        aadhaarFrontUrl = registrationBody.aadhaarFrontUrl || registrationBody.aadhaarDocumentUrl || registrationBody.aadhaarCardImage || "";
-        aadhaarBackUrl = registrationBody.aadhaarBackUrl || "";
+    let aadhaarDigits = "";
+    let aadhaarFront = "";
+    let aadhaarBack = "";
+
+    if (role === "provider") {
+      aadhaarDigits = String(registrationBody.aadhaarNumber || "").replace(/\D/g, "");
+      aadhaarFront = registrationBody.aadhaarFrontUrl || registrationBody.aadhaarDocumentUrl || registrationBody.aadhaarCardImage || "";
+      aadhaarBack = registrationBody.aadhaarBackUrl || "";
 
       if (aadhaarDigits.length !== 12) {
         return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required for provider registration." });
       }
 
-      if (!aadhaarFrontUrl) {
+      if (!aadhaarFront) {
         return res.status(400).json({ message: "Aadhaar front image or PDF upload is required for provider registration." });
       }
 
-      if (!isValidIdentityDocument(aadhaarFrontUrl)) {
+      if (!isValidIdentityDocument(aadhaarFront)) {
         return res.status(400).json({ message: "Aadhaar front document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
       }
 
-      if (aadhaarBackUrl && !isValidIdentityDocument(aadhaarBackUrl)) {
+      if (aadhaarBack && !isValidIdentityDocument(aadhaarBack)) {
         return res.status(400).json({ message: "Aadhaar back document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
       }
     }
@@ -365,12 +365,12 @@ router.post("/register", async (req, res) => {
         preferredWorkLocation,
         phone,
         aadhaarNumberMasked: `XXXX XXXX ${aadhaarDigits.slice(-4)}`,
-        aadhaarFrontUrl,
-        aadhaarBackUrl,
+        aadhaarFrontUrl: aadhaarFront,
+        aadhaarBackUrl: aadhaarBack,
         aadhaarDocumentName: registrationBody.aadhaarDocumentName || "",
         aadhaarBackDocumentName: registrationBody.aadhaarBackDocumentName || "",
         aadhaarFrontUploadedAt: new Date(),
-        aadhaarBackUploadedAt: aadhaarBackUrl ? new Date() : null,
+        aadhaarBackUploadedAt: aadhaarBack ? new Date() : null,
         verificationStatus: "pending",
         requestedAt: new Date(),
         rating: 0,
@@ -381,7 +381,7 @@ router.post("/register", async (req, res) => {
         about: `${providerName} is registered on ServiceHub as a ${providerCategory} provider.`,
         features: [providerCategory],
         profileImage: normalizedWorkImage,
-        aadhaarCardImage: aadhaarFrontUrl,
+        aadhaarCardImage: aadhaarFront,
         aadhaarNumber: aadhaarDigits,
         isActive: false,
         approvalStatus: "pending",
@@ -448,74 +448,6 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: "Login failed. Please try again." });
   }
 });
-
-router.patch("/profile-image", requireAuth, async (req, res) => {
-  try {
-    const profileImage = String(req.body?.profileImage || "").trim();
-
-    if (!isValidProfileImage(profileImage)) {
-      return res.status(400).json({ message: "Please upload a PNG, JPG, JPEG, or WEBP image." });
-    }
-
-    if (profileImage.length > 1_500_000) {
-      return res.status(400).json({ message: "Profile image must be smaller than 1.5 MB." });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { profileImage },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    if (user.role === "provider") {
-      await Provider.findOneAndUpdate({ owner: user._id }, { profileImage });
-    }
-
-    res.json({
-      message: profileImage ? "Profile image updated successfully." : "Profile image removed successfully.",
-      user: sanitizeUser(user),
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Profile image could not be updated." });
-  }
-});
-
-const updateProfileHandler = async (req, res) => {
-  try {
-    const name = String(req.body?.name || "").trim();
-    const phone = String(req.body?.phone || "").trim();
-    const address = String(req.body?.address || "").trim();
-
-    if (!name || name.length < 2) {
-      return res.status(400).json({ message: "Name must be at least 2 characters." });
-    }
-
-    if (!phone) {
-      return res.status(400).json({ message: "Phone number is required." });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { name, phone, address },
-      { new: true, runValidators: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    res.json({ message: "Profile updated successfully.", user: sanitizeUser(user) });
-  } catch (error) {
-    res.status(500).json({ message: "Profile could not be updated." });
-  }
-};
-
-router.patch("/profile", requireAuth, updateProfileHandler);
-router.patch("/me", requireAuth, updateProfileHandler);
 
 router.post("/forgot-password/otp", async (req, res) => {
   try {
@@ -673,7 +605,8 @@ const getAuthenticatedProfile = (req, res) => {
 router.get("/profile", requireAuth, getAuthenticatedProfile);
 router.get("/me", requireAuth, getAuthenticatedProfile);
 
-router.patch("/profile", requireAuth, async (req, res) => {
+// Combined profile update handler for both /profile and /me
+const updateProfileHandler = async (req, res) => {
   try {
     const user = req.user;
     const { name, email, phone = "", avatar = "", address = "", currentLocation = null } = req.body;
@@ -720,30 +653,48 @@ router.patch("/profile", requireAuth, async (req, res) => {
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message || "Profile could not be updated." });
   }
-});
+};
 
-router.patch("/profile-image", requireAuth, async (req, res) => {
+router.patch("/profile", requireAuth, updateProfileHandler);
+router.patch("/me", requireAuth, updateProfileHandler);
+
+// Combined profile image update handler
+const updateProfileImageHandler = async (req, res) => {
   try {
     const user = req.user;
-    const profileImage = typeof req.body.profileImage === "string" ? req.body.profileImage : "";
+    const profileImage = String(req.body?.profileImage || "").trim();
 
+    if (!isValidProfileImage(profileImage)) {
+      return res.status(400).json({ message: "Please upload a PNG, JPG, JPEG, or WEBP image." });
+    }
+
+    if (profileImage.length > 1_500_000) {
+      return res.status(400).json({ message: "Profile image must be smaller than 1.5 MB." });
+    }
+
+    user.profileImage = profileImage;
     user.avatar = profileImage;
     await user.save();
 
     if (user.role === "provider") {
       const provider = await Provider.findOne({ owner: user._id });
-
       if (provider) {
+        provider.profileImage = profileImage;
         provider.image = profileImage;
         await provider.save();
       }
     }
 
-    res.json({ message: "Profile image updated successfully.", user: sanitizeUser(user) });
+    res.json({
+      message: profileImage ? "Profile image updated successfully." : "Profile image removed successfully.",
+      user: sanitizeUser(user),
+    });
   } catch (error) {
-    res.status(error.status || 500).json({ message: error.message || "Profile image could not be updated." });
+    res.status(500).json({ message: "Profile image could not be updated." });
   }
-});
+};
+
+router.patch("/profile-image", requireAuth, updateProfileImageHandler);
 
 router.patch("/profile/complete", requireAuth, async (req, res) => {
   try {

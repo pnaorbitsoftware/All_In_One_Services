@@ -344,7 +344,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       provider.availabilityStatus = availabilityStatus;
       provider.isActive = availabilityStatus !== "inactive";
     }
-    }
+
     provider.features = Array.isArray(features)
       ? features.map((feature) => String(feature).trim()).filter(Boolean)
       : String(features).split(",").map((feature) => feature.trim()).filter(Boolean);
@@ -526,17 +526,16 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
 
     emitStatusChange(req.app.get("io"), booking);
 
-
-      sendPushNotification({
-        tokens: client?.expoPushTokens || [],
-        title: "Provider assigned",
-        body: `${provider.name} accepted your ${booking.service} booking.`,
-        data: {
-          type: "booking",
-          bookingId: String(booking._id),
-          status: "Provider Assigned",
-        },
-      });
+    sendPushNotification({
+      tokens: client?.expoPushTokens || [],
+      title: "Provider assigned",
+      body: `${provider.name} accepted your ${booking.service} booking.`,
+      data: {
+        type: "booking",
+        bookingId: String(booking._id),
+        status: "Provider Assigned",
+      },
+    });
 
     res.json({ booking });
   } catch (error) {
@@ -631,7 +630,6 @@ router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async 
   }
 });
 
-
 router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async (req, res) => {
   try {
     const provider = await Provider.findOne({ owner: req.user._id });
@@ -666,6 +664,7 @@ router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async 
     res.status(500).json({ message: "Provider tracking details could not be loaded." });
   }
 });
+
 router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, async (req, res) => {
   try {
     const provider = await Provider.findOne({ owner: req.user._id });
@@ -710,6 +709,7 @@ router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, asyn
     res.status(500).json({ message: "Provider location could not be updated." });
   }
 });
+
 router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async (req, res) => {
   try {
     const { status, workImage = "", cancellationReason = "" } = req.body;
@@ -840,65 +840,6 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
     }
 
     res.status(500).json({ message: "Booking status could not be updated." });
-  }
-});
-
-router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, async (req, res) => {
-  try {
-    const provider = await Provider.findOne({ owner: req.user._id });
-
-    if (!provider) {
-      return res.status(404).json({ message: "Provider profile not found." });
-    }
-
-    const booking = await Booking.findOne({ _id: req.params.bookingId, assignedProvider: provider._id });
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found for this provider." });
-    }
-
-    provider.currentLocation = normalizeLocationPayload(req.body);
-    provider.trackingConsent = true;
-    provider.trackingActive = true;
-    await provider.save();
-
-    res.json({ message: "Provider location updated.", provider, booking });
-  } catch (error) {
-    res.status(500).json({ message: "Provider location could not be updated." });
-  }
-});
-
-router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async (req, res) => {
-  try {
-    const provider = await Provider.findOne({ owner: req.user._id });
-
-    if (!provider) {
-      return res.status(404).json({ message: "Provider profile not found." });
-    }
-
-    const booking = await Booking.findOne({ _id: req.params.bookingId, assignedProvider: provider._id });
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found for this provider." });
-    }
-
-    ensureTrackingHistory(booking);
-    await booking.save();
-
-    res.json({
-      booking,
-      tracking: {
-        bookingId: booking._id,
-        serviceName: booking.service,
-        providerName: provider.name,
-        currentStatus: normalizeTrackingStatus(booking.status),
-        trackingHistory: booking.trackingHistory,
-        providerLocation: provider.currentLocation || null,
-        clientLocation: booking.addressLocation || null,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Provider booking tracking could not be loaded." });
   }
 });
 
