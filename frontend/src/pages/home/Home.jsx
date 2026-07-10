@@ -3413,24 +3413,28 @@ function ClientDashboard({
   const statusBlocks = [
     {
       title: "Pending",
+      icon: Clock,
       value: bookingSections[0].bookings.length,
       copy: "Waiting for provider response.",
       tone: "from-amber-50 to-white text-amber-700",
     },
     {
       title: "Active",
+      icon: RefreshCw,
       value: bookingSections[1].bookings.length,
       copy: "Provider accepted and live work.",
       tone: "from-blue-50 to-white text-blue-700",
     },
     {
       title: "Completed",
+      icon: CheckCircle,
       value: bookingSections[2].bookings.length,
       copy: "Finished service records.",
       tone: "from-emerald-50 to-white text-emerald-700",
     },
     {
       title: "Cancelled",
+      icon: XCircle,
       value: bookingSections[3].bookings.length,
       copy: "Cancelled request records.",
       tone: "from-rose-50 to-white text-rose-700",
