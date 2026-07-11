@@ -53,6 +53,20 @@ export function normalizeProviderDashboard(data = {}) {
     provider,
     bookings: Array.isArray(data.bookings) ? data.bookings : [],
     availableRequests: Array.isArray(data.availableRequests) ? data.availableRequests : [],
+      history: data.history ?? {
+  pending: [],
+  completed: [],
+  providerRejected: [],
+  clientCancelled: [],
+},
+
+stats: data.stats ?? {
+  pending: 0,
+  completed: 0,
+  providerRejected: 0,
+  clientCancelled: 0,
+},
+
     dashboardLocked: Boolean(data.dashboardLocked),
     message: data.message || "",
     paymentSummary: summary

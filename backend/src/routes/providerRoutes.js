@@ -159,10 +159,50 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
         : Promise.resolve([]),
     ]);
 
+    // ------------------------------
+// Booking History Categorization
+// ------------------------------
+
+const pendingBookings = bookings.filter((booking) => {
+  const status = String(booking.status || "").toLowerCase();
+  return !["completed", "cancelled", "rejected"].includes(status);
+});
+
+const completedBookings = bookings.filter((booking) => {
+  return String(booking.status || "").toLowerCase() === "completed";
+});
+
+const providerRejectedBookings = bookings.filter((booking) => {
+  return String(booking.status || "").toLowerCase() === "rejected";
+});
+
+const clientCancelledBookings = bookings.filter((booking) => {
+  return (
+    String(booking.status || "").toLowerCase() === "cancelled" &&
+    booking.cancelledBy === "client"
+  );
+});
+    console.log("Pending:", pendingBookings.length);
+console.log("Completed:", completedBookings.length);
+console.log("Provider Rejected:", providerRejectedBookings.length);
+console.log("Client Cancelled:", clientCancelledBookings.length);
     res.json({
       provider,
       bookings,
       availableRequests: availableRequests.map(hideClientContactUntilAccepted),
+      history: {
+  pending: pendingBookings,
+  completed: completedBookings,
+  providerRejected: providerRejectedBookings,
+  clientCancelled: clientCancelledBookings,
+},
+
+stats: {
+  pending: pendingBookings.length,
+  completed: completedBookings.length,
+  providerRejected: providerRejectedBookings.length,
+  clientCancelled: clientCancelledBookings.length,
+},
     });
   } catch (error) {
     res.status(500).json({ message: "Provider dashboard could not be loaded." });

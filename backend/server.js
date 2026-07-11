@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import http from "node:http";
 
 import notificationRoutes from "./src/routes/notificationRoutes.js";
+
 import authRoutes from "./src/routes/authRoutes.js";
 import adminRoutes from "./src/routes/adminRoutes.js";
 import bookingRoutes from "./src/routes/bookingRoutes.js";
@@ -193,6 +194,7 @@ const requireDatabase = (_req, res, next) => {
 //
 // Routes
 //
+
 app.use("/api/notifications", requireDatabase, notificationRoutes);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/forgot-password", passwordRecoveryLimiter);

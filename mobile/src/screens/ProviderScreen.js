@@ -42,6 +42,9 @@ export default function ProviderScreen({
   const metrics = responsiveMetrics(width);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  const [historyTab, setHistoryTab] = useState("pending");
+  const [historyFilter, setHistoryFilter] = useState("all");
+
   const provider = providerData?.provider;
   const availableRequests = providerData?.availableRequests || [];
   const bookings = providerData?.bookings || [];
@@ -57,6 +60,42 @@ export default function ProviderScreen({
     () => bookings.filter((booking) => String(booking.status || "").toLowerCase() === "completed"),
     [bookings]
   );
+
+  // New History Data from Backend
+const history = providerData?.history ?? {};
+const stats = providerData?.stats ?? {};
+
+const pendingHistory = history.pending ?? [];
+const providerRejectedHistory = history.providerRejected ?? [];
+const clientCancelledHistory = history.clientCancelled ?? [];
+const completedHistory = history.completed ?? [];
+
+const selectedHistoryBookings = useMemo(() => {
+  switch (historyTab) {
+    case "pending":
+      return pendingHistory;
+
+    case "providerRejected":
+      return providerRejectedHistory;
+
+    case "clientCancelled":
+      return clientCancelledHistory;
+
+    case "completed":
+      return completedHistory;
+
+    default:
+      return pendingHistory;
+  }
+}, [
+  historyTab,
+  pendingHistory,
+  providerRejectedHistory,
+  clientCancelledHistory,
+  completedHistory,
+]);
+
+
   const historyCount = canceledBookings.length + completedBookings.length;
   const providerUnavailable = provider && !provider.isBookable;
 
@@ -79,14 +118,22 @@ export default function ProviderScreen({
     if (acceptedBookings.length) {
       list.push({ title: "Accepted Bookings", type: "assigned", data: acceptedBookings });
     }
-    if (historyOpen && canceledBookings.length) {
-      list.push({ title: "Canceled Bookings", type: "history", data: canceledBookings });
-    }
-    if (historyOpen && completedBookings.length) {
-      list.push({ title: "Completed Bookings", type: "history", data: completedBookings });
-    }
+   if (historyOpen && selectedHistoryBookings.length) {
+  const historyTitles = {
+    pending: "Pending Requests",
+    providerRejected: "Provider Rejected",
+    clientCancelled: "Client Cancelled",
+    completed: "Completed Bookings",
+  };
+
+  list.push({
+    title: historyTitles[historyTab] || "History",
+    type: "history",
+    data: selectedHistoryBookings,
+  });
+}
     return list;
-  }, [acceptedBookings, availableRequests, canceledBookings, completedBookings, dashboardLocked, historyOpen]);
+  }, [acceptedBookings, availableRequests, selectedHistoryBookings, historyTab, dashboardLocked, historyOpen]);
 
   const keyExtractor = useCallback((item) => String(item._id || item.id), []);
   const renderItem = useCallback(
@@ -274,6 +321,105 @@ export default function ProviderScreen({
               color={theme.textMuted}
             />
           </Pressable>
+          {historyOpen && (
+  <View style={{ marginTop: 12 }}>
+    <Text
+  style={{
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 10,
+  }}
+>
+  History Categories
+</Text>
+<View style={{ flexDirection: "row" }}>
+  <Pressable
+    onPress={() => setHistoryTab("pending")}
+    style={{
+      backgroundColor:
+        historyTab === "pending" ? theme.teal : theme.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+    }}
+  >
+    <Text
+      style={{
+        color: historyTab === "pending" ? "#fff" : theme.text,
+        fontWeight: "600",
+      }}
+    >
+      Pending ({stats.pending ?? 0})
+    </Text>
+  </Pressable>
+<Pressable
+  onPress={() => setHistoryTab("completed")}
+  style={{
+    backgroundColor:
+      historyTab === "completed" ? theme.teal : theme.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 8,
+  }}
+>
+  <Text
+    style={{
+      color: historyTab === "completed" ? "#fff" : theme.text,
+      fontWeight: "600",
+    }}
+  >
+    Completed ({stats.completed ?? 0})
+  </Text>
+</Pressable>
+
+<Pressable
+  onPress={() => setHistoryTab("providerRejected")}
+  style={{
+    backgroundColor:
+      historyTab === "providerRejected" ? theme.teal : theme.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 8,
+  }}
+>
+  <Text
+    style={{
+      color: historyTab === "providerRejected" ? "#fff" : theme.text,
+      fontWeight: "600",
+    }}
+  >
+    Provider Rejected ({stats.providerRejected ?? 0})
+  </Text>
+</Pressable>
+
+<Pressable
+  onPress={() => setHistoryTab("clientCancelled")}
+  style={{
+    backgroundColor:
+      historyTab === "clientCancelled" ? theme.teal : theme.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 8,
+  }}
+>
+  <Text
+    style={{
+      color: historyTab === "clientCancelled" ? "#fff" : theme.text,
+      fontWeight: "600",
+    }}
+  >
+    Client Cancelled ({stats.clientCancelled ?? 0})
+  </Text>
+</Pressable>
+
+</View>
+  </View>
+)}
+
           {historyOpen && !historyCount ? (
             <Text style={[styles.historyEmpty, { backgroundColor: theme.surfaceMuted, color: theme.textMuted }]}>
               No canceled or completed bookings yet.
