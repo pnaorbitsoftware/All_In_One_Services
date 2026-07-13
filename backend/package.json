@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "web": "node server.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

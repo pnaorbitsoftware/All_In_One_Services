@@ -5,6 +5,8 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import http from "node:http";
 
+import notificationRoutes from "./src/routes/notificationRoutes.js";
+
 import authRoutes from "./src/routes/authRoutes.js";
 import adminRoutes from "./src/routes/adminRoutes.js";
 import bookingRoutes from "./src/routes/bookingRoutes.js";
@@ -70,6 +72,24 @@ const corsOptions = {
       return callback(null, true);
     }
 
+    // ✅ Allow any Vercel preview deployment for your project
+        // ✅ Allow any Vercel deployment for this project
+    try {
+      const { hostname } = new URL(origin);
+      
+      // Match: any vercel.app URL containing "all-in-one-services"
+      if (hostname.includes('all-in-one-services') && hostname.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+      
+      // Also match your custom domain and www
+      if (['servicehub.aparaitech.org', 'www.servicehub.aparaitech.org'].includes(hostname)) {
+        return callback(null, true);
+      }
+    } catch {
+      return callback(new Error("Invalid request origin."));
+    }
+
     if (!isProduction) {
       try {
         const { hostname } = new URL(origin);
@@ -87,7 +107,6 @@ const corsOptions = {
   credentials: true,
   maxAge: 86400,
 };
-
 app.set("trust proxy", 1);
 app.use((req, res, next) => {
   if (isProduction && process.env.FORCE_HTTPS !== "false" && req.headers["x-forwarded-proto"] === "http") {
@@ -175,6 +194,8 @@ const requireDatabase = (_req, res, next) => {
 //
 // Routes
 //
+
+app.use("/api/notifications", requireDatabase, notificationRoutes);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/forgot-password", passwordRecoveryLimiter);
 app.use("/api/auth/reset-password", passwordRecoveryLimiter);
@@ -198,7 +219,9 @@ app.use((error, req, res, _next) => {
   }
 
   if (error?.type === "entity.too.large") {
-    return res.status(413).json({ message: "Request payload is too large." });
+    return res.status(413).json({
+      message: "The selected image is too large to upload. Choose a smaller image and try again.",
+    });
   }
 
   console.error(`Unhandled ${req.method} ${req.originalUrl}: ${error?.message || "Unknown error"}`);

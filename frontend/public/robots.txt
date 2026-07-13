@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://servicehub.aparaitech.org/sitemap.xml

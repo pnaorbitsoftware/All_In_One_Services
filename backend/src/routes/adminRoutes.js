@@ -44,6 +44,30 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+const documentMimeType = (value = "") => {
+  const dataMime = String(value).match(/^data:([^;,]+)/i)?.[1];
+  if (dataMime) return dataMime.toLowerCase();
+  if (/\.pdf(?:\?|#|$)/i.test(value)) return "application/pdf";
+  if (/\.png(?:\?|#|$)/i.test(value)) return "image/png";
+  if (/\.webp(?:\?|#|$)/i.test(value)) return "image/webp";
+  return value ? "image/jpeg" : "";
+};
+
+const documentSize = (value = "") => {
+  const base64 = String(value).match(/^data:[^;,]+;base64,([a-z0-9+/=\s]+)$/i)?.[1];
+  return base64 ? Math.floor(base64.replace(/\s/g, "").length * 0.75) : null;
+};
+
+const adminDocumentMetadata = ({ available, value, fileName, uploadedAt, side, providerId }) => ({
+  available: Boolean(available),
+  fileName: fileName || "",
+  mimeType: available ? documentMimeType(value) : "",
+  size: available ? documentSize(value) : null,
+  uploadedAt: uploadedAt || null,
+  viewUrl: available ? `/admin/providers/${providerId}/aadhaar/${side}` : "",
+  downloadUrl: available ? `/admin/providers/${providerId}/aadhaar/${side}?download=1` : "",
+});
+
 router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const [users, providers, bookings, contactMessages] = await Promise.all([
@@ -73,8 +97,14 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
             aadhaarNumberMasked: 1,
             aadhaarDocumentName: 1,
             aadhaarBackDocumentName: 1,
+            aadhaarFrontUploadedAt: 1,
+            aadhaarBackUploadedAt: 1,
+            aadhaarFrontUrl: {
+              $ifNull: ["$aadhaarFrontUrl", { $ifNull: ["$aadhaarCardImage", { $ifNull: ["$aadhaarImage", { $ifNull: ["$aadhaarUrl", { $ifNull: ["$aadhaar", "$aadhar"] }] }] }] }],
+            },
+            aadhaarBackUrl: { $ifNull: ["$aadhaarBackUrl", { $ifNull: ["$aadhaarBackImage", "$aadharBack"] }] },
             aadhaarFrontAvailable: {
-              $ne: [{ $ifNull: ["$aadhaarFrontUrl", ""] }, ""],
+              $ne: [{ $ifNull: ["$aadhaarFrontUrl", { $ifNull: ["$aadhaarCardImage", { $ifNull: ["$aadhaarImage", { $ifNull: ["$aadhaarUrl", { $ifNull: ["$aadhaar", { $ifNull: ["$aadhar", ""] }] }] }] }] }] }, ""],
             },
             aadhaarBackAvailable: {
               $ne: [{ $ifNull: ["$aadhaarBackUrl", ""] }, ""],
@@ -107,8 +137,26 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
       0,
     );
 
-    const normalizedProviders = providers.map((provider) => ({
-      ...provider,
+    const normalizedProviders = providers.map((provider) => {
+      const { aadhaarFrontUrl = "", aadhaarBackUrl = "", ...safeProvider } = provider;
+      const front = adminDocumentMetadata({
+        available: provider.aadhaarFrontAvailable,
+        value: aadhaarFrontUrl,
+        fileName: provider.aadhaarDocumentName,
+        uploadedAt: provider.aadhaarFrontUploadedAt || provider.updatedAt,
+        side: "front",
+        providerId: provider._id,
+      });
+      const back = adminDocumentMetadata({
+        available: provider.aadhaarBackAvailable,
+        value: aadhaarBackUrl,
+        fileName: provider.aadhaarBackDocumentName,
+        uploadedAt: provider.aadhaarBackUploadedAt || provider.updatedAt,
+        side: "back",
+        providerId: provider._id,
+      });
+      return {
+      ...safeProvider,
       businessName: provider.businessName || provider.name || "Unnamed provider",
       ownerName: provider.ownerName || "Not provided",
       verificationStatus:
@@ -120,7 +168,9 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
       aadhaarBackAvailable: Boolean(provider.aadhaarBackAvailable),
       aadhaarDocumentName: provider.aadhaarDocumentName || "",
       aadhaarBackDocumentName: provider.aadhaarBackDocumentName || "",
-    }));
+      documents: { aadhaarFront: front, aadhaarBack: back },
+    };
+    });
 
     res.json({
       stats: {
@@ -157,6 +207,80 @@ router.get("/dashboard", requireAuth, requireAdmin, async (_req, res) => {
   }
 });
 
+router.patch("/providers/:providerId/approval", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { approvalStatus, rejectionReason = "" } = req.body;
+
+    if (!["approved", "rejected"].includes(approvalStatus)) {
+      return res.status(400).json({ message: "Invalid provider approval status." });
+    }
+
+    const provider = await Provider.findById(req.params.providerId);
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found." });
+    }
+
+    if (!provider.aadhaarCardImage?.trim()) {
+      return res.status(400).json({ message: "Aadhaar document is required before this provider can be reviewed." });
+    }
+
+    const normalizedRejectionReason = String(rejectionReason || "").trim();
+    if (approvalStatus === "rejected" && !normalizedRejectionReason) {
+      return res.status(400).json({ message: "A rejection reason is required." });
+    }
+
+    const now = new Date();
+    provider.approvalStatus = approvalStatus;
+    provider.isActive = approvalStatus === "approved";
+    provider.approvedAt = approvalStatus === "approved" ? now : null;
+    provider.rejectedAt = approvalStatus === "rejected" ? now : null;
+    provider.rejectionReason = approvalStatus === "rejected" ? normalizedRejectionReason : "";
+    await provider.save();
+
+    res.json({ provider });
+  } catch (error) {
+    res.status(500).json({ message: "Provider approval could not be updated." });
+  }
+});
+
+
+router.patch("/providers/:providerId/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { availabilityStatus } = req.body;
+
+    if (!availabilityStatuses.includes(availabilityStatus)) {
+      return res.status(400).json({ message: "Invalid provider availability status." });
+    }
+
+    const provider = await Provider.findByIdAndUpdate(
+      req.params.providerId,
+      normalizeProviderAvailability(availabilityStatus),
+      { new: true }
+    );
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found." });
+    }
+
+    res.json({ provider, message: "Provider status updated." });
+  } catch (error) {
+    res.status(500).json({ message: "Provider status could not be updated." });
+  }
+});
+
+router.get("/staff-locations", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const providers = await Provider.find({ approvalStatus: "approved" })
+      .select("name category phone email location isActive availabilityStatus trackingActive trackingConsent currentLocation updatedAt")
+      .sort({ "currentLocation.timestamp": -1, updatedAt: -1 });
+
+    res.json({ providers });
+  } catch (error) {
+    res.status(500).json({ message: "Staff locations could not be loaded." });
+  }
+});
+
 router.get(
   "/providers/:providerId/aadhaar/:side",
   requireAuth,
@@ -164,15 +288,15 @@ router.get(
   async (req, res) => {
     try {
       const side = req.params.side === "back" ? "back" : "front";
-      const provider = await Provider.findById(req.params.providerId)
-        .select("aadhaarFrontUrl aadhaarBackUrl aadhaarDocumentName aadhaarBackDocumentName")
-        .lean();
+      const provider = await Provider.collection.findOne({ _id: new Provider.base.Types.ObjectId(req.params.providerId) });
 
       if (!provider) {
         return res.status(404).json({ message: "Provider not found." });
       }
 
-      const documentUrl = side === "back" ? provider.aadhaarBackUrl : provider.aadhaarFrontUrl;
+      const documentUrl = side === "back"
+        ? provider.aadhaarBackUrl || provider.aadhaarBackImage || provider.aadharBack
+        : provider.aadhaarFrontUrl || provider.aadhaarCardImage || provider.aadhaarImage || provider.aadhaarUrl || provider.aadhaar || provider.aadhar;
       const documentName = side === "back"
         ? provider.aadhaarBackDocumentName
         : provider.aadhaarDocumentName;
@@ -193,7 +317,8 @@ router.get(
       const fileBuffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
       const safeName = encodeURIComponent(documentName || `aadhaar-${side}`);
       res.setHeader("Cache-Control", "private, no-store");
-      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${safeName}`);
+      const disposition = ["1", "true"].includes(String(req.query.download || "").toLowerCase()) ? "attachment" : "inline";
+      res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${safeName}`);
       res.type(match[1]).send(fileBuffer);
     } catch {
       res.status(500).json({ message: "Aadhaar document could not be loaded." });

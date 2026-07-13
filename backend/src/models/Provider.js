@@ -128,6 +128,19 @@ const providerSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    image: {
+      type: String,
+      default: "",
+    },
+    aadhaarCardImage: {
+      type: String,
+      default: "",
+    },
+    aadhaarNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -165,6 +178,14 @@ const providerSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    aadhaarFrontUploadedAt: {
+      type: Date,
+      default: null,
+    },
+    aadhaarBackUploadedAt: {
+      type: Date,
+      default: null,
+    },
     verificationRejectedReason: {
       type: String,
       trim: true,
@@ -181,6 +202,19 @@ const providerSchema = new mongoose.Schema(
     rejectedAt: {
       type: Date,
       default: null,
+    },
+    rejectionReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    resubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    trackingConsent: {
+      type: Boolean,
+      default: false,
     },
     suspendedAt: {
       type: Date,

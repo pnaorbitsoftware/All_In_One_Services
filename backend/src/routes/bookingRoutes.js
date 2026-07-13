@@ -3,6 +3,8 @@ import express from "express";
 import requireAuth from "../middleware/requireAuth.js";
 import Booking from "../models/Booking.js";
 import Provider from "../models/Provider.js";
+import User from "../models/User.js";
+import { sendPushNotification } from "../utils/pushNotifications.js";
 import {
   sendBookingEmail,
   sendCustomerCancellationEmail,
@@ -16,6 +18,7 @@ import {
 import { buildStatusUpdateOperation } from "../services/bookingTrackingService.js";
 import { emitStatusChange, getProviderRoomId } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
+import { applyPaymentSplit } from "../utils/paymentSummary.js";
 
 const router = express.Router();
 
@@ -107,6 +110,24 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "All booking fields are required." });
     }
 
+    const activeAddressLocation = addressLocation || {
+      latitude: clientLatitude,
+      longitude: clientLongitude,
+      address,
+      timestamp: new Date()
+    };
+
+    if (!activeAddressLocation.latitude || !activeAddressLocation.longitude ||
+        !Number.isFinite(Number(activeAddressLocation.latitude)) || !Number.isFinite(Number(activeAddressLocation.longitude)) ||
+        Number(activeAddressLocation.latitude) === 0 || Number(activeAddressLocation.longitude) === 0) {
+      return res.status(400).json({ message: "Client location coordinates are required to create a booking." });
+    }
+
+    const preferredDate = new Date(date);
+    if (Number.isNaN(preferredDate.getTime())) {
+      return res.status(400).json({ message: "Please select a valid booking date." });
+    }
+
     const requestedProvider = providerId
       ? await Provider.findOne({
           _id: providerId,
@@ -144,6 +165,12 @@ router.post("/", requireAuth, async (req, res) => {
       phone,
       service: requestedProvider?.category || service,
       address,
+      addressLocation: {
+        latitude: Number(activeAddressLocation.latitude),
+        longitude: Number(activeAddressLocation.longitude),
+        address: String(activeAddressLocation.address || address || "").trim(),
+        timestamp: activeAddressLocation.timestamp ? new Date(activeAddressLocation.timestamp) : new Date(),
+      },
       problemDescription,
       preferredDate: date,
       preferredTime: time,
@@ -296,9 +323,20 @@ router.patch("/:bookingId/client-location", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Share GPS or provide an address for provider navigation." });
     }
 
-    const update = {};
+    const location = req.body && typeof req.body === "object" ? req.body : {};
+    const update = {
+      clientLocationUpdatedAt: new Date(),
+      locationRequested: false,
+    };
     if (clientLocation) update.clientLocation = clientLocation;
     if (address.trim()) update.address = address.trim();
+
+    update.addressLocation = {
+      latitude: Number.isFinite(Number(location.latitude)) ? Number(location.latitude) : (clientLatitude ? Number(clientLatitude) : null),
+      longitude: Number.isFinite(Number(location.longitude)) ? Number(location.longitude) : (clientLongitude ? Number(clientLongitude) : null),
+      address: String(location.address || address || "").trim(),
+      timestamp: location.timestamp ? new Date(location.timestamp) : new Date(),
+    };
 
     const booking = await Booking.findOneAndUpdate(
       {
@@ -329,7 +367,7 @@ router.patch("/:bookingId/client-location", requireAuth, async (req, res) => {
 router.patch("/:bookingId/review", requireAuth, async (req, res) => {
   try {
     const rating = Number(req.body?.rating);
-    const review = String(req.body?.review || "").trim();
+    const review = String(req.body?.review || req.body?.comment || "").trim();
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({ message: "Rating must be between 1 and 5 stars." });
@@ -422,6 +460,7 @@ router.patch("/:bookingId/status", requireAuth, async (req, res) => {
   }
 });
 
+
 router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   try {
     const booking = await Booking.findOne({
@@ -465,7 +504,85 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   }
 });
 
+
+router.patch("/:bookingId/payment-confirmation", requireAuth, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === "production" || process.env.ALLOW_MANUAL_PAYMENT_CONFIRMATION !== "true") {
+      return res.status(403).json({ message: "Manual payment confirmation is disabled. Use the verified payment endpoint." });
+    }
+
+    const { paymentReference = "", receiptUrl = "" } = req.body;
+    const booking = await Booking.findOne({ _id: req.params.bookingId, user: req.user._id });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (booking.estimateStatus !== "accepted") {
+      return res.status(400).json({ message: "Accept the provider final estimate before payment." });
+    }
+
+    if (!paymentReference) {
+      return res.status(400).json({ message: "Payment reference is required after gateway confirmation." });
+    }
+
+    booking.paymentStatus = "paid";
+    booking.clientPaymentStatus = "paid";
+    booking.clientPaidAt = new Date();
+    booking.paymentReference = paymentReference;
+    booking.receiptUrl = receiptUrl;
+    booking.paymentGateway = booking.paymentGateway || "external";
+    booking.adminPayoutStatus = "pending";
+    applyPaymentSplit(booking);
+    await booking.save();
+
+    res.json({ message: "Payment confirmed. Amount received by admin and provider payout is pending admin release.", booking });
+  } catch (error) {
+    res.status(500).json({ message: "Payment confirmation could not be saved." });
+  }
+});
+
+router.post("/:bookingId/request-location", requireAuth, async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.bookingId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    let allowed = false;
+    if (req.user.role === "admin") {
+      allowed = true;
+    } else if (req.user.role === "provider") {
+      const provider = await Provider.findOne({ owner: req.user._id });
+      if (provider && String(booking.assignedProvider) === String(provider._id)) {
+        allowed = true;
+      }
+    }
+
+    if (!allowed) {
+      return res.status(403).json({ message: "Only the assigned provider can request client location." });
+    }
+
+    booking.locationRequested = true;
+    await booking.save();
+
+    const client = await User.findById(booking.user);
+    if (client && Array.isArray(client.expoPushTokens) && client.expoPushTokens.length > 0) {
+      await sendPushNotification({
+        tokens: client.expoPushTokens,
+        title: "Location Request",
+        body: "The service provider has requested your current GPS location for navigation.",
+        data: {
+          type: "location_request",
+          bookingId: String(booking._id),
+        },
+      });
+    }
+
+    res.json({ message: "Location request sent successfully.", booking });
+  } catch (error) {
+    res.status(500).json({ message: "Could not request client location." });
+  }
+});
+
 export default router;
-
-
-
