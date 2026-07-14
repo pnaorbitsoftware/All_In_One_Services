@@ -12,6 +12,14 @@ import Booking from "../models/Booking.js";
 import Ledger from "../models/Ledger.js";
 import Payment from "../models/Payment.js";
 import Provider from "../models/Provider.js";
+import User from "../models/User.js";
+import {
+  applyPaymentSplit,
+  buildProviderPaymentSummary,
+  DEFAULT_PROVIDER_SHARE_PERCENT,
+  getProviderPayoutAmount,
+} from "../utils/paymentSummary.js";
+import { sendPushNotification } from "../utils/pushNotifications.js";
 
 const router = express.Router();
 
@@ -142,7 +150,7 @@ router.post("/bookings/:bookingId/estimate", requireAuth, requireProvider, async
       return sendError(res, 400, "Final estimate amount must be greater than 0.");
     }
 
-    const provider = await Provider.findOne({ owner: req.user._id }).select("_id").lean();
+    const provider = await Provider.findOne({ owner: req.user._id }).select("_id name").lean();
 
     if (!provider) {
       return sendError(res, 404, "Provider profile not found.");
@@ -187,6 +195,23 @@ router.post("/bookings/:bookingId/estimate", requireAuth, requireProvider, async
     booking.razorpayPaymentId = "";
     appendEstimateHistory(booking, finalEstimateAmount, provider._id, "submitted");
     await booking.save();
+
+    // Send push notification to client
+    try {
+      const client = await User.findById(booking.user);
+      sendPushNotification({
+        tokens: client?.expoPushTokens || [],
+        title: "Estimate received",
+        body: `${provider?.name || "Provider"} sent ₹${booking.finalEstimateAmount} estimate for ${booking.service}.`,
+        data: {
+          type: "estimate",
+          bookingId: String(booking._id),
+          status: "estimate-submitted",
+        },
+      });
+    } catch (pushError) {
+      console.error("Failed to send push notification:", pushError);
+    }
 
     res.json({
       success: true,
@@ -521,6 +546,34 @@ router.post("/verify", requireAuth, requireClient, async (req, res) => {
           totalEarnings: providerShare,
         },
       });
+    }
+
+    // Send push notifications
+    try {
+      const providerDoc = booking.assignedProvider ? await Provider.findById(booking.assignedProvider).populate("owner") : null;
+      sendPushNotification({
+        tokens: req.user.expoPushTokens || [],
+        title: "Payment completed",
+        body: `Payment completed for ${booking.service}. Your provider can start the work now.`,
+        data: {
+          type: "payment",
+          bookingId: String(booking._id),
+          status: "paid",
+        },
+      });
+
+      sendPushNotification({
+        tokens: providerDoc?.owner?.expoPushTokens || [],
+        title: "Client payment received",
+        body: `${booking.name} completed payment for ${booking.service}. You can start the service.`,
+        data: {
+          type: "payment",
+          bookingId: String(booking._id),
+          status: "paid",
+        },
+      });
+    } catch (pushError) {
+      console.error("Failed to send push notifications:", pushError);
     }
 
     res.json({

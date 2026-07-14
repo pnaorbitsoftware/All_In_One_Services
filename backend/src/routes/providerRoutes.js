@@ -20,6 +20,10 @@ import { buildStatusUpdateOperation } from "../services/bookingTrackingService.j
 import { emitStatusChange } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
 import { invalidateCatalogCache } from "./catalogRoutes.js";
+import { buildServiceRegexes, normalizeServiceName } from "../utils/serviceMatching.js";
+import { buildProviderPaymentSummary, DEFAULT_PROVIDER_SHARE_PERCENT } from "../utils/paymentSummary.js";
+import { buildTrackingEvent, ensureTrackingHistory, normalizeTrackingStatus } from "../utils/tracking.js";
+import { sendPushNotification } from "../utils/pushNotifications.js";
 
 const router = express.Router();
 const providerIdentityCache = new Map();
@@ -42,6 +46,28 @@ const rememberProviderIdentity = (provider) => {
     expiresAt: Date.now() + providerIdentityCacheTtlMs,
   });
 };
+
+const isProviderApproved = (provider) => provider?.approvalStatus === "approved";
+const isProviderBookable = (provider) =>
+  Boolean(provider?.isActive && isProviderApproved(provider) && ["active", "available"].includes(provider.availabilityStatus || "available"));
+
+const lockedDashboardPayload = (provider) => ({
+  provider,
+  bookings: [],
+  availableRequests: [],
+  dashboardLocked: true,
+  message:
+    provider.approvalStatus === "rejected"
+      ? provider.rejectionReason || "Provider profile was not approved by admin. Edit your profile and resubmit it."
+      : "Provider profile is waiting for admin approval.",
+});
+
+const unavailableProviderResponse = (res, provider) =>
+  res.status(403).json({
+    dashboardLocked: true,
+    provider,
+    message: "Provider is currently unavailable.",
+  });
 
 const getProviderIdentity = async (ownerId) => {
   const cacheKey = String(ownerId);
@@ -133,11 +159,54 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
         : Promise.resolve([]),
     ]);
 
-    res.json({
-      provider,
-      bookings,
-      availableRequests: availableRequests.map(hideClientContactUntilAccepted),
-    });
+    // ------------------------------
+// Booking History Categorization
+// ------------------------------
+
+const pendingRequests = availableRequests.filter((booking) => {
+  return String(booking.status || "").toLowerCase() === "pending";
+});
+
+const completedBookings = bookings.filter((booking) => {
+  return String(booking.status || "").toLowerCase() === "completed";
+});
+
+const providerRejectedBookings = bookings.filter((booking) => {
+  const status = String(booking.status || "").toLowerCase();
+  return status === "rejected" || (status === "cancelled" && booking.cancelledBy === "provider");
+});
+
+const clientCancelledBookings = bookings.filter((booking) => {
+  return (
+    String(booking.status || "").toLowerCase() === "cancelled" &&
+    booking.cancelledBy === "client"
+  );
+});
+
+console.log("Pending Requests:", pendingRequests.length);
+console.log("Completed:", completedBookings.length);
+console.log("Provider Rejected:", providerRejectedBookings.length);
+console.log("Client Cancelled:", clientCancelledBookings.length);
+
+
+
+res.json({
+  provider,
+  bookings,
+  availableRequests: availableRequests.map(hideClientContactUntilAccepted),
+  history: {
+    pending: pendingRequests,
+    completed: completedBookings,
+    providerRejected: providerRejectedBookings,
+    clientCancelled: clientCancelledBookings,
+  },
+  stats: {
+    pending: pendingRequests.length,
+    completed: completedBookings.length,
+    providerRejected: providerRejectedBookings.length,
+    clientCancelled: clientCancelledBookings.length,
+  },
+});
   } catch (error) {
     res.status(500).json({ message: "Provider dashboard could not be loaded." });
   }
@@ -215,6 +284,9 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       responseTime,
       description,
       about,
+      image = "",
+      aadhaarCardImage,
+      availabilityStatus,
       features = "",
       bankDetails = {},
       aadhaarNumber,
@@ -241,18 +313,31 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
 
     const submittedFront = aadhaarFrontUrl || aadhaarDocumentUrl || "";
     const submittedBack = aadhaarBackUrl || "";
-    const aadhaarDigits = String(aadhaarNumber || "").replace(/\D/g, "");
+
+    const nextAadhaarImage = typeof aadhaarCardImage === "string" && aadhaarCardImage.trim()
+      ? aadhaarCardImage.trim()
+      : provider.aadhaarCardImage;
+    const nextAadhaarNumber = aadhaarNumber === undefined
+      ? provider.aadhaarNumber
+      : String(aadhaarNumber || "").replace(/\D/g, "");
+
     if (submittedFront && !isValidIdentityDocument(submittedFront)) {
       return res.status(400).json({ message: "Aadhaar front document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
     }
     if (submittedBack && !isValidIdentityDocument(submittedBack)) {
       return res.status(400).json({ message: "Aadhaar back document must be a PNG, JPG, WEBP, or PDF smaller than 2 MB." });
     }
-    if (aadhaarNumber !== undefined && aadhaarDigits.length !== 12) {
+    if (aadhaarNumber !== undefined && nextAadhaarNumber.length !== 12) {
       return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required." });
     }
-    if ((submittedFront || submittedBack) && (!(submittedFront || provider.aadhaarFrontUrl) || !(submittedBack || provider.aadhaarBackUrl))) {
-      return res.status(400).json({ message: "Both Aadhaar front and back documents are required for verification." });
+
+    if (provider.approvalStatus !== "approved") {
+      const hasSingleCard = Boolean(nextAadhaarImage);
+      const hasFrontBack = (submittedFront || provider.aadhaarFrontUrl) && (submittedBack || provider.aadhaarBackUrl);
+
+      if (!hasSingleCard && !hasFrontBack) {
+        return res.status(400).json({ message: "Aadhaar card image or documents are required for verification." });
+      }
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -272,6 +357,10 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
     provider.responseTime = responseTime?.trim() || provider.responseTime || "";
     provider.description = description.trim();
     provider.about = about?.trim() || description.trim();
+    provider.image = typeof image === "string" ? image : provider.image || "";
+    provider.aadhaarCardImage = nextAadhaarImage;
+    provider.aadhaarNumber = nextAadhaarNumber;
+
     if (submittedFront) {
       provider.aadhaarFrontUrl = submittedFront;
       provider.aadhaarFrontUploadedAt = new Date();
@@ -280,16 +369,25 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       provider.aadhaarBackUrl = submittedBack;
       provider.aadhaarBackUploadedAt = new Date();
     }
-    if (aadhaarDigits.length === 12) provider.aadhaarNumberMasked = `XXXX XXXX ${aadhaarDigits.slice(-4)}`;
+    if (nextAadhaarNumber.length === 12) {
+      provider.aadhaarNumberMasked = `XXXX XXXX ${nextAadhaarNumber.slice(-4)}`;
+    }
     if (aadhaarDocumentName) provider.aadhaarDocumentName = String(aadhaarDocumentName).trim();
     if (aadhaarBackDocumentName) provider.aadhaarBackDocumentName = String(aadhaarBackDocumentName).trim();
-    if (submittedFront || submittedBack) {
+
+    if (submittedFront || submittedBack || (aadhaarCardImage && provider.approvalStatus !== "approved")) {
       provider.verificationStatus = "pending";
       provider.approvalStatus = "pending";
       provider.isActive = false;
       provider.verificationRejectedReason = "";
       provider.requestedAt = new Date();
     }
+
+    if (availabilityStatus && ["active", "inactive", "absent", "available"].includes(availabilityStatus)) {
+      provider.availabilityStatus = availabilityStatus;
+      provider.isActive = availabilityStatus !== "inactive";
+    }
+
     provider.features = Array.isArray(features)
       ? features.map((feature) => String(feature).trim()).filter(Boolean)
       : String(features).split(",").map((feature) => feature.trim()).filter(Boolean);
@@ -300,6 +398,15 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
       accountNumber: String(bankDetails.accountNumber || provider.bankDetails?.accountNumber || "").replace(/\s+/g, ""),
       ifscCode: String(bankDetails.ifscCode || provider.bankDetails?.ifscCode || "").trim().toUpperCase(),
     };
+
+    if (provider.approvalStatus === "rejected") {
+      provider.approvalStatus = "pending";
+      provider.isActive = false;
+      provider.rejectionReason = "";
+      provider.rejectedAt = null;
+      provider.approvedAt = null;
+      provider.resubmittedAt = new Date();
+    }
 
     await provider.save();
     invalidateCatalogCache();
@@ -462,6 +569,17 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
 
     emitStatusChange(req.app.get("io"), booking);
 
+    sendPushNotification({
+      tokens: client?.expoPushTokens || [],
+      title: "Provider assigned",
+      body: `${provider.name} accepted your ${booking.service} booking.`,
+      data: {
+        type: "booking",
+        bookingId: String(booking._id),
+        status: "Provider Assigned",
+      },
+    });
+
     res.json({ booking });
   } catch (error) {
     res.status(500).json({ message: "Booking request could not be accepted." });
@@ -555,7 +673,6 @@ router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async 
   }
 });
 
-
 router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async (req, res) => {
   try {
     const provider = await Provider.findOne({ owner: req.user._id });
@@ -590,6 +707,7 @@ router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async 
     res.status(500).json({ message: "Provider tracking details could not be loaded." });
   }
 });
+
 router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, async (req, res) => {
   try {
     const provider = await Provider.findOne({ owner: req.user._id });
@@ -634,6 +752,7 @@ router.patch("/bookings/:bookingId/location", requireAuth, requireProvider, asyn
     res.status(500).json({ message: "Provider location could not be updated." });
   }
 });
+
 router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async (req, res) => {
   try {
     const { status, workImage = "", cancellationReason = "" } = req.body;
@@ -662,7 +781,9 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       }
       update.cancelledBy = "provider";
       update.cancelledAt = new Date();
+      update.rejectedAt = new Date();
       update.cancellationReason = cancellationReason.trim();
+      update.adminPayoutStatus = "not_ready";
     }
 
     const existingBooking = await Booking.findOne({
@@ -733,6 +854,24 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
         reason: booking.cancellationReason,
         cancelledBy: "provider",
       }).catch(() => {});
+    }
+
+    if (status === "cancelled") {
+      try {
+        const client = await User.findById(booking.user);
+        sendPushNotification({
+          tokens: client?.expoPushTokens || [],
+          title: "Booking Request Rejected",
+          body: `Your booking was rejected by the provider. Reason: ${booking.cancellationReason || "No reason provided"}`,
+          data: {
+            type: "booking",
+            bookingId: String(booking._id),
+            status: "Cancelled",
+          },
+        }).catch(() => {});
+      } catch (err) {
+        console.error("Rejection push notification failed", err);
+      }
     }
 
     emitStatusChange(req.app.get("io"), booking);
