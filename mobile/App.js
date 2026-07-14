@@ -861,6 +861,12 @@ function ServiceHubApp() {
   }, [loadBookings, token, user]);
 
   useEffect(() => {
+    if (token && user?.role === "provider" && activeTab === "provider") {
+      loadProviderDashboard(true).catch(() => {});
+    }
+  }, [loadProviderDashboard, token, user, activeTab]);
+
+  useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
 
@@ -1472,6 +1478,8 @@ function ServiceHubApp() {
               const data = await bookingApi.cancel(token, booking._id);
               setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
               setToast("Booking cancelled successfully.");
+              loadBookings(true).catch(() => {});
+              loadProviderDashboard(true).catch(() => {});
             } catch (error) {
               setToast(error.message);
             }
@@ -1479,7 +1487,7 @@ function ServiceHubApp() {
         },
       ]);
     },
-    [token]
+    [token, loadBookings, loadProviderDashboard]
   );
 
   const acceptProviderRequest = useCallback(
@@ -1495,11 +1503,13 @@ function ServiceHubApp() {
           };
         });
         setToast("Request accepted.");
+        loadProviderDashboard(true).catch(() => {});
+        loadBookings(true).catch(() => {});
       } catch (error) {
         setToast(error.message);
       }
     },
-    [token]
+    [token, loadProviderDashboard, loadBookings]
   );
 
   const requestClientLocation = useCallback(
@@ -1559,13 +1569,15 @@ function ServiceHubApp() {
         });
         setProviderRejectBooking(null);
         setToast("Booking request rejected.");
+        loadProviderDashboard(true).catch(() => {});
+        loadBookings(true).catch(() => {});
       } catch (error) {
         setToast(error.message);
       } finally {
         setProviderSubmitting(false);
       }
     },
-    [providerRejectBooking, token]
+    [providerRejectBooking, token, loadProviderDashboard, loadBookings]
   );
 
   const updateProviderTrackingStatus = useCallback(
@@ -1583,7 +1595,8 @@ function ServiceHubApp() {
             };
           });
           setToast(`${status} updated.`);
-          loadBookings(true);
+          loadBookings(true).catch(() => {});
+          loadProviderDashboard(true).catch(() => {});
         } catch (error) {
           setToast(error.message);
         }
@@ -1599,7 +1612,7 @@ function ServiceHubApp() {
 
       runUpdate();
     },
-    [loadBookings, token]
+    [loadBookings, loadProviderDashboard, token]
   );
 
   const completeProviderJob = useCallback(
@@ -1623,13 +1636,15 @@ function ServiceHubApp() {
         });
         setProviderEstimateBooking(null);
         setToast("Estimate sent to client.");
+        loadProviderDashboard(true).catch(() => {});
+        loadBookings(true).catch(() => {});
       } catch (error) {
         setToast(error.message);
       } finally {
         setEstimateSubmitting(false);
       }
     },
-    [providerEstimateBooking, token]
+    [providerEstimateBooking, token, loadProviderDashboard, loadBookings]
   );
 
   const acceptClientEstimate = useCallback(
@@ -1638,11 +1653,13 @@ function ServiceHubApp() {
         const data = await paymentApi.acceptEstimate(token, booking._id);
         setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
         setToast("Estimate accepted. Continue to final estimate payment.");
+        loadBookings(true).catch(() => {});
+        loadProviderDashboard(true).catch(() => {});
       } catch (error) {
         setToast(error.message);
       }
     },
-    [token]
+    [token, loadBookings, loadProviderDashboard]
   );
   const payClientEstimate = useCallback(
     async (booking) => {
@@ -1695,6 +1712,8 @@ function ServiceHubApp() {
         setPaymentCheckoutError("");
         setPaymentConfirmation(verified.booking);
         setToast(verified.message || "Payment successful.");
+        loadBookings(true).catch(() => {});
+        loadProviderDashboard(true).catch(() => {});
       } catch (error) {
         const message = error?.description || error?.message || "Payment could not be verified.";
         setPaymentCheckoutError(message);
@@ -1703,7 +1722,7 @@ function ServiceHubApp() {
         setPaymentVerifying(false);
       }
     },
-    [paymentCheckout, token]
+    [paymentCheckout, token, loadBookings, loadProviderDashboard]
   );
 
   const rejectClientEstimate = useCallback(
@@ -1718,6 +1737,8 @@ function ServiceHubApp() {
               const data = await paymentApi.rejectEstimate(token, booking._id, "Rejected from mobile app.");
               setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
               setToast(data.message || "Estimate rejected.");
+              loadBookings(true).catch(() => {});
+              loadProviderDashboard(true).catch(() => {});
             } catch (error) {
               setToast(error.message);
             }
@@ -1725,7 +1746,7 @@ function ServiceHubApp() {
         },
       ]);
     },
-    [token]
+    [token, loadBookings, loadProviderDashboard]
   );
   const withdrawProviderEarnings = useCallback(
     async () => {
@@ -1769,13 +1790,15 @@ function ServiceHubApp() {
         });
         setProviderCancelBooking(null);
         setToast("Job cancelled.");
+        loadProviderDashboard(true).catch(() => {});
+        loadBookings(true).catch(() => {});
       } catch (error) {
         setToast(error.message);
       } finally {
         setProviderSubmitting(false);
       }
     },
-    [providerCancelBooking, token]
+    [providerCancelBooking, token, loadProviderDashboard, loadBookings]
   );
 
   const submitProviderProfile = useCallback(

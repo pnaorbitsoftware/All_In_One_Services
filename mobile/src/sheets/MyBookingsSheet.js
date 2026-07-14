@@ -62,8 +62,8 @@ export default function MyBookingsSheet({
 
   const activeBookings = useMemo(() => {
     return bookings.filter((booking) => {
-      const status = String(booking.status || "").toLowerCase();
-      return ["accepted", "assigned", "confirmed", "on_the_way", "en_route", "arrived", "job_started", "started", "in_progress", "in progress"].includes(status);
+      const status = String(booking.status || "").toLowerCase().replace(/_/g, " ");
+      return ["accepted", "confirmed", "provider assigned", "provider_assigned", "on the way", "on_the_way", "arrived", "service started", "service_started"].includes(status);
     });
   }, [bookings]);
 
@@ -152,16 +152,18 @@ export default function MyBookingsSheet({
           {error ? (
             <Text style={[styles.softError, { backgroundColor: theme.roseSoft, color: theme.rose }]}>{error}</Text>
           ) : null}
-          <Section
-            title="Accepted Request Provider"
-            bookings={activeBookings}
-            emptyCopy="No Active Booking"
-            onCancel={onCancelBooking}
-            onAcceptEstimate={onAcceptEstimate}
-            onRejectEstimate={onRejectEstimate}
-            onPayEstimate={onPayEstimate}
-            onTrack={onTrackBooking}
-          />
+          {!historyOpen && (
+            <Section
+              title="Accepted Request Provider"
+              bookings={activeBookings}
+              emptyCopy="No Active Booking"
+              onCancel={onCancelBooking}
+              onAcceptEstimate={onAcceptEstimate}
+              onRejectEstimate={onRejectEstimate}
+              onPayEstimate={onPayEstimate}
+              onTrack={onTrackBooking}
+            />
+          )}
           <Pressable
             accessibilityRole="button"
             onPress={() => setHistoryOpen((open) => !open)}

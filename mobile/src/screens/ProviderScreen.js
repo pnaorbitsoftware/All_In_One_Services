@@ -49,10 +49,12 @@ export default function ProviderScreen({
   const provider = providerData?.provider;
   const availableRequests = providerData?.availableRequests || [];
   const bookings = providerData?.bookings || [];
-  const acceptedBookings = useMemo(
-    () => bookings.filter((booking) => !["completed", "cancelled", "rejected"].includes(String(booking.status || "").toLowerCase())),
-    [bookings]
-  );
+  const acceptedBookings = useMemo(() => {
+    return bookings.filter((booking) => {
+      const status = String(booking.status || "").toLowerCase().replace(/_/g, " ");
+      return ["accepted", "confirmed", "provider assigned", "provider_assigned", "on the way", "on_the_way", "arrived", "service started", "service_started"].includes(status);
+    });
+  }, [bookings]);
 
   const pendingHistory = useMemo(() => {
     return availableRequests.filter((booking) => String(booking.status || "").toLowerCase() === "pending");
@@ -117,28 +119,27 @@ export default function ProviderScreen({
     if (dashboardLocked) return [];
 
     const list = [];
-    if (availableRequests.length) {
-      list.push({ title: "Booking Request", type: "available", data: availableRequests });
+    if (historyOpen) {
+      if (selectedHistoryBookings.length) {
+        const historyTitles = {
+          pending: "Pending Requests",
+          providerRejected: "Provider Rejected",
+          clientCancelled: "Client Cancelled",
+          completed: "Completed Bookings",
+        };
+        list.push({
+          title: historyTitles[historyTab] || "History",
+          type: historyTab === "pending" ? "available" : "history",
+          data: selectedHistoryBookings,
+        });
+      }
+    } else {
+      if (acceptedBookings.length) {
+        list.push({ title: "Accepted Bookings", type: "assigned", data: acceptedBookings });
+      }
     }
-    if (acceptedBookings.length) {
-      list.push({ title: "Accepted Bookings", type: "assigned", data: acceptedBookings });
-    }
-   if (historyOpen && selectedHistoryBookings.length) {
-  const historyTitles = {
-    pending: "Pending Requests",
-    providerRejected: "Provider Rejected",
-    clientCancelled: "Client Cancelled",
-    completed: "Completed Bookings",
-  };
-
-  list.push({
-    title: historyTitles[historyTab] || "History",
-    type: "history",
-    data: selectedHistoryBookings,
-  });
-}
     return list;
-  }, [acceptedBookings, availableRequests, selectedHistoryBookings, historyTab, dashboardLocked, historyOpen]);
+  }, [acceptedBookings, selectedHistoryBookings, historyTab, dashboardLocked, historyOpen]);
 
   const keyExtractor = useCallback((item) => String(item._id || item.id), []);
   const renderItem = useCallback(
@@ -418,25 +419,6 @@ export default function ProviderScreen({
                   </Text>
                 </Pressable>
               </ScrollView>
-            </View>
-          )}
-
-          {historyOpen && selectedHistoryBookings.length > 0 && (
-            <View style={{ marginTop: 12, gap: 12 }}>
-              {selectedHistoryBookings.map((item) => (
-                <JobCard
-                  key={item._id || item.id || String(Math.random())}
-                  booking={item}
-                  isAvailable={false}
-                  onComplete={null}
-                  onCancel={null}
-                  onEstimate={null}
-                  onUpdateTrackingStatus={null}
-                  onStartTracking={null}
-                  onStopTracking={null}
-                  onRequestLocation={onRequestLocation}
-                />
-              ))}
             </View>
           )}
 
