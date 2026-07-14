@@ -1,13 +1,11 @@
-﻿import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import BookingCard from "../components/BookingCard";
 import { ErrorState, LoadingState } from "../components/StateView";
 import ModalSheet from "../components/ModalSheet";
 import { colors, radius, useThemeColors } from "../theme";
-
-const historyStatuses = new Set(["completed", "cancelled"]);
 
 function Section({ title, copy, bookings, emptyCopy, onCancel, onAcceptEstimate, onRejectEstimate, onPayEstimate, onTrack }) {
   const theme = useThemeColors();
@@ -60,24 +58,63 @@ export default function MyBookingsSheet({
 }) {
   const theme = useThemeColors();
   const [historyOpen, setHistoryOpen] = useState(false);
-  const groupedBookings = useMemo(() => {
-    const active = [];
-    const history = [];
+  const [historyTab, setHistoryTab] = useState("pending");
+
+  const activeBookings = useMemo(() => {
+    return bookings.filter((booking) => {
+      const status = String(booking.status || "").toLowerCase();
+      return ["accepted", "assigned", "confirmed", "on_the_way", "en_route", "arrived", "job_started", "started", "in_progress", "in progress"].includes(status);
+    });
+  }, [bookings]);
+
+  const filteredHistory = useMemo(() => {
+    const pending = [];
+    const completed = [];
+    const providerRejected = [];
+    const clientCancelled = [];
 
     bookings.forEach((booking) => {
-      const status = String(booking.status || "pending").toLowerCase();
-      if (historyStatuses.has(status)) {
-        history.push(booking);
-      } else {
-        active.push(booking);
+      const status = String(booking.status || "").toLowerCase();
+      if (status === "pending") {
+        pending.push(booking);
+      } else if (status === "completed") {
+        completed.push(booking);
+      } else if (status === "rejected" || (status === "cancelled" && booking.cancelledBy === "provider")) {
+        providerRejected.push(booking);
+      } else if (status === "cancelled") {
+        clientCancelled.push(booking);
       }
     });
 
-    return { active, history };
+    return { pending, completed, providerRejected, clientCancelled };
   }, [bookings]);
 
+  const selectedHistoryBookings = useMemo(() => {
+    switch (historyTab) {
+      case "pending":
+        return filteredHistory.pending;
+      case "completed":
+        return filteredHistory.completed;
+      case "providerRejected":
+        return filteredHistory.providerRejected;
+      case "clientCancelled":
+        return filteredHistory.clientCancelled;
+      default:
+        return filteredHistory.pending;
+    }
+  }, [historyTab, filteredHistory]);
+
+  const historyCount =
+    filteredHistory.pending.length +
+    filteredHistory.completed.length +
+    filteredHistory.providerRejected.length +
+    filteredHistory.clientCancelled.length;
+
   useEffect(() => {
-    if (!visible) setHistoryOpen(false);
+    if (!visible) {
+      setHistoryOpen(false);
+      setHistoryTab("pending");
+    }
   }, [visible]);
 
   return (
@@ -117,7 +154,7 @@ export default function MyBookingsSheet({
           ) : null}
           <Section
             title="Accepted Request Provider"
-            bookings={groupedBookings.active}
+            bookings={activeBookings}
             emptyCopy="No Active Booking"
             onCancel={onCancelBooking}
             onAcceptEstimate={onAcceptEstimate}
@@ -137,13 +174,13 @@ export default function MyBookingsSheet({
             <View style={styles.historyText}>
               <Text style={[styles.historyTitle, { color: theme.text }]}>Booking History</Text>
               <Text style={[styles.historyCopy, { color: theme.textMuted }]}>
-                {groupedBookings.history.length
-                  ? `${groupedBookings.history.length} completed or canceled bookings`
-                  : "Completed and canceled bookings will appear here"}
+                {historyCount
+                  ? `${filteredHistory.pending.length} pending, ${filteredHistory.completed.length} completed, ${(filteredHistory.providerRejected.length + filteredHistory.clientCancelled.length)} cancelled/rejected`
+                  : "Pending, completed, and cancelled bookings will appear here"}
               </Text>
             </View>
             <Text style={[styles.sectionCount, { backgroundColor: theme.surface, color: theme.textMuted }]}>
-              {groupedBookings.history.length}
+              {historyCount}
             </Text>
             <MaterialCommunityIcons
               name={historyOpen ? "chevron-up" : "chevron-down"}
@@ -152,16 +189,68 @@ export default function MyBookingsSheet({
             />
           </Pressable>
           {historyOpen ? (
-            <Section
-              title="Booking History"
-              bookings={groupedBookings.history}
-              emptyCopy="No booking history yet."
-              onCancel={onCancelBooking}
-              onAcceptEstimate={onAcceptEstimate}
-              onRejectEstimate={onRejectEstimate}
-              onPayEstimate={onPayEstimate}
-              onTrack={null}
-            />
+            <View style={{ marginTop: 12, gap: 10 }}>
+              <Text style={[styles.historyTabsTitle, { color: theme.text }]}>History Categories</Text>
+              <View style={styles.tabRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollTabContainer}>
+                  {[
+                    { id: "pending", label: `Pending (${filteredHistory.pending.length})` },
+                    { id: "completed", label: `Completed (${filteredHistory.completed.length})` },
+                    { id: "providerRejected", label: `Provider Rejected (${filteredHistory.providerRejected.length})` },
+                    { id: "clientCancelled", label: `Client Cancelled (${filteredHistory.clientCancelled.length})` },
+                  ].map((tab) => (
+                    <Pressable
+                      key={tab.id}
+                      onPress={() => setHistoryTab(tab.id)}
+                      style={[
+                        styles.tabButton,
+                        {
+                          backgroundColor: historyTab === tab.id ? theme.teal : theme.surfaceMuted,
+                          borderColor: historyTab === tab.id ? theme.teal : theme.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.tabButtonText,
+                          { color: historyTab === tab.id ? "#ffffff" : theme.textMuted },
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={{ marginTop: 12 }}>
+                <Section
+                  title={
+                    historyTab === "pending"
+                      ? "Pending Requests"
+                      : historyTab === "completed"
+                      ? "Completed Orders"
+                      : historyTab === "providerRejected"
+                      ? "Provider Rejected"
+                      : "Client Cancelled"
+                  }
+                  bookings={selectedHistoryBookings}
+                  emptyCopy={
+                    historyTab === "pending"
+                      ? "No pending requests."
+                      : historyTab === "completed"
+                      ? "No completed bookings."
+                      : historyTab === "providerRejected"
+                      ? "No provider rejected bookings."
+                      : "No client cancelled bookings."
+                  }
+                  onCancel={onCancelBooking}
+                  onAcceptEstimate={onAcceptEstimate}
+                  onRejectEstimate={onRejectEstimate}
+                  onPayEstimate={onPayEstimate}
+                  onTrack={null}
+                />
+              </View>
+            </View>
           ) : null}
         </>
       )}
@@ -265,6 +354,29 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+  historyTabsTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 5,
+  },
+  tabRow: {
+    flexDirection: "row",
+    marginTop: 5,
+  },
+  scrollTabContainer: {
+    gap: 8,
+    paddingRight: 10,
+  },
+  tabButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  tabButtonText: {
+    fontWeight: "600",
+    fontSize: 13,
   },
 });
 

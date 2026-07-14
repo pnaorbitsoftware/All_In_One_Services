@@ -122,6 +122,14 @@ function JobCard({ booking, type, onAccept, onReject, onComplete, onCancel, onEs
             </Text>
           </View>
         ) : null}
+        {booking.status && ["rejected", "Rejected"].includes(booking.status) && (booking.rejectionReason || booking.cancellationReason || booking.adminRejectionReason) ? (
+          <View style={styles.line}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={theme.rose} />
+            <Text style={[styles.lineText, { color: theme.rose }]} numberOfLines={2}>
+              Rejection reason: {booking.rejectionReason || booking.cancellationReason || booking.adminRejectionReason}
+            </Text>
+          </View>
+        ) : null}
       </View>
       {isAvailable ? (
         <View style={{ gap: 10 }}>

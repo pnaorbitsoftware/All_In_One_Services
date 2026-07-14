@@ -6,6 +6,7 @@ import {
   Image,
   Pressable,
   SectionList,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -49,54 +50,58 @@ export default function ProviderScreen({
   const availableRequests = providerData?.availableRequests || [];
   const bookings = providerData?.bookings || [];
   const acceptedBookings = useMemo(
-    () => bookings.filter((booking) => !["completed", "cancelled"].includes(String(booking.status || "").toLowerCase())),
-    [bookings]
-  );
-  const canceledBookings = useMemo(
-    () => bookings.filter((booking) => String(booking.status || "").toLowerCase() === "cancelled"),
-    [bookings]
-  );
-  const completedBookings = useMemo(
-    () => bookings.filter((booking) => String(booking.status || "").toLowerCase() === "completed"),
+    () => bookings.filter((booking) => !["completed", "cancelled", "rejected"].includes(String(booking.status || "").toLowerCase())),
     [bookings]
   );
 
-  // New History Data from Backend
-const history = providerData?.history ?? {};
-const stats = providerData?.stats ?? {};
+  const pendingHistory = useMemo(() => {
+    return availableRequests.filter((booking) => String(booking.status || "").toLowerCase() === "pending");
+  }, [availableRequests]);
 
-const pendingHistory = history.pending ?? [];
-const providerRejectedHistory = history.providerRejected ?? [];
-const clientCancelledHistory = history.clientCancelled ?? [];
-const completedHistory = history.completed ?? [];
+  const completedHistory = useMemo(() => {
+    return bookings.filter((booking) => String(booking.status || "").toLowerCase() === "completed");
+  }, [bookings]);
 
-const selectedHistoryBookings = useMemo(() => {
-  switch (historyTab) {
-    case "pending":
-      return pendingHistory;
+  const providerRejectedHistory = useMemo(() => {
+    return bookings.filter((booking) => {
+      const status = String(booking.status || "").toLowerCase();
+      return status === "rejected" || (status === "cancelled" && booking.cancelledBy === "provider");
+    });
+  }, [bookings]);
 
-    case "providerRejected":
-      return providerRejectedHistory;
+  const clientCancelledHistory = useMemo(() => {
+    return bookings.filter((booking) => {
+      return String(booking.status || "").toLowerCase() === "cancelled" && booking.cancelledBy === "client";
+    });
+  }, [bookings]);
 
-    case "clientCancelled":
-      return clientCancelledHistory;
+  const stats = useMemo(() => ({
+    pending: pendingHistory.length,
+    completed: completedHistory.length,
+    providerRejected: providerRejectedHistory.length,
+    clientCancelled: clientCancelledHistory.length,
+  }), [pendingHistory, completedHistory, providerRejectedHistory, clientCancelledHistory]);
 
-    case "completed":
-      return completedHistory;
+  const selectedHistoryBookings = useMemo(() => {
+    switch (historyTab) {
+      case "pending":
+        return pendingHistory;
+      case "providerRejected":
+        return providerRejectedHistory;
+      case "clientCancelled":
+        return clientCancelledHistory;
+      case "completed":
+        return completedHistory;
+      default:
+        return pendingHistory;
+    }
+  }, [historyTab, pendingHistory, providerRejectedHistory, clientCancelledHistory, completedHistory]);
 
-    default:
-      return pendingHistory;
-  }
-}, [
-  historyTab,
-  pendingHistory,
-  providerRejectedHistory,
-  clientCancelledHistory,
-  completedHistory,
-]);
-
-
-  const historyCount = canceledBookings.length + completedBookings.length;
+  const historyCount =
+    stats.pending +
+    stats.completed +
+    stats.providerRejected +
+    stats.clientCancelled;
   const providerUnavailable = provider && !provider.isBookable;
 
   const dashboardLocked = Boolean(
@@ -311,8 +316,8 @@ const selectedHistoryBookings = useMemo(() => {
               <Text style={[styles.historyTitle, { color: theme.text }]}>Booking History</Text>
               <Text style={[styles.historyCopy, { color: theme.textMuted }]}>
                 {historyCount
-                  ? `${canceledBookings.length} canceled, ${completedBookings.length} completed`
-                  : "Canceled and completed bookings will appear here"}
+                  ? `${stats.pending ?? 0} pending, ${stats.completed ?? 0} completed, ${(stats.providerRejected ?? 0) + (stats.clientCancelled ?? 0)} cancelled/rejected`
+                  : "Pending, completed, and cancelled bookings will appear here"}
               </Text>
             </View>
             <MaterialCommunityIcons
@@ -322,103 +327,130 @@ const selectedHistoryBookings = useMemo(() => {
             />
           </Pressable>
           {historyOpen && (
-  <View style={{ marginTop: 12 }}>
-    <Text
-  style={{
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 10,
-  }}
->
-  History Categories
-</Text>
-<View style={{ flexDirection: "row" }}>
-  <Pressable
-    onPress={() => setHistoryTab("pending")}
-    style={{
-      backgroundColor:
-        historyTab === "pending" ? theme.teal : theme.surface,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 20,
-    }}
-  >
-    <Text
-      style={{
-        color: historyTab === "pending" ? "#fff" : theme.text,
-        fontWeight: "600",
-      }}
-    >
-      Pending ({stats.pending ?? 0})
-    </Text>
-  </Pressable>
-<Pressable
-  onPress={() => setHistoryTab("completed")}
-  style={{
-    backgroundColor:
-      historyTab === "completed" ? theme.teal : theme.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginLeft: 8,
-  }}
->
-  <Text
-    style={{
-      color: historyTab === "completed" ? "#fff" : theme.text,
-      fontWeight: "600",
-    }}
-  >
-    Completed ({stats.completed ?? 0})
-  </Text>
-</Pressable>
+            <View style={{ marginTop: 12 }}>
+              <Text
+                style={{
+                  color: theme.text,
+                  fontSize: 16,
+                  fontWeight: "700",
+                  marginBottom: 10,
+                }}
+              >
+                History Categories
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 10 }}>
+                <Pressable
+                  onPress={() => setHistoryTab("pending")}
+                  style={{
+                    backgroundColor:
+                      historyTab === "pending" ? theme.teal : theme.surface,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: historyTab === "pending" ? "#fff" : theme.text,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Pending ({stats.pending ?? 0})
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setHistoryTab("completed")}
+                  style={{
+                    backgroundColor:
+                      historyTab === "completed" ? theme.teal : theme.surface,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: historyTab === "completed" ? "#fff" : theme.text,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Completed ({stats.completed ?? 0})
+                  </Text>
+                </Pressable>
 
-<Pressable
-  onPress={() => setHistoryTab("providerRejected")}
-  style={{
-    backgroundColor:
-      historyTab === "providerRejected" ? theme.teal : theme.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginLeft: 8,
-  }}
->
-  <Text
-    style={{
-      color: historyTab === "providerRejected" ? "#fff" : theme.text,
-      fontWeight: "600",
-    }}
-  >
-    Provider Rejected ({stats.providerRejected ?? 0})
-  </Text>
-</Pressable>
+                <Pressable
+                  onPress={() => setHistoryTab("providerRejected")}
+                  style={{
+                    backgroundColor:
+                      historyTab === "providerRejected" ? theme.teal : theme.surface,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: historyTab === "providerRejected" ? "#fff" : theme.text,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Provider Rejected ({stats.providerRejected ?? 0})
+                  </Text>
+                </Pressable>
 
-<Pressable
-  onPress={() => setHistoryTab("clientCancelled")}
-  style={{
-    backgroundColor:
-      historyTab === "clientCancelled" ? theme.teal : theme.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginLeft: 8,
-  }}
->
-  <Text
-    style={{
-      color: historyTab === "clientCancelled" ? "#fff" : theme.text,
-      fontWeight: "600",
-    }}
-  >
-    Client Cancelled ({stats.clientCancelled ?? 0})
-  </Text>
-</Pressable>
+                <Pressable
+                  onPress={() => setHistoryTab("clientCancelled")}
+                  style={{
+                    backgroundColor:
+                      historyTab === "clientCancelled" ? theme.teal : theme.surface,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: historyTab === "clientCancelled" ? "#fff" : theme.text,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Client Cancelled ({stats.clientCancelled ?? 0})
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          )}
 
-</View>
-  </View>
-)}
+          {historyOpen && selectedHistoryBookings.length > 0 && (
+            <View style={{ marginTop: 12, gap: 12 }}>
+              {selectedHistoryBookings.map((item) => (
+                <JobCard
+                  key={item._id || item.id || String(Math.random())}
+                  booking={item}
+                  isAvailable={false}
+                  onComplete={null}
+                  onCancel={null}
+                  onEstimate={null}
+                  onUpdateTrackingStatus={null}
+                  onStartTracking={null}
+                  onStopTracking={null}
+                  onRequestLocation={onRequestLocation}
+                />
+              ))}
+            </View>
+          )}
+
+          {historyOpen && selectedHistoryBookings.length === 0 && historyCount > 0 && (
+            <Text style={[styles.historyEmpty, { backgroundColor: theme.surfaceMuted, color: theme.textMuted }]}>
+              {historyTab === "pending"
+                ? "No pending requests."
+                : historyTab === "completed"
+                ? "No completed bookings."
+                : historyTab === "providerRejected"
+                ? "No provider rejected bookings."
+                : "No client cancelled bookings."}
+            </Text>
+          )}
 
           {historyOpen && !historyCount ? (
             <Text style={[styles.historyEmpty, { backgroundColor: theme.surfaceMuted, color: theme.textMuted }]}>

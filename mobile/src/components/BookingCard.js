@@ -76,6 +76,11 @@ function BookingCard({ booking, onCancel, onAcceptEstimate, onRejectEstimate, on
             {booking.cancelledBy === "provider" ? "Rejection reason" : "Cancellation reason"}: {booking.cancellationReason}
           </InfoLine>
         ) : null}
+        {booking.status && ["rejected", "Rejected"].includes(booking.status) && (booking.rejectionReason || booking.cancellationReason || booking.adminRejectionReason) ? (
+          <InfoLine icon="alert-circle-outline">
+            Rejection reason: {booking.rejectionReason || booking.cancellationReason || booking.adminRejectionReason}
+          </InfoLine>
+        ) : null}
       </View>
       {canTrack ? (
         <ActionButton
