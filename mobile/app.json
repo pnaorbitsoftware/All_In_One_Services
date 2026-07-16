@@ -48,10 +48,10 @@
     "extra": {
       "apiUrl": "https://all-in-one-services.onrender.com/api",
       "eas": {
-        "projectId": "52363804-9f97-4edd-b4a7-ab8401e1d27e"
+        "projectId": "5f8d0e5a-7f81-47e3-899c-7725b91e971a"
       }
     },
-    "owner": "nilesh5888",
+    "owner": "nileshrajpure5888",
     "ios": {
       "bundleIdentifier": "com.servicehub.mobile",
       "infoPlist": {
