@@ -5,6 +5,7 @@ import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from "react
 import * as SplashScreen from "expo-splash-screen";
 import { showLocalNotification, requestNotificationPermissions } from "./src/lib/pushNotifications";
 import * as Notifications from "expo-notifications";
+import { io } from "socket.io-client";
 
 import BottomNav from "./src/components/BottomNav";
 import { LoadingState } from "./src/components/StateView";
@@ -22,6 +23,7 @@ import {
   paymentApi,
   providerApi,
 } from "./src/lib/api";
+import { API_URL } from "./src/config/api";
 import { normalizeTrackingStatus } from "./src/lib/formatters";
 import { createTranslator, normalizeLanguage } from "./src/lib/i18n";
 import { getCurrentReadableLocation, watchProviderLocation } from "./src/lib/location";
@@ -224,6 +226,8 @@ function ServiceHubApp() {
   const [locationSearchOpen, setLocationSearchOpen] = useState(false);
   const network = useNetworkStatus();
   const trackingSubscriptionRef = useRef(null);
+  const socketRef = useRef(null);
+  const joinedRoomsRef = useRef(new Set());
 
   const [catalogProviders, setCatalogProviders] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -860,6 +864,135 @@ function ServiceHubApp() {
     }
   }, [loadBookings, token, user]);
 
+  // Socket.io Connection & Event Handling
+  useEffect(() => {
+    if (!token || !user) {
+      if (socketRef.current) {
+        console.log("[Socket] Disconnecting socket due to logout or missing session");
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      joinedRoomsRef.current.clear();
+      return undefined;
+    }
+
+    const socketUrl = API_URL.replace(/\/api$/, "");
+    console.log("[Socket] Initializing connection to:", socketUrl);
+
+    const socket = io(socketUrl, {
+      auth: { token },
+      query: { token },
+      transports: ["websocket"],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("[Socket] Connected successfully, socket ID:", socket.id);
+      joinedRoomsRef.current.clear();
+      
+      // Join rooms for all current bookings
+      if (bookings && bookings.length > 0) {
+        bookings.forEach((booking) => {
+          if (!booking) return;
+          const bookingId = String(booking._id || booking.id);
+          console.log("[Socket] Joining room on connect for booking:", bookingId);
+          socket.emit("join_room", { bookingId, role: "client" });
+          joinedRoomsRef.current.add(bookingId);
+        });
+      }
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[Socket] Connection error:", err.message);
+    });
+
+    socket.on("status:change", (data) => {
+      console.log("[Socket] Received status:change event:", data);
+      
+      // Trigger instant data refreshes
+      loadBookings(true).catch(() => {});
+      loadNotifications(true).catch(() => {});
+
+      // Retrieve new status and check if status changed to trigger foreground push notification
+      const bookingId = data.bookingId;
+      const newStatus = data.status || data.trackingStatus;
+
+      if (bookingId && newStatus) {
+        // Find existing booking to check if the status is actually a change
+        setBookings((currentBookings) => {
+          const currentBooking = currentBookings.find(b => String(b._id || b.id) === String(bookingId));
+          if (currentBooking && String(currentBooking.status).toLowerCase() !== String(newStatus).toLowerCase()) {
+            const providerName = currentBooking.assignedProviderName || currentBooking.requestedProviderName || "Your provider";
+            
+            let title = "Booking Status Updated";
+            let body = `Your booking for ${currentBooking.service} is now ${newStatus}.`;
+
+            const lowerStatus = String(newStatus).toLowerCase().replace(/[\s_]+/g, "_");
+            if (lowerStatus === "accepted" || lowerStatus === "provider_assigned") {
+              title = "Provider Assigned";
+              body = `${providerName} has accepted your booking for ${currentBooking.service}.`;
+            } else if (lowerStatus === "on_the_way" || lowerStatus === "en_route") {
+              title = "Provider On The Way";
+              body = `${providerName} is on the way to your location.`;
+            } else if (lowerStatus === "arrived") {
+              title = "Provider Arrived";
+              body = `${providerName} has arrived at your location.`;
+            } else if (lowerStatus === "service_started" || lowerStatus === "job_started") {
+              title = "Service Started";
+              body = `Your ${currentBooking.service} service has started.`;
+            } else if (lowerStatus === "completed") {
+              title = "Service Completed";
+              body = `Your ${currentBooking.service} service is complete!`;
+            } else if (lowerStatus === "cancelled") {
+              title = "Booking Cancelled";
+              body = `Your booking for ${currentBooking.service} was cancelled.`;
+            } else if (lowerStatus === "rejected") {
+              title = "Booking Rejected";
+              body = `The provider rejected your booking request.`;
+            }
+
+            showLocalNotification({
+              title,
+              body,
+              data: { bookingId, type: "booking" }
+            }).catch(() => {});
+          }
+          return currentBookings;
+        });
+      }
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("[Socket] Disconnected:", reason);
+    });
+
+    return () => {
+      console.log("[Socket] Cleaning up socket connection on unmount or dependency change");
+      socket.disconnect();
+      socketRef.current = null;
+      joinedRoomsRef.current.clear();
+    };
+  }, [token, user?._id || user?.id, loadBookings, loadNotifications]);
+
+  // Dynamic Room Joining when bookings list updates
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !socket.connected || !bookings || bookings.length === 0) return;
+
+    bookings.forEach((booking) => {
+      if (!booking) return;
+      const bookingId = String(booking._id || booking.id);
+      if (!joinedRoomsRef.current.has(bookingId)) {
+        console.log("[Socket] Dynamic joining room for booking:", bookingId);
+        socket.emit("join_room", { bookingId, role: "client" });
+        joinedRoomsRef.current.add(bookingId);
+      }
+    });
+  }, [bookings]);
+
   useEffect(() => {
     if (token && user?.role === "provider" && activeTab === "provider") {
       loadProviderDashboard(true).catch(() => {});
@@ -1392,11 +1525,17 @@ function ServiceHubApp() {
     };
   }, [mergeProviderData, providerData?.provider?.trackingActive, token, user?.role]);
 
-  // Automatic refresh interval for active screens (polls active tab data every 10s)
+  // Automatic refresh interval for active screens (polls active tab data every 10s as fallback if socket is disconnected)
   useEffect(() => {
     if (!token || appState !== "active") return undefined;
 
     const interval = setInterval(() => {
+      // If socket is connected, skip polling to optimize battery and API requests
+      const socketConnected = socketRef.current?.connected === true;
+      if (socketConnected) {
+        return;
+      }
+
       if (activeTab === "bookings") {
         loadBookings(true).catch(() => {});
       } else if (activeTab === "provider") {
