@@ -31,9 +31,22 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    currentLocation: {
+      type: Object,
+      default: {},
+    },
+    profileComplete: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     profileImage: {
       type: String,
       default: "",
+    },
+    expoPushTokens: {
+      type: [String],
+      default: [],
     },
     role: {
       type: String,
@@ -47,7 +60,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
   },
-  { collection: "users", timestamps: true }
+  { collection: "users", timestamps: true },
 );
 
 userSchema.pre("save", async function hashPassword(next) {

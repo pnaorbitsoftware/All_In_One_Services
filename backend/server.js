@@ -5,6 +5,8 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import http from "node:http";
 
+import notificationRoutes from "./src/routes/notificationRoutes.js";
+
 import authRoutes from "./src/routes/authRoutes.js";
 import adminRoutes from "./src/routes/adminRoutes.js";
 import bookingRoutes from "./src/routes/bookingRoutes.js";
@@ -192,6 +194,8 @@ const requireDatabase = (_req, res, next) => {
 //
 // Routes
 //
+
+app.use("/api/notifications", requireDatabase, notificationRoutes);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/forgot-password", passwordRecoveryLimiter);
 app.use("/api/auth/reset-password", passwordRecoveryLimiter);
@@ -215,7 +219,9 @@ app.use((error, req, res, _next) => {
   }
 
   if (error?.type === "entity.too.large") {
-    return res.status(413).json({ message: "Request payload is too large." });
+    return res.status(413).json({
+      message: "The selected image is too large to upload. Choose a smaller image and try again.",
+    });
   }
 
   console.error(`Unhandled ${req.method} ${req.originalUrl}: ${error?.message || "Unknown error"}`);
