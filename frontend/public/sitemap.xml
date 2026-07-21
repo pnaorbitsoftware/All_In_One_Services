@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://servicehub.aparaitech.org/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/contact</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/privacy-policy</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/terms-and-conditions</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/electrician-near-me</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/plumber-near-me</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/carpenter-near-me</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/ac-repair-near-me</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/home-cleaning-services</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/painting-services</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/services/appliance-repair</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/locations/pune</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/locations/mumbai</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/locations/nashik</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://servicehub.aparaitech.org/locations/baramati</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+</urlset>
