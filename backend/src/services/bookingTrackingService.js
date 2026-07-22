@@ -13,9 +13,11 @@ const statusRanks = {
 export const activeTrackingStatuses = ["accepted", "en_route", "arrived", "job_started", "completed"];
 
 export const normalizeBookingStatus = (status) => {
-  if (status === "confirmed" || status === "assigned") return "accepted";
-  if (status === "on_the_way") return "en_route";
-  return status;
+  let s = String(status || "").toLowerCase().trim().replace(/[\s_]+/g, "_");
+  if (s === "confirmed" || s === "assigned" || s === "provider_assigned") return "accepted";
+  if (s === "on_the_way" || s === "en_route") return "en_route";
+  if (s === "service_started" || s === "job_started") return "job_started";
+  return s;
 };
 
 export const assertStatusTransition = (currentStatus = "pending", nextStatus) => {
