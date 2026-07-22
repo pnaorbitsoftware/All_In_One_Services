@@ -19,6 +19,7 @@ import { buildStatusUpdateOperation } from "../services/bookingTrackingService.j
 import { emitStatusChange, getProviderRoomId } from "../socket/trackingSocket.js";
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
 import { applyPaymentSplit } from "../utils/paymentSummary.js";
+import { normalizeServiceName } from "../utils/serviceMatching.js";
 
 const router = express.Router();
 
@@ -167,7 +168,7 @@ router.post("/", requireAuth, async (req, res) => {
       userEmail: req.user.email,
       name,
       phone,
-      service: requestedProvider?.category || service,
+      service: requestedProvider?.category || normalizeServiceName(service) || service,
       address,
       addressLocation: {
         latitude: Number(activeAddressLocation.latitude),

@@ -97,8 +97,9 @@ const requireProvider = (req, res, next) => {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const buildAvailableBookingFilter = (provider) => {
+export const buildAvailableBookingFilter = (provider) => {
   const categoryStr = provider?.category ? provider.category.trim() : "";
+  const serviceRegexes = categoryStr ? buildServiceRegexes(categoryStr) : [];
   return {
     assignedProvider: null,
     status: { $in: ["pending", "accepted"] },
@@ -108,7 +109,7 @@ const buildAvailableBookingFilter = (provider) => {
       { requestedProvider: provider._id },
       {
         requestedProvider: null,
-        service: categoryStr ? { $regex: `^${escapeRegex(categoryStr)}$`, $options: "i" } : { $exists: true },
+        ...(serviceRegexes.length > 0 ? { service: { $in: serviceRegexes } } : { service: { $exists: true } }),
       },
     ],
   };
@@ -661,7 +662,7 @@ router.patch("/bookings/:bookingId/accept", requireAuth, requireProvider, async 
 
     const booking = await Booking.findOneAndUpdate(
       {
-        _id: req.params.bookingId,
+        ...bookingLookup(req.params.bookingId),
         ...buildAvailableBookingFilter(provider),
       },
       {
@@ -734,7 +735,7 @@ router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async 
     }
 
     const existingBooking = await Booking.findOne({
-      _id: req.params.bookingId,
+      ...bookingLookup(req.params.bookingId),
       ...buildAvailableBookingFilter(provider),
     });
 
@@ -751,7 +752,7 @@ router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async 
       // the booking itself is marked rejected so the client is notified clearly.
       booking = await Booking.findOneAndUpdate(
         {
-          _id: req.params.bookingId,
+          ...bookingLookup(req.params.bookingId),
           requestedProvider: provider._id,
           assignedProvider: null,
         },
