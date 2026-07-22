@@ -20,6 +20,7 @@ import { emitStatusChange, getProviderRoomId } from "../socket/trackingSocket.js
 import { bookingLookup, buildPointLocation, publicLocation } from "../utils/location.js";
 import { applyPaymentSplit } from "../utils/paymentSummary.js";
 import { normalizeServiceName } from "../utils/serviceMatching.js";
+import { ensureTrackingHistory } from "../utils/tracking.js";
 
 const router = express.Router();
 
@@ -372,7 +373,7 @@ router.get("/:bookingId/tracking", requireAuth, async (req, res) => {
       bookingDate: booking.preferredDate || null,
       bookingTime: booking.preferredTime || null,
       trackingEvents: booking.trackingEvents || [],
-      trackingHistory: booking.trackingEvents || [],
+      trackingHistory: ensureTrackingHistory(booking),
       cancellationReason: booking.cancellationReason || booking.cancelReason || "",
       cancelReason: booking.cancelReason || booking.cancellationReason || "",
       cancelledBy: booking.cancelledBy || "",

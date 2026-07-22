@@ -286,7 +286,7 @@ router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async 
       cancelledAt: booking.cancelledAt || null,
       cancelType: booking.cancelType || "",
       trackingEvents: booking.trackingEvents || [],
-      trackingHistory: booking.trackingEvents || [],
+      trackingHistory: ensureTrackingHistory(booking),
       updatedAt: booking.updatedAt,
     });
   } catch (error) {
