@@ -105,7 +105,7 @@ const geocodeAddress = async (address) => {
 };
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { name, phone, service, address, problemDescription, date, time, duration, providerId = "", clientLatitude, clientLongitude, clientLocationAccuracy, addressLocation } = req.body;
+    const { name, phone, service, address, problemDescription, date, time, duration, providerId = "", clientLatitude, clientLongitude, clientLocationAccuracy, addressLocation, bookingLocation: reqBookingLocation } = req.body;
 
     if (req.user.role === "admin") {
       return res.status(403).json({ message: "Admin accounts cannot book services. Please use a client account." });
@@ -127,6 +127,22 @@ router.post("/", requireAuth, async (req, res) => {
         Number(activeAddressLocation.latitude) === 0 || Number(activeAddressLocation.longitude) === 0) {
       return res.status(400).json({ message: "Client location coordinates are required to create a booking." });
     }
+
+    const parsedBookingLoc = reqBookingLocation || {};
+    const bookingLocation = {
+      latitude: Number(parsedBookingLoc.latitude || activeAddressLocation.latitude),
+      longitude: Number(parsedBookingLoc.longitude || activeAddressLocation.longitude),
+      formattedAddress: String(parsedBookingLoc.formattedAddress || parsedBookingLoc.address || activeAddressLocation.address || address || "").trim(),
+      houseNo: String(parsedBookingLoc.houseNo || "").trim(),
+      street: String(parsedBookingLoc.street || "").trim(),
+      area: String(parsedBookingLoc.area || "").trim(),
+      city: String(parsedBookingLoc.city || "").trim(),
+      state: String(parsedBookingLoc.state || "").trim(),
+      country: String(parsedBookingLoc.country || "").trim(),
+      postalCode: String(parsedBookingLoc.postalCode || "").trim(),
+      landmark: String(parsedBookingLoc.landmark || "").trim(),
+      locationType: String(parsedBookingLoc.locationType || "Custom Address").trim(),
+    };
 
     const preferredDate = new Date(date);
     if (Number.isNaN(preferredDate.getTime())) {
@@ -176,6 +192,7 @@ router.post("/", requireAuth, async (req, res) => {
         address: String(activeAddressLocation.address || address || "").trim(),
         timestamp: activeAddressLocation.timestamp ? new Date(activeAddressLocation.timestamp) : new Date(),
       },
+      bookingLocation,
       problemDescription,
       preferredDate: date,
       preferredTime: time,
@@ -219,14 +236,43 @@ router.post("/", requireAuth, async (req, res) => {
           ...(ownProviderProfile ? { _id: { $ne: ownProviderProfile._id } } : {}),
         }).limit(20);
 
+    let approxAddress = "";
+    if (booking.bookingLocation) {
+      const area = booking.bookingLocation.area || "";
+      const city = booking.bookingLocation.city || "";
+      approxAddress = [area, city].filter(Boolean).join(", ");
+    }
+    if (!approxAddress && booking.address) {
+      const parts = booking.address.split(",").map(p => p.trim());
+      approxAddress = parts.slice(-2).join(", ");
+    }
+    if (!approxAddress) {
+      approxAddress = "Approximate Location";
+    }
+
     const providerAlert = {
       type: "booking_request",
       bookingId: booking.bookingId || String(booking._id),
       databaseId: String(booking._id),
-      clientName: "Client details hidden",
+      clientName: booking.name || req.user.name || "Client",
       service: booking.service,
-      address: booking.address,
-      clientLocation: publicLocation(booking.clientLocation),
+      address: approxAddress,
+      clientLocation: null,
+      bookingLocation: {
+        latitude: null,
+        longitude: null,
+        formattedAddress: approxAddress,
+        houseNo: "",
+        street: "",
+        area: booking.bookingLocation?.area || "",
+        city: booking.bookingLocation?.city || "",
+        state: "",
+        country: "",
+        postalCode: "",
+        landmark: "",
+        locationType: booking.bookingLocation?.locationType || "Custom Address",
+      },
+      problemDescription: booking.problemDescription || "",
       status: booking.status,
       createdAt: booking.createdAt,
     };
@@ -320,13 +366,18 @@ router.get("/:bookingId/tracking", requireAuth, async (req, res) => {
       providerAddress: booking.providerLocation?.address || "",
       address: booking.address,
       addressLocation: booking.addressLocation || null,
+      bookingLocation: booking.bookingLocation || null,
+      problemDescription: booking.problemDescription || "",
       serviceName: booking.service || "",
       bookingDate: booking.preferredDate || null,
       bookingTime: booking.preferredTime || null,
       trackingEvents: booking.trackingEvents || [],
       trackingHistory: booking.trackingEvents || [],
-      cancellationReason: booking.cancellationReason || "",
+      cancellationReason: booking.cancellationReason || booking.cancelReason || "",
+      cancelReason: booking.cancelReason || booking.cancellationReason || "",
       cancelledBy: booking.cancelledBy || "",
+      cancelledAt: booking.cancelledAt || null,
+      cancelType: booking.cancelType || "",
       rejectionReason: booking.rejectionReason || "",
       updatedAt: booking.updatedAt,
     });
@@ -488,7 +539,8 @@ router.patch("/:bookingId/status", requireAuth, async (req, res) => {
 
 router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
   try {
-    const { reason = "" } = req.body || {};
+    const { reason = "", cancelReason = "", cancelType = "Custom" } = req.body || {};
+    const finalReason = String(cancelReason || reason || "").trim();
     const booking = await Booking.findOne({
       ...bookingLookup(req.params.bookingId),
       user: req.user._id,
@@ -505,7 +557,9 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
     booking.status = "cancelled";
     booking.cancelledBy = "client";
     booking.cancelledAt = new Date();
-    booking.cancellationReason = String(reason || "").trim();
+    booking.cancellationReason = finalReason;
+    booking.cancelReason = finalReason;
+    booking.cancelType = cancelType;
     await booking.save();
     await booking.populate([
       { path: "assignedProvider", select: "name category location phone price responseTime rating reviews" },

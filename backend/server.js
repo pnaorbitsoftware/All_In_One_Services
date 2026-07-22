@@ -1,3 +1,11 @@
+process.on("uncaughtException", (error) => {
+  console.error("🔥 CRITICAL: Uncaught Exception:", error?.stack || error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("🔥 CRITICAL: Unhandled Promise Rejection:", reason?.stack || reason);
+});
+
 import cors from "cors";
 import compression from "compression";
 import "dotenv/config";

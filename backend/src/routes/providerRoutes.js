@@ -25,6 +25,55 @@ import { buildProviderPaymentSummary, DEFAULT_PROVIDER_SHARE_PERCENT } from "../
 import { buildTrackingEvent, ensureTrackingHistory, normalizeTrackingStatus } from "../utils/tracking.js";
 import { sendPushNotification } from "../utils/pushNotifications.js";
 
+const redactClientPrivacy = (booking, providerId) => {
+  if (!booking) return booking;
+  if (booking.assignedProvider && String(booking.assignedProvider) === String(providerId)) {
+    return booking;
+  }
+  const redacted = { ...booking };
+  redacted.phone = "Client details hidden";
+  
+  let approxAddress = "";
+  if (redacted.bookingLocation) {
+    const area = redacted.bookingLocation.area || "";
+    const city = redacted.bookingLocation.city || "";
+    approxAddress = [area, city].filter(Boolean).join(", ");
+  }
+  if (!approxAddress && redacted.address) {
+    const parts = redacted.address.split(",").map(p => p.trim());
+    approxAddress = parts.slice(-2).join(", ");
+  }
+  if (!approxAddress) {
+    approxAddress = "Approximate Location";
+  }
+
+  redacted.address = approxAddress;
+
+  if (redacted.addressLocation) {
+    redacted.addressLocation = {
+      ...redacted.addressLocation,
+      latitude: null,
+      longitude: null,
+      address: approxAddress,
+    };
+  }
+
+  if (redacted.bookingLocation) {
+    redacted.bookingLocation = {
+      ...redacted.bookingLocation,
+      latitude: null,
+      longitude: null,
+      formattedAddress: approxAddress,
+      houseNo: "",
+      street: "",
+      postalCode: "",
+      landmark: "",
+    };
+  }
+
+  return redacted;
+};
+
 const router = express.Router();
 const providerIdentityCache = new Map();
 const providerDashboardProfileCache = new Map();
@@ -178,9 +227,9 @@ const clientCancelledBookings = bookings.filter((booking) => {
 res.json({
   provider,
   bookings,
-  availableRequests,
+  availableRequests: availableRequests.map(b => redactClientPrivacy(b, provider._id)),
   history: {
-    pending: pendingRequests,
+    pending: pendingRequests.map(b => redactClientPrivacy(b, provider._id)),
     completed: completedBookings,
     providerRejected: providerRejectedBookings,
     clientCancelled: clientCancelledBookings,
@@ -222,13 +271,22 @@ router.get("/bookings/:bookingId/tracking", requireAuth, requireProvider, async 
       bookingId: booking.bookingId || booking._id,
       databaseId: booking._id,
       status: booking.status,
+      currentStatus: booking.status,
       eta: booking.eta ?? null,
       clientName: booking.name,
       clientPhone: booking.phone,
       clientLocation: publicLocation(booking.clientLocation),
       providerLocation: publicLocation(booking.providerLocation),
       address: booking.address,
+      bookingLocation: booking.bookingLocation || null,
+      problemDescription: booking.problemDescription || "",
+      cancellationReason: booking.cancellationReason || booking.cancelReason || "",
+      cancelReason: booking.cancelReason || booking.cancellationReason || "",
+      cancelledBy: booking.cancelledBy || "",
+      cancelledAt: booking.cancelledAt || null,
+      cancelType: booking.cancelType || "",
       trackingEvents: booking.trackingEvents || [],
+      trackingHistory: booking.trackingEvents || [],
       updatedAt: booking.updatedAt,
     });
   } catch (error) {
@@ -893,6 +951,8 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
       update.cancelledAt = new Date();
       update.rejectedAt = new Date();
       update.cancellationReason = cancellationReason.trim();
+      update.cancelReason = cancellationReason.trim();
+      update.cancelType = "Provider Cancelled";
       update.adminPayoutStatus = "not_ready";
     }
 

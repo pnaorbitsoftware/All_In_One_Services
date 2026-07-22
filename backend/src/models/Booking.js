@@ -9,6 +9,28 @@ const locationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const bookingLocationSchema = new mongoose.Schema(
+  {
+    latitude: { type: Number, required: true },
+    longitude: { type: Number, required: true },
+    formattedAddress: { type: String, required: true, trim: true },
+    houseNo: { type: String, default: "", trim: true },
+    street: { type: String, default: "", trim: true },
+    area: { type: String, default: "", trim: true },
+    city: { type: String, default: "", trim: true },
+    state: { type: String, default: "", trim: true },
+    country: { type: String, default: "", trim: true },
+    postalCode: { type: String, default: "", trim: true },
+    landmark: { type: String, default: "", trim: true },
+    locationType: {
+      type: String,
+      enum: ["Current Location", "Saved Address", "Custom Address"],
+      default: "Custom Address",
+    },
+  },
+  { _id: false }
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     bookingId: {
@@ -87,6 +109,10 @@ const bookingSchema = new mongoose.Schema(
     addressLocation: {
       type: locationSchema,
       default: () => ({}),
+    },
+    bookingLocation: {
+      type: bookingLocationSchema,
+      default: null,
     },
     clientLocationUpdatedAt: {
       type: Date,
@@ -254,6 +280,16 @@ const bookingSchema = new mongoose.Schema(
       default: null,
     },
     cancellationReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    cancelReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    cancelType: {
       type: String,
       default: "",
       trim: true,
