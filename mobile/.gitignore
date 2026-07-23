@@ -1,0 +1,29 @@
+node_modules
+.expo
+dist
+.env
+*.log
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+expo-config.json
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+
+# iOS
+ios/build/
+
+# Native generated
+android/.cxx/
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/.cxx/
+
+# iOS
+ios/build/android/app/debug.keystore

@@ -1,0 +1,14 @@
+# EAS ignore file to prevent uploading local build artifacts and caches
+.git/
+.github/
+.gradle/
+.expo/
+node_modules/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/debug.keystore
+ios/build/
+dist/
+*.log

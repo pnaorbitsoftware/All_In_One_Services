@@ -1,0 +1,60 @@
+pluginManagement {
+  def reactNativeGradlePlugin = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
+    }.standardOutput.asText.get().trim()
+  ).getParentFile().absolutePath
+  includeBuild(reactNativeGradlePlugin)
+  
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    "../android/expo-gradle-plugin"
+  ).absolutePath
+  includeBuild(expoPluginsPath)
+}
+
+plugins {
+  id("com.facebook.react.settings")
+  id("expo-autolinking-settings")
+}
+
+// Clean autolinking cache if running on CI/EAS Build, or if it contains Windows absolute paths on a non-Windows OS
+def autolinkingCacheDir = new File(rootDir, "build/generated/autolinking")
+if (autolinkingCacheDir.exists()) {
+  boolean shouldClean = false
+  if (System.getenv("CI") == "true" || System.getenv("EAS_BUILD") == "true") {
+    shouldClean = true
+  } else if (!System.getProperty("os.name").toLowerCase().contains("windows")) {
+    def cacheFile = new File(autolinkingCacheDir, "autolinking.json")
+    if (cacheFile.exists()) {
+      def content = cacheFile.text
+      if (content.contains(":\\") || content.contains(":/")) {
+        shouldClean = true
+      }
+    }
+  }
+  if (shouldClean) {
+    println "Cleaning stale autolinking cache directory: ${autolinkingCacheDir}"
+    autolinkingCacheDir.deleteDir()
+  }
+}
+
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
+    ex.autolinkLibrariesFromCommand()
+  } else {
+    ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
+  }
+}
+expoAutolinking.useExpoModules()
+
+rootProject.name = 'ServiceHub'
+
+expoAutolinking.useExpoVersionCatalog()
+
+include ':app'
+includeBuild(expoAutolinking.reactNativeGradlePlugin)
