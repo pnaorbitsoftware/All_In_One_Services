@@ -198,6 +198,7 @@ const bookingSchema = new mongoose.Schema(
         "on_the_way",
         "en_route",
         "arrived",
+        "Arrived",
         "job_started",
         "completed",
         "cancelled",
