@@ -563,18 +563,36 @@ router.patch("/:bookingId/cancel", requireAuth, async (req, res) => {
     booking.cancelType = cancelType;
     await booking.save();
     await booking.populate([
-      { path: "assignedProvider", select: "name category location phone price responseTime rating reviews" },
-      { path: "requestedProvider", select: "name category location phone price responseTime rating reviews" },
+      { path: "assignedProvider", select: "name category location phone price responseTime rating reviews owner" },
+      { path: "requestedProvider", select: "name category location phone price responseTime rating reviews owner" },
     ]);
     emitStatusChange(req.app.get("io"), booking);
 
-    const providerId = booking.assignedProvider || booking.requestedProvider;
-    const provider = providerId ? await Provider.findById(providerId) : null;
+    const activeProvider = booking.assignedProvider || booking.requestedProvider;
+    if (activeProvider && activeProvider.owner) {
+      User.findById(activeProvider.owner)
+        .select("expoPushTokens")
+        .then((providerUser) => {
+          if (providerUser && providerUser.expoPushTokens?.length) {
+            sendPushNotification({
+              tokens: providerUser.expoPushTokens,
+              title: "Booking Cancelled by Client",
+              body: `The client cancelled the booking for ${booking.service}. Reason: ${booking.cancellationReason || "No reason provided"}`,
+              data: {
+                type: "booking",
+                bookingId: String(booking._id),
+                status: "Cancelled",
+              },
+            }).catch((err) => console.warn(`Provider push notification failed: ${err.message}`));
+          }
+        })
+        .catch((err) => console.warn(`Could not fetch provider user for push notification: ${err.message}`));
+    }
 
-    if (provider?.email) {
+    if (activeProvider?.email) {
       setImmediate(() => {
         sendCustomerCancellationEmail({
-          to: provider.email,
+          to: activeProvider.email,
           booking,
           reason: booking.cancellationReason || "Cancelled by customer",
         }).catch((err) => console.warn(`Customer cancellation email failed: ${err.message}`));

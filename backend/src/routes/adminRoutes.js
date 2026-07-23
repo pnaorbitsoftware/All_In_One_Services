@@ -609,7 +609,7 @@ router.patch(
         update.assignedProvider = provider._id;
         update.assignedProviderName = provider.name;
         update.assignedAt = new Date();
-        update.status = "assigned";
+        update.status = "accepted";
         update.cancelledBy = "";
         update.cancelledAt = null;
         update.cancellationReason = "";

@@ -10,7 +10,7 @@ export const API_URL = (
   import.meta.env.PROD ? "/api" : configuredApiUrl || fallbackApiUrl
 ).replace(/\/+$/, "");
 export const SOCKET_API_URL = String(
-  import.meta.env.VITE_SOCKET_API_URL || productionBackendApiUrl,
+  import.meta.env.VITE_SOCKET_API_URL || (import.meta.env.DEV ? API_URL : productionBackendApiUrl),
 ).replace(/\/+$/, "");
 
 export const AUTH_API_URLS = [

@@ -504,6 +504,36 @@ bookingSchema.pre("validate", function assignPublicBookingId(next) {
     this.bookingId = `SH-${timePart}-${randomPart}`;
   }
 
+  if (this.status) {
+    let s = String(this.status).toLowerCase().trim().replace(/[\s_]+/g, "_");
+    if (s === "confirmed" || s === "assigned" || s === "provider_assigned") {
+      this.status = "accepted";
+    } else if (s === "on_the_way" || s === "en_route") {
+      this.status = "en_route";
+    } else if (s === "service_started" || s === "job_started") {
+      this.status = "job_started";
+    } else {
+      this.status = s;
+    }
+  }
+
+  if (Array.isArray(this.trackingEvents)) {
+    this.trackingEvents.forEach((event) => {
+      if (event.status) {
+        let s = String(event.status).toLowerCase().trim().replace(/[\s_]+/g, "_");
+        if (s === "confirmed" || s === "assigned" || s === "provider_assigned") {
+          event.status = "accepted";
+        } else if (s === "on_the_way" || s === "en_route") {
+          event.status = "en_route";
+        } else if (s === "service_started" || s === "job_started") {
+          event.status = "job_started";
+        } else {
+          event.status = s;
+        }
+      }
+    });
+  }
+
   next();
 });
 

@@ -21,6 +21,7 @@ import {
   getProviderPayoutAmount,
 } from "../utils/paymentSummary.js";
 import { sendPushNotification } from "../utils/pushNotifications.js";
+import { emitStatusChange } from "../socket/trackingSocket.js";
 
 const router = express.Router();
 
@@ -408,6 +409,12 @@ router.post("/create-order", requireAuth, requireClient, async (req, res) => {
     res.json({
       success: true,
       message: "Razorpay order created successfully",
+      gateway: "razorpay",
+      keyId: process.env.RAZORPAY_KEY_ID,
+      orderId: order.id,
+      amount,
+      amountPaise: order.amount,
+      currency: order.currency,
       key: process.env.RAZORPAY_KEY_ID,
       order: {
         id: order.id,
@@ -500,9 +507,10 @@ router.post("/verify", requireAuth, requireClient, async (req, res) => {
     booking.platformFee = platformFee;
     booking.paymentCompletedAt = paidAt;
     if (["pending", "accepted", "assigned"].includes(booking.status)) {
-      booking.status = "confirmed";
+      booking.status = "accepted";
     }
     const updatedBooking = await booking.save();
+    emitStatusChange(req.app.get("io"), updatedBooking);
 
     await Ledger.insertMany([
       {

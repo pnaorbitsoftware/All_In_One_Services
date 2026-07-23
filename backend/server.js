@@ -101,7 +101,12 @@ const corsOptions = {
     if (!isProduction) {
       try {
         const { hostname } = new URL(origin);
-        if (["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname)) {
+        if (
+          ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname) ||
+          /^192\.168\.\d+\.\d+$/i.test(hostname) ||
+          /^10\.\d+\.\d+\.\d+$/i.test(hostname) ||
+          /^172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+$/i.test(hostname)
+        ) {
           return callback(null, true);
         }
       } catch {

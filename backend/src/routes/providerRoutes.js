@@ -365,6 +365,7 @@ router.patch("/availability", requireAuth, requireProvider, async (req, res) => 
     }
 
     invalidateCatalogCache();
+    req.app.get("io")?.emit("catalog:updated");
 
     res.json({
       message: `Availability status updated to ${nextAvailabilityStatus}.`,
@@ -594,6 +595,7 @@ router.patch("/profile", requireAuth, requireProvider, async (req, res) => {
 
     await provider.save();
     invalidateCatalogCache();
+    req.app.get("io")?.emit("catalog:updated");
 
     await User.findByIdAndUpdate(req.user._id, {
       name: provider.name,
@@ -1025,10 +1027,13 @@ router.patch("/bookings/:bookingId/status", requireAuth, requireProvider, async 
             reason: booking.cancellationReason,
             cancelledBy: "provider",
           }).catch(() => {});
+          const wasAccepted = ["accepted", "confirmed", "assigned", "provider_assigned", "on_the_way", "en_route", "arrived", "job_started"].includes(String(existingBooking.status).toLowerCase());
           sendPushNotification({
             tokens: client?.expoPushTokens || [],
-            title: "Booking Request Rejected",
-            body: `Your booking was rejected by the provider. Reason: ${booking.cancellationReason || "No reason provided"}`,
+            title: wasAccepted ? "Booking Cancelled by Provider" : "Booking Request Rejected",
+            body: wasAccepted
+              ? `Your booking for ${booking.service} was cancelled by the provider. Reason: ${booking.cancellationReason || "No reason provided"}`
+              : `Your booking was rejected by the provider. Reason: ${booking.cancellationReason || "No reason provided"}`,
             data: {
               type: "booking",
               bookingId: String(booking._id),
