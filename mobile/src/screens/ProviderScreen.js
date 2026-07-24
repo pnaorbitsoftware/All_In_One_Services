@@ -73,7 +73,10 @@ function ProviderScreen({
   }, [bookings]);
 
   const pendingHistory = useMemo(() => {
-    return availableRequests.filter((booking) => String(booking.status || "").toLowerCase() === "pending");
+    return availableRequests.filter((booking) => {
+      const status = String(booking.status || "").toLowerCase();
+      return status === "pending" || status === "confirmed";
+    });
   }, [availableRequests]);
 
   const completedHistory = useMemo(() => {

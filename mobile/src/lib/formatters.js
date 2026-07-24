@@ -25,21 +25,13 @@ export function formatBookingTime(value) {
   return `${hourValue % 12 || 12}:${String(minuteValue || 0).padStart(2, "0")} ${hourValue >= 12 ? "PM" : "AM"}`;
 }
 
-export function getClientCancelState(booking, now = Date.now()) {
-  if (["completed", "cancelled"].includes(booking.status)) {
+export function getClientCancelState(booking) {
+  const status = String(booking.status || "").toLowerCase();
+  const IN_PROGRESS = ["on_the_way", "en_route", "arrived", "job_started", "service_started"];
+  if (["completed", "cancelled", "rejected", ...IN_PROGRESS].includes(status)) {
     return { canCancel: false, label: "Cancel unavailable" };
   }
-
-  if (!booking.acceptedAt) {
-    return { canCancel: true, label: "Cancel booking" };
-  }
-
-  const remainingMs = 10 * 60 * 1000 - (now - new Date(booking.acceptedAt).getTime());
-  if (remainingMs <= 0) {
-    return { canCancel: false, label: "Cancel time expired" };
-  }
-
-  return { canCancel: true, label: `Cancel booking (${Math.ceil(remainingMs / 60000)}m left)` };
+  return { canCancel: true, label: "Cancel booking" };
 }
 
 export function normalizeTrackingStatus(status = "") {

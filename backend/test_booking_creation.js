@@ -1,13 +1,11 @@
+import "dotenv/config";
 import mongoose from "mongoose";
-
-const mongoUri = "mongodb://127.0.0.1:27017/";
-const mongoDbName = "all_in_one_services";
-
-import Booking from "file:///c:/Users/Nilesh Rajpure/OneDrive/Desktop/Maheshapp/All_In_One_Services/backend/src/models/Booking.js";
+import { connectToDatabase } from "./src/database/mongo.js";
+import Booking from "./src/models/Booking.js";
 
 async function run() {
   try {
-    await mongoose.connect(mongoUri, { dbName: mongoDbName });
+    await connectToDatabase();
     console.log("Connected to DB");
 
     const b = await Booking.create({

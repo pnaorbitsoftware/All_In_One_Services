@@ -151,7 +151,7 @@ export const buildAvailableBookingFilter = (provider) => {
   const serviceRegexes = categoryStr ? buildServiceRegexes(categoryStr) : [];
   return {
     assignedProvider: null,
-    status: { $in: ["pending", "accepted"] },
+    status: { $in: ["pending", "accepted", "confirmed", "Confirmed"] },
     rejectedByProviders: { $ne: provider._id },
     ...(provider.owner ? { user: { $ne: provider.owner } } : {}),
     $or: [
@@ -205,7 +205,8 @@ router.get("/dashboard", requireAuth, requireProvider, async (req, res) => {
 // ------------------------------
 
 const pendingRequests = availableRequests.filter((booking) => {
-  return String(booking.status || "").toLowerCase() === "pending";
+  const status = String(booking.status || "").toLowerCase();
+  return status === "pending" || status === "confirmed";
 });
 
 const completedBookings = bookings.filter((booking) => {

@@ -1,46 +1,29 @@
+import "dotenv/config";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 
-dotenv.config();
-
-const mongoUri = "mongodb://127.0.0.1:27017/";
-const mongoDbName = process.env.MONGO_DB_NAME || "all_in_one_services";
 
 import Booking from "./src/models/Booking.js";
 import Provider from "./src/models/Provider.js";
 import User from "./src/models/User.js";
 
+import { connectToDatabase, mongoUri, mongoDbName } from "./src/database/mongo.js";
+
 async function run() {
   try {
-    await mongoose.connect(mongoUri, { dbName: mongoDbName });
-    console.log("Connected to DB:", mongoDbName);
+    console.log("URI:", mongoUri);
+    console.log("DB Name:", mongoDbName);
+    await connectToDatabase();
+    console.log("Connected to DB");
 
-    const bookings = await Booking.find().sort({ createdAt: -1 }).lean();
     console.log("=== BOOKINGS ===");
+    const bookings = await Booking.find({
+      status: { $in: ["pending", "accepted", "confirmed", "Confirmed", "assigned"] }
+    }).sort({ createdAt: -1 }).limit(10).lean();
     for (const b of bookings) {
-      console.log({
-        id: b._id,
-        bookingId: b.bookingId,
-        service: b.service,
-        status: b.status,
-        name: b.name,
-        assignedProvider: b.assignedProvider,
-        requestedProvider: b.requestedProvider,
-        createdAt: b.createdAt
-      });
+      console.log(JSON.stringify(b, null, 2));
     }
 
-    const providers = await Provider.find().lean();
-    console.log("=== PROVIDERS ===");
-    for (const p of providers) {
-      console.log({
-        id: p._id,
-        name: p.name,
-        category: p.category,
-        isActive: p.isActive,
-        approvalStatus: p.approvalStatus
-      });
-    }
+
 
     await mongoose.disconnect();
   } catch (error) {

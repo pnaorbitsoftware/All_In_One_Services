@@ -63,7 +63,7 @@ export default function MyBookingsSheet({
   const activeBookings = useMemo(() => {
     return bookings.filter((booking) => {
       const status = String(booking.status || "").toLowerCase().replace(/_/g, " ");
-      return ["accepted", "confirmed", "provider assigned", "provider_assigned", "on the way", "on_the_way", "arrived", "service started", "service_started"].includes(status);
+      return ["accepted", "confirmed", "provider assigned", "provider_assigned", "en route", "en_route", "on the way", "on_the_way", "arrived", "job started", "job_started", "service started", "service_started"].includes(status);
     });
   }, [bookings]);
 

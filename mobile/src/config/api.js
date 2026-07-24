@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 
 export const PRODUCTION_BACKEND_API_URL = "https://all-in-one-services-eegn.onrender.com/api";
-export const SHARED_BACKEND_API_URL = "http://192.168.1.34:5000/api";
+export const SHARED_BACKEND_API_URL = "http://192.168.1.26:5000/api";
 export const ANDROID_EMULATOR_BACKEND_API_URL = "http://10.0.2.2:5000/api";
 
 function normalizeApiUrl(url = SHARED_BACKEND_API_URL) {
