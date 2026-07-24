@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { showConfirm } from "../lib/confirm";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -32,7 +32,7 @@ const initialForm = {
 };
 
 const defaultT = (_key, fallback) => fallback;
-const providerCategoryOptions = ["Electrician", "Plumber", "AC Repair", "Washing Machine", "Bathroom Cleaning", "Painting & Water-proofing", "Other"];
+const providerCategoryOptions = ["Electrician", "Plumber", "AC Repair", "Washing Machine", "Bathroom Cleaning", "Painting & Water-proofing"];
 
 export default function AuthSheet({
   visible,
