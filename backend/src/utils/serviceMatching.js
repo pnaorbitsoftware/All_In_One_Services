@@ -1,4 +1,4 @@
-﻿const ignoredWords = /\b(service|services|provider|providers|repair|repairs|work|works)\b/g;
+const ignoredWords = /\b(service|services|provider|providers|repair|repairs|work|works)\b/g;
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -47,6 +47,26 @@ const aliasGroups = [
 export const finalServiceNames = aliasGroups.map(([name]) => name);
 export const allowedServiceNames = new Set(finalServiceNames);
 
+const categoryToServices = {
+  "AC & Appliance Repair": [
+    "AC Repair", "Washing Machine", "Refrigerator", "Television", "Chimney",
+    "Microwave", "Stove", "Laptop", "RO/Water Purifier", "Geyser", "Air Cooler"
+  ],
+  "Electrician, Plumber & Carpenter": [
+    "Electrician", "Plumber", "Carpenter", "Festival Lights Installation",
+    "Furniture Assembly", "IKEA Furniture Assembly", "Tile Grouting"
+  ],
+  "Bathroom & Kitchen Cleaning": [
+    "Bathroom Cleaning", "Kitchen Cleaning", "Full Home Cleaning", "Sofa Cleaning"
+  ],
+  "Pest Control": [
+    "Cockroach Control", "Termite Control", "Bed Bugs Control", "Mosquito Control"
+  ],
+  "Painting & Water-proofing": [
+    "Painting & Water-proofing"
+  ]
+};
+
 export const normalizeServiceName = (value = "") => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -63,6 +83,22 @@ export const getServiceAliases = (value = "") => {
   const aliases = new Set([raw, normalized, cleanLabel(raw), cleanLabel(normalized)].filter(Boolean));
   const group = aliasGroups.find(([name]) => name === normalized);
   if (group) group.forEach((alias) => aliases.add(alias));
+
+  // If the queried value is a category, expand it to include all of its sub-services and their aliases
+  for (const [category, services] of Object.entries(categoryToServices)) {
+    if (compactLabel(category) === compactLabel(raw) || compactLabel(category) === compactLabel(normalized)) {
+      services.forEach((service) => {
+        const serviceNorm = normalizeServiceName(service);
+        aliases.add(service);
+        aliases.add(serviceNorm);
+        aliases.add(cleanLabel(service));
+        aliases.add(cleanLabel(serviceNorm));
+        const sGroup = aliasGroups.find(([name]) => name === serviceNorm);
+        if (sGroup) sGroup.forEach((alias) => aliases.add(alias));
+      });
+    }
+  }
+
   return [...aliases].filter(Boolean);
 };
 
@@ -73,3 +109,4 @@ export const categoryMatchesService = (category, service) => {
   const categoryKeys = new Set(getServiceAliases(category).map(compactLabel));
   return getServiceAliases(service).some((alias) => categoryKeys.has(compactLabel(alias)));
 };
+

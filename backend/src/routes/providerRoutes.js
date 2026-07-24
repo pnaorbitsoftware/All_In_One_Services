@@ -822,6 +822,8 @@ router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async 
             status: "rejected",
             rejectedAt: new Date(),
             rejectionReason: reason.trim(),
+            cancellationReason: reason.trim(),
+            cancelReason: reason.trim(),
           },
           $addToSet: { rejectedByProviders: provider._id },
         },
@@ -832,7 +834,7 @@ router.patch("/bookings/:bookingId/reject", requireAuth, requireProvider, async 
       // Only hide it from this provider; other providers should still see it.
       booking = await Booking.findOneAndUpdate(
         {
-          _id: req.params.bookingId,
+          ...bookingLookup(req.params.bookingId),
           assignedProvider: null,
         },
         {

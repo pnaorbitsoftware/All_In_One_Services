@@ -65,6 +65,12 @@ const toSocketBookingPayload = (booking) => ({
   cancelledBy: booking.cancelledBy || "",
   cancelledAt: booking.cancelledAt || null,
   cancelType: booking.cancelType || "",
+  rejectionReason: booking.rejectionReason || "",
+  rejectedAt: booking.rejectedAt || null,
+  estimateStatus: booking.estimateStatus || "not_submitted",
+  finalEstimateAmount: booking.finalEstimateAmount || 0,
+  paymentStatus: booking.paymentStatus || "unpaid",
+  clientPaymentStatus: booking.clientPaymentStatus || booking.paymentStatus || "unpaid",
   trackingEvents: booking.trackingEvents || [],
   updatedAt: booking.updatedAt,
 });
@@ -82,9 +88,16 @@ const toBookingUpdatePayload = (booking) => ({
   cancelledBy: booking.cancelledBy || "",
   cancelledAt: booking.cancelledAt || null,
   cancelType: booking.cancelType || "",
+  rejectionReason: booking.rejectionReason || "",
+  rejectedAt: booking.rejectedAt || null,
+  estimateStatus: booking.estimateStatus || "not_submitted",
+  finalEstimateAmount: booking.finalEstimateAmount || 0,
+  paymentStatus: booking.paymentStatus || "unpaid",
+  clientPaymentStatus: booking.clientPaymentStatus || booking.paymentStatus || "unpaid",
   trackingEvents: booking.trackingEvents || [],
   updatedAt: booking.updatedAt,
 });
+
 
 export const emitProviderDashboardUpdate = (io, providerIds = [], payload = {}) => {
   if (!io) return;
